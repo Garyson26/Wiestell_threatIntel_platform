@@ -10,6 +10,8 @@ def collapse_spans(intervals):
     """Merge overlapping intervals into a minimal sorted list."""
     out = []
     for start, end in sorted(intervals):
+        if end < start:
+            continue
         if out and start <= out[-1][1]:
             out[-1] = (out[-1][0], max(out[-1][1], end))
         else:
