@@ -3,7 +3,10 @@
 
 def validate(number):
     """Whether *number* passes the Luhn checksum."""
-    digits = [int(c) for c in str(number) if c.isdigit()]
+    text = str(number).replace(" ", "").replace("-", "")
+    if not text.isdigit():
+        return False
+    digits = [int(c) for c in text]
     total = 0
     for i, digit in enumerate(reversed(digits)):
         if i % 2:
