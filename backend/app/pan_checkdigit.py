@@ -15,3 +15,11 @@ def validate(number):
                 digit -= 9
         total += digit
     return total % 10 == 0
+
+
+def masked(number):
+    """Render *number* with everything but the last four digits hidden."""
+    digits = [c for c in str(number) if c.isdigit()]
+    if len(digits) <= 4:
+        return "".join(digits)
+    return "*" * (len(digits) - 4) + "".join(digits[-4:])
