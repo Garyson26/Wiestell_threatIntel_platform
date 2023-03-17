@@ -21,3 +21,10 @@ check the credentials, then run a single value end to end
 If the single value comes back with real data, the pass
 is safe to start.
 
+## If the pass is interrupted
+
+Progress is held in memory, so a restart loses the counters
+but not the work. Start the pass again; values enriched by the
+first attempt are still within their cache window and are
+skipped rather than re-fetched.
+
