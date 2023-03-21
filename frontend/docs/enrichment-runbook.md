@@ -23,8 +23,10 @@ is safe to start.
 
 ## If the pass is interrupted
 
-Progress is held in memory, so a restart loses the counters
-but not the work. Start the pass again; values enriched by the
-first attempt are still within their cache window and are
-skipped rather than re-fetched.
+Nothing resumes on its own. Progress is held in memory, so a
+restart loses the counters entirely and the pass has to be
+started again by hand. The work already done is not lost: values
+enriched by the first attempt are still within their cache window
+and are skipped rather than re-fetched, so the second run is
+shorter than the first.
 
