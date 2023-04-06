@@ -29,3 +29,8 @@ def decode(text):
             total += value
             index += len(glyph)
     return total
+
+
+def total(numerals):
+    """Sum a list of Roman numeral strings."""
+    return sum(decode(n) for n in numerals)
