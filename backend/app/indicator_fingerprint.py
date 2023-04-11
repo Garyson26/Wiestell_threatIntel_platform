@@ -17,3 +17,10 @@ def digest(data):
         value ^= byte
         value = (value * PRIME) & MASK
     return value
+
+
+def shard_for(data, shards):
+    """Which of *shards* buckets *data* belongs to."""
+    if shards < 1:
+        raise ValueError("shards must be >= 1")
+    return digest(data) % shards
