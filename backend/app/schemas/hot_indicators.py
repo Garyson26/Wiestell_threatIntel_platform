@@ -5,6 +5,9 @@ import functools
 
 def remember(max_entries=128):
     """Memoise a callable, discarding the oldest entry past *max_entries*."""
+    if max_entries < 1:
+        raise ValueError("max_entries must be >= 1")
+
     def outer(func):
         store = {}
         order = []
