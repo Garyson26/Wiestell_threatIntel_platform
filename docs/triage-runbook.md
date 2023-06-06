@@ -15,3 +15,16 @@ and rule out the common causes.
    that returned nothing.
 3. Only then look at the source itself.
 
+
+
+## Backing out a partial sync
+
+A run that stopped midway leaves the rows it had already
+committed in place. That is deliberate -- the work is chunked
+so a failure costs one chunk rather than the whole run -- but
+it means the counts are real and simply incomplete.
+
+Re-run the source rather than deleting anything. Values already
+present are recognised and gain a sighting instead of a
+duplicate row.
+
