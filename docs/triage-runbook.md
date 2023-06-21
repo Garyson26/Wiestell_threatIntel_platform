@@ -28,3 +28,8 @@ Re-run the source rather than deleting anything. Values already
 present are recognised and gain a sighting instead of a
 duplicate row.
 
+One caveat before you re-run: every value the second pass sees
+has its last-seen timestamp moved to now, which lifts the recency
+term of its score. Expect the ranking to shift, and say so in the
+incident notes rather than letting the next reader wonder.
+
