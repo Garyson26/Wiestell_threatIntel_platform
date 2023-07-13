@@ -14,3 +14,13 @@ def human_size(count):
                 return "%s%d B" % (sign, int(value))
             return "%s%.1f %s" % (sign, value, unit)
         value /= 1024.0
+
+
+def human_duration(seconds):
+    """Render a duration in seconds as a compact string."""
+    seconds = int(seconds)
+    if seconds < 60:
+        return "%ds" % seconds
+    if seconds < 3600:
+        return "%dm %ds" % (seconds // 60, seconds % 60)
+    return "%dh %dm" % (seconds // 3600, (seconds % 3600) // 60)
