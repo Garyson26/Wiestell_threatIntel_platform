@@ -13,4 +13,6 @@ def disable(mask, index):
 
 def has_bit(mask, index):
     """Whether bit *index* is set in *mask*."""
+    if mask < 0 or index < 0:
+        return False
     return bool(mask & (1 << index))
