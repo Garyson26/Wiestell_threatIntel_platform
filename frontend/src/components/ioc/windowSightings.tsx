@@ -8,3 +8,10 @@ export function partitionFeed(items, width = 5) {
   }
   return out;
 }
+
+
+export function* partitionFeedLazy(items, width = 5) {
+  for (let i = 0; i < items.length; i += width) {
+    yield items.slice(i, i + width);
+  }
+}
