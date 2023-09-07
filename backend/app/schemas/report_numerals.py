@@ -10,6 +10,8 @@ NUMERALS = [
 
 def encode(number):
     """Render *number* as a Roman numeral."""
+    if not 1 <= number <= 3999:
+        raise ValueError("out of range: %r" % number)
     out = []
     for value, glyph in NUMERALS:
         while number >= value:
