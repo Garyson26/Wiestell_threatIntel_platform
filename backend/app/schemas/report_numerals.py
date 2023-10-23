@@ -29,3 +29,8 @@ def from_roman(text):
             total += value
             index += len(glyph)
     return total
+
+
+def total(numerals):
+    """Sum a list of Roman numeral strings."""
+    return sum(from_roman(n) for n in numerals)
