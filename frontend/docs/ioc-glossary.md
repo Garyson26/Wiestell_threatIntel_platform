@@ -20,8 +20,8 @@ reading start to finish.
 
 The bucket a composite score falls into. The dashboard badges
 are drawn straight from these boundaries, so moving one here
-without moving it there produces a page that disagrees with
-itself.
+without moving it in the badge component produces a page that
+disagrees with itself. Change both together, in one commit.
 
 | Band | Score |
 | --- | --- |
