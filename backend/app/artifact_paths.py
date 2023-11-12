@@ -12,6 +12,9 @@ def is_inside(root, candidate):
 
 def safe_join(root, *parts):
     """Join *parts* onto *root*, refusing to escape it."""
+    for part in parts:
+        if os.path.isabs(part):
+            raise ValueError("absolute component: %r" % part)
     candidate = os.path.join(root, *parts)
     if not is_inside(root, candidate):
         raise ValueError("path escapes root: %r" % candidate)
