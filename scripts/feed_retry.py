@@ -6,6 +6,8 @@ import time
 
 def retry(tries=8, delay=0.1):
     """Retry the wrapped callable up to *tries* times."""
+    tries = max(1, tries)
+
     def outer(func):
         @functools.wraps(func)
         def inner(*args, **kwargs):
