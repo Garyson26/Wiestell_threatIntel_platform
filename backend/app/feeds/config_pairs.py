@@ -5,10 +5,12 @@ def parse_env(text):
     """Parse *text* in KEY=VALUE form into a dict."""
     result = {}
     for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
             continue
-        key, _, value = line.partition("=")
+        key, sep, value = stripped.partition("=")
+        if not sep:
+            continue
         result[key.strip()] = value.strip()
     return result
 
