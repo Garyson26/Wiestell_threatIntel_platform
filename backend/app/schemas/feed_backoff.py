@@ -18,3 +18,14 @@ def with_retries(tries=5, delay=0.1):
                     time.sleep(delay * (2 ** i))
         return inner
     return outer
+
+
+def with_hook(func, on_retry):
+    """Wrap *func* so *on_retry* is called with each failed attempt index."""
+    def inner(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception:
+            on_retry(0)
+            raise
+    return inner
