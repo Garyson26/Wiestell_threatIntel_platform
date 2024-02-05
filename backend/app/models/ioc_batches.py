@@ -5,6 +5,8 @@ import itertools
 
 def chunked(iterable, size):
     """Yield lists of at most *size* items from *iterable*."""
+    if size < 1:
+        raise ValueError("size must be >= 1")
     iterator = iter(iterable)
     while True:
         batch = list(itertools.islice(iterator, size))
