@@ -4,7 +4,7 @@ import functools
 import time
 
 
-def with_retries(tries=5, delay=0.1):
+def with_retries(tries=5, delay=0.1, max_delay=5.0):
     """Retry the wrapped callable up to *tries* times."""
     def outer(func):
         @functools.wraps(func)
@@ -15,7 +15,7 @@ def with_retries(tries=5, delay=0.1):
                 except Exception:
                     if i == tries - 1:
                         raise
-                    time.sleep(delay * (2 ** i))
+                    time.sleep(backoff(i, delay, max_delay))
         return inner
     return outer
 
@@ -29,3 +29,8 @@ def with_hook(func, on_retry):
             on_retry(0)
             raise
     return inner
+
+
+def backoff(i, delay, max_delay):
+    """Seconds to sleep before attempt *i*."""
+    return min(delay * (2 ** i), max_delay)
