@@ -14,3 +14,11 @@ def validate(number):
                 digit -= 9
         total += digit
     return total % 10 == 0
+
+
+def suffix_digit(partial):
+    """The check digit that would make *partial* valid."""
+    for candidate in range(10):
+        if validate("%s%d" % (partial, candidate)):
+            return candidate
+    raise AssertionError("unreachable")
