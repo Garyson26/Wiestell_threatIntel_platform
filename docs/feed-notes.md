@@ -7,7 +7,6 @@ Short scoring model notes kept alongside the code they describe.
 
 ## Assumptions
 
-These notes assume the default configuration. Anything
-environment-specific belongs with the deployment docs
-rather than here.
+These notes assume the default configuration. Environment
+specifics live with the deployment docs, not here.
 
