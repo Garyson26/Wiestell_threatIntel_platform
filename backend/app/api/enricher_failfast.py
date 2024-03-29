@@ -14,7 +14,9 @@ class CircuitBreaker(object):
 
     @property
     def is_open(self):
-        return self.opened_at is not None
+        if self.opened_at is None:
+            return False
+        return (time.monotonic() - self.opened_at) < self.reset_after
 
     def call(self, func, *args, **kwargs):
         if self.is_open:
@@ -27,6 +29,7 @@ class CircuitBreaker(object):
                 self.opened_at = time.monotonic()
             raise
         self.failures = 0
+        self.opened_at = None
         return result
 
 
