@@ -2,14 +2,14 @@
 
 
 export function indicatorQuery(selection, limit = 256) {
-  const parts = [];
+  const search = new URLSearchParams();
   Object.keys(selection).forEach((key) => {
     const value = selection[key];
     if (value === null || value === undefined || value === '') return;
-    parts.push(encodeURIComponent(key) + '=' + encodeURIComponent(value));
+    search.append(key, String(value));
   });
-  parts.push('limit=' + limit);
-  return parts.join('&');
+  search.set('limit', String(limit));
+  return search.toString();
 }
 
 
