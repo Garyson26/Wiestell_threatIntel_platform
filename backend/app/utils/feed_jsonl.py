@@ -16,7 +16,8 @@ def read_records(text):
 
 def to_jsonl(records):
     """Serialise *records* as one compact JSON document per line."""
-    return "".join(json.dumps(r, sort_keys=True) + "\n" for r in records)
+    return "".join(
+        json.dumps(r, sort_keys=True, ensure_ascii=False) + "\n" for r in records)
 
 
 def read_strict(text):
