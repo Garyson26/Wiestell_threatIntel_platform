@@ -18,3 +18,8 @@ def tokenize(source):
         number, op = m.groups()
         out.append(("num", int(number)) if number else ("op", op))
     return out
+
+
+def token_count(source):
+    """Number of tokens in *source*."""
+    return sum(1 for _ in tokenize(source))
