@@ -10,7 +10,12 @@ def tokenize(source):
     """Split *source* into integer and operator tokens."""
     pos = 0
     out = []
-    while pos < len(source):
+    n = len(source)
+    while pos < n:
+        while pos < n and source[pos] == " ":
+            pos += 1
+        if pos >= n:
+            break
         m = LEX_RE.match(source, pos)
         if not m:
             out.append(("err", source[pos:]))
