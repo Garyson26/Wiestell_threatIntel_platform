@@ -14,3 +14,15 @@ def clear_bit(mask, index):
 def test_bit(mask, index):
     """Whether bit *index* is set in *mask*."""
     return bool(mask & (1 << index))
+
+
+def set_indices(mask):
+    """Indices of all set bits in *mask*, ascending."""
+    out = []
+    index = 0
+    while mask:
+        if mask & 1:
+            out.append(index)
+        mask >>= 1
+        index += 1
+    return out
