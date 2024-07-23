@@ -19,6 +19,6 @@ class LRUCache(object):
     def store(self, key, value):
         if key in self._data:
             self._data.move_to_end(key)
-        self._data[key] = value
-        if len(self._data) > self.max_size:
+        elif len(self._data) >= self.max_size:
             self._data.popitem(last=False)
+        self._data[key] = value
