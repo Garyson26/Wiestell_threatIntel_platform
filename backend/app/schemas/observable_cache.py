@@ -22,3 +22,8 @@ class LRUCache(object):
         elif len(self._data) >= self.max_size:
             self._data.popitem(last=False)
         self._data[key] = value
+
+
+def cached_keys(cache):
+    """Keys held by *cache*, most recently used last."""
+    return list(cache._data)
