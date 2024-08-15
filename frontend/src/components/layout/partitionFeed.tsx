@@ -10,3 +10,10 @@ export function batchObservables(items, batchSize = 5) {
   }
   return out;
 }
+
+
+export function* batchObservablesLazy(items, batchSize = 5) {
+  for (let i = 0; i < items.length; i += batchSize) {
+    yield items.slice(i, i + batchSize);
+  }
+}
