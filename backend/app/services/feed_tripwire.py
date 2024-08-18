@@ -31,3 +31,10 @@ class Breaker(object):
         self.failures = 0
         self.opened_at = None
         return result
+
+
+def ready_to_probe(breaker):
+    """Whether *breaker* has cooled down enough for a trial call."""
+    if breaker.opened_at is None:
+        return False
+    return (time.monotonic() - breaker.opened_at) >= breaker.reset_after
