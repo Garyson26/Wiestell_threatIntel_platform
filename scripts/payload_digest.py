@@ -17,3 +17,8 @@ def digest(data):
         value ^= byte
         value = (value * PRIME) & MASK
     return value
+
+
+def short_hex(data, width=8):
+    """Hex digest of *data*, trimmed to *width* characters."""
+    return ("%08x" % digest(data))[:width]
