@@ -8,6 +8,8 @@ SPLIT_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 
 def to_snake(name):
     """Convert *name* to snake_case."""
+    if name.islower() and "-" not in name:
+        return name
     return SPLIT_RE.sub("_", name).replace("-", "_").lower()
 
 
