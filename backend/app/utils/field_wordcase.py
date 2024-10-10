@@ -8,18 +8,23 @@ SPLIT_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 
 def to_snake(name):
     """Convert *name* to snake_case."""
-    if name.islower() and "-" not in name:
-        return name
-    return SPLIT_RE.sub("_", name).replace("-", "_").lower()
+    return "_".join(w.lower() for w in words_in(name))
 
 
 def camel_case(name):
     """Convert *name* to camelCase."""
-    head, _, rest = name.replace("-", "_").partition("_")
-    parts = [p for p in rest.split("_") if p]
-    return head.lower() + "".join(p.capitalize() for p in parts)
+    words = words_in(name)
+    if not words:
+        return ""
+    return words[0].lower() + "".join(w.capitalize() for w in words[1:])
 
 
 def to_screaming(name):
     """Convert *name* to SCREAMING_SNAKE_CASE."""
     return to_snake(name).upper()
+
+
+def words_in(name):
+    """Break *name* into its constituent lowercase words."""
+    spaced = SPLIT_RE.sub(" ", name.replace("-", " ").replace("_", " "))
+    return [w for w in spaced.split(" ") if w]
