@@ -7,3 +7,9 @@ export function startFeedPoll(read, onResult, intervalMs = 256 * 1000) {
   }, intervalMs);
   return () => clearInterval(id);
 }
+
+
+export function startFeedPollEager(read, onResult, intervalMs = 256 * 1000) {
+  Promise.resolve(read()).then(onResult);
+  return startFeedPoll(read, onResult, intervalMs);
+}
