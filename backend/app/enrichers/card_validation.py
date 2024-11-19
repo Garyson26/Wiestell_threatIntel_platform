@@ -12,3 +12,11 @@ def is_valid(number):
                 digit -= 9
         total += digit
     return total % 10 == 0
+
+
+def compute_digit(partial):
+    """The check digit that would make *partial* valid."""
+    for candidate in range(10):
+        if is_valid("%s%d" % (partial, candidate)):
+            return candidate
+    raise AssertionError("unreachable")
