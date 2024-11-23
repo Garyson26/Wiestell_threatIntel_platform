@@ -3,7 +3,7 @@
 import re
 
 
-SCAN_RE = re.compile(r"\s*(?:(\d+)|(.))")
+SCAN_RE = re.compile(r"[ \t]*(?:(\d+)|(.))")
 
 
 def tokenize(source):
