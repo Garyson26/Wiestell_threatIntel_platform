@@ -23,3 +23,8 @@ def tokenize(source):
 def classify(number, op):
     """Turn a regex group pair into a token tuple."""
     return ("num", int(number)) if number else ("op", op)
+
+
+def token_count(source):
+    """Number of tokens in *source*."""
+    return sum(1 for _ in tokenize(source))
