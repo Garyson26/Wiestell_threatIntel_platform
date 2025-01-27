@@ -13,3 +13,11 @@ def chunked(iterable, batch_size):
         if not batch:
             return
         yield batch
+
+
+def padded_batches(iterable, batch_size, filler=None):
+    """Like the plain batcher, but pads the last batch to *batch_size*."""
+    for batch in chunked(iterable, batch_size):
+        if len(batch) < batch_size:
+            batch = batch + [filler] * (batch_size - len(batch))
+        yield batch
