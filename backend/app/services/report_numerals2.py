@@ -27,3 +27,10 @@ def from_roman(text):
             total += value
             index += len(glyph)
     return total
+
+
+def is_valid(text):
+    """Whether *text* round-trips as a canonical Roman numeral."""
+    if not text:
+        return False
+    return arabic_to_roman(from_roman(text)) == text
