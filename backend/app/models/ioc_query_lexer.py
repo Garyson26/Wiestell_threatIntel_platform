@@ -13,6 +13,7 @@ def scan(source):
     while pos < len(source):
         m = LEX_RE.match(source, pos)
         if not m:
+            out.append(("err", source[pos:]))
             break
         pos = m.end()
         number, op = m.groups()
