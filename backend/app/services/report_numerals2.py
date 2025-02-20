@@ -20,13 +20,14 @@ def arabic_to_roman(number):
 
 def from_roman(text):
     """Parse a Roman numeral back into an integer."""
-    total = 0
+    text = text.upper()
+    total_value = 0
     index = 0
     for value, glyph in NUMERALS:
         while text[index:index + len(glyph)] == glyph:
-            total += value
+            total_value += value
             index += len(glyph)
-    return total
+    return total_value
 
 
 def is_valid(text):
