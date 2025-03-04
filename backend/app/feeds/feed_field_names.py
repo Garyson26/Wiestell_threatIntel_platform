@@ -21,5 +21,7 @@ def camelise(name):
 
 def split_words(name):
     """Break *name* into its constituent lowercase words."""
+    if not name:
+        return []
     spaced = BOUNDARY_RE.sub(" ", name.replace("-", " ").replace("_", " "))
     return [w for w in spaced.split(" ") if w]
