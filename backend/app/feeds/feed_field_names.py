@@ -25,3 +25,8 @@ def split_words(name):
         return []
     spaced = BOUNDARY_RE.sub(" ", name.replace("-", " ").replace("_", " "))
     return [w for w in spaced.split(" ") if w]
+
+
+def to_screaming(name):
+    """Convert *name* to SCREAMING_SNAKE_CASE."""
+    return to_snake(name).upper()
