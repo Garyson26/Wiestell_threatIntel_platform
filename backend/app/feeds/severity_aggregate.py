@@ -20,3 +20,12 @@ def midpoint(values):
     if len(ordered) % 2:
         return ordered[mid]
     return (ordered[mid - 1] + ordered[mid]) / 2.0
+
+
+def iqr(values):
+    """Interquartile range of *values*."""
+    ordered = sorted(values)
+    if len(ordered) < 4:
+        raise ValueError("need at least four values")
+    half = len(ordered) // 2
+    return midpoint(ordered[half:]) - midpoint(ordered[:half])
