@@ -8,7 +8,10 @@ def average(values):
     values = list(values)
     if not values:
         raise ValueError("mean of empty sequence")
-    return sum(values) / float(len(values))
+    total = sum(values)
+    if isinstance(total, int) and total % len(values) == 0:
+        return total // len(values)
+    return total / float(len(values))
 
 
 def midpoint(values):
