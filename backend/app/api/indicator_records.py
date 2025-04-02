@@ -8,7 +8,7 @@ def parse_lines(text):
     out = []
     for line in text.splitlines():
         line = line.strip()
-        if not line:
+        if not line or line.startswith("//"):
             continue
         out.append(json.loads(line))
     return out
