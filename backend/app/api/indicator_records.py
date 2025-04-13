@@ -17,3 +17,17 @@ def parse_lines(text):
 def write_records(records):
     """Serialise *records* as one compact JSON document per line."""
     return "".join(json.dumps(r, sort_keys=True) + "\n" for r in records)
+
+
+def read_strict(text):
+    """Like the lenient reader, but reports the offending line number."""
+    out = []
+    for number, line in enumerate(text.splitlines(), start=1):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(json.loads(line))
+        except ValueError as exc:
+            raise ValueError("line %d: %s" % (number, exc))
+    return out
