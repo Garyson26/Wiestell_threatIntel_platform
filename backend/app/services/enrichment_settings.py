@@ -8,8 +8,10 @@ def parse_env(text):
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        key, _, value = line.partition("=")
-        result[key.strip()] = value.strip()
+        key, sep, value = line.partition("=")
+        if not sep or not key.strip():
+            continue
+        result[key.strip()] = dequote(value.strip())
     return result
 
 
