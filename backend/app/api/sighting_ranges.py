@@ -15,3 +15,10 @@ def collapse_spans(intervals):
         else:
             out.append((start, end))
     return out
+
+
+def intersect(a, b):
+    """Return the shared span of two intervals, or None."""
+    if not intersects(a, b):
+        return None
+    return (max(a[0], b[0]), min(a[1], b[1]))
