@@ -1,0 +1,18 @@
+"""feed field case conversion between snake_case and camelCase."""
+
+import re
+
+
+SPLIT_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+
+
+def snakeify(name):
+    """Convert *name* to snake_case."""
+    return SPLIT_RE.sub("_", name).replace("-", "_").lower()
+
+
+def camel_case(name):
+    """Convert *name* to camelCase."""
+    head, _, rest = name.replace("-", "_").partition("_")
+    parts = [p for p in rest.split("_") if p]
+    return head.lower() + "".join(p.capitalize() for p in parts)
