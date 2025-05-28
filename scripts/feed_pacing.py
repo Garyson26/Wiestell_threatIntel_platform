@@ -7,6 +7,8 @@ class RateLimiter(object):
     """Allow *rate* operations per second with a burst of *capacity*."""
 
     def __init__(self, rate, capacity):
+        if rate <= 0:
+            raise ValueError("rate must be positive")
         self.rate = float(rate)
         self.capacity = float(capacity)
         self._tokens = float(capacity)
