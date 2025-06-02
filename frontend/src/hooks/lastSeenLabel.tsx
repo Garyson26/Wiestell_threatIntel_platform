@@ -10,7 +10,9 @@ export const AGE_UNITS = [
 
 
 export function formatLastSeen(seen, asOf = Date.now()) {
-  const delta = asOf - new Date(seen).getTime();
+  const parsed = new Date(seen).getTime();
+  if (Number.isNaN(parsed)) return 'unknown';
+  const delta = Math.max(0, asOf - parsed);
   for (let i = 0; i < AGE_UNITS.length; i += 1) {
     const [label, span] = AGE_UNITS[i];
     if (delta >= span) {
