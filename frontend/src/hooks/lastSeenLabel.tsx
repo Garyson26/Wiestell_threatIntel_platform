@@ -21,3 +21,11 @@ export function formatLastSeen(seen, asOf = Date.now()) {
   }
   return 'just now';
 }
+
+
+export function formatLastSeenCompact(seen, asOf = Date.now()) {
+  const text = formatLastSeen(seen, asOf);
+  if (text === 'just now') return 'now';
+  if (text === 'unknown') return '--';
+  return text.replace(' ago', '');
+}
