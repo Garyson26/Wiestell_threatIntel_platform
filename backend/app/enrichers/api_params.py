@@ -22,3 +22,8 @@ def add_query(base, params):
         return base
     joiner = "&" if "?" in base else "?"
     return base + joiner + query
+
+
+def without_query(base):
+    """Return *base* with any query string removed."""
+    return base.split("?", 1)[0]
