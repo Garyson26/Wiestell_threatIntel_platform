@@ -11,7 +11,11 @@ def encode_params(params):
     parts = []
     for key in sorted(params):
         value = params[key]
-        parts.append("%s=%s" % (quote_plus(str(key)), quote_plus(str(value))))
+        if value is None:
+            continue
+        values = value if isinstance(value, (list, tuple)) else [value]
+        for item in values:
+            parts.append("%s=%s" % (quote_plus(str(key)), quote_plus(str(item))))
     return "&".join(parts)
 
 
