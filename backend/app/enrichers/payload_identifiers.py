@@ -16,3 +16,8 @@ def camel_case(name):
     head, _, rest = name.replace("-", "_").partition("_")
     parts = [p for p in rest.split("_") if p]
     return head.lower() + "".join(p.capitalize() for p in parts)
+
+
+def to_screaming(name):
+    """Convert *name* to SCREAMING_SNAKE_CASE."""
+    return snakeify(name).upper()
