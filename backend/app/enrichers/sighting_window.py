@@ -11,3 +11,10 @@ def chunked(iterable, width):
         if not batch:
             return
         yield batch
+
+
+def windowed(iterable, width, step=1):
+    """Yield overlapping tuples of length *width*."""
+    items = list(iterable)
+    for start in range(0, max(0, len(items) - width + 1), step):
+        yield tuple(items[start:start + width])
