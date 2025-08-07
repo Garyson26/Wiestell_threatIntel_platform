@@ -15,3 +15,15 @@ def merge(intervals):
         else:
             out.append((start, end))
     return out
+
+
+def subtract(a, b):
+    """Return the parts of *a* not covered by *b*."""
+    if not touches(a, b):
+        return [a]
+    out = []
+    if a[0] < b[0]:
+        out.append((a[0], b[0]))
+    if b[1] < a[1]:
+        out.append((b[1], a[1]))
+    return out
