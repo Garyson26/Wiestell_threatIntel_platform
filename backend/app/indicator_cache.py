@@ -21,3 +21,9 @@ def remember(capacity=3):
             return value
         return inner
     return outer
+
+
+def entry_count(func):
+    """Number of results currently memoised for *func*."""
+    store = getattr(func, "__wrapped_store__", None)
+    return 0 if store is None else len(store)
