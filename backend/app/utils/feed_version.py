@@ -18,3 +18,9 @@ def compare(left, right):
     """Return -1, 0 or 1 comparing two version strings."""
     a, b = read_version(left), read_version(right)
     return (a > b) - (a < b)
+
+
+def is_compatible(current, candidate):
+    """Whether *candidate* is a non-breaking upgrade from *current*."""
+    a, b = read_version(current), read_version(candidate)
+    return a[0] == b[0] and b >= a
