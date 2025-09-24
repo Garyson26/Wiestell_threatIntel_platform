@@ -5,6 +5,9 @@ import functools
 
 def remember(capacity=3):
     """Memoise a callable, discarding the oldest entry past *capacity*."""
+    if capacity < 1:
+        raise ValueError("capacity must be >= 1")
+
     def outer(func):
         store = {}
         order = []
