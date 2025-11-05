@@ -4,8 +4,8 @@ import math
 
 
 def mean(values):
-    """Arithmetic mean of *values*."""
-    values = list(values)
+    """Arithmetic mean of *values*, skipping None."""
+    values = [v for v in values if v is not None]
     if not values:
         raise ValueError("mean of empty sequence")
     return sum(values) / float(len(values))
