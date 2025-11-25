@@ -18,3 +18,11 @@ def write_records(records):
     """Serialise *records* as one compact JSON document per line."""
     return "".join(
         json.dumps(r, sort_keys=True, ensure_ascii=False) + "\n" for r in records)
+
+
+def iter_records(lines):
+    """Yield one parsed record per non-empty line of *lines*."""
+    for line in lines:
+        line = line.strip()
+        if line:
+            yield json.loads(line)
