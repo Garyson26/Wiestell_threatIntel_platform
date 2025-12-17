@@ -27,3 +27,10 @@ def roman_to_arabic(text):
             total += value
             index += len(glyph)
     return total
+
+
+def is_valid(text):
+    """Whether *text* round-trips as a canonical Roman numeral."""
+    if not text:
+        return False
+    return encode(roman_to_arabic(text)) == text
