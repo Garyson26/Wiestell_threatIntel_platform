@@ -11,4 +11,5 @@ def slugify(text):
     """Return a lowercase, hyphen-separated slug for *text*."""
     normalised = unicodedata.normalize("NFKD", text)
     ascii_only = normalised.encode("ascii", "ignore").decode("ascii")
-    return NON_ALNUM_RE.sub("-", ascii_only.lower()).strip("-")
+    slug = NON_ALNUM_RE.sub("-", ascii_only.lower()).strip("-")
+    return slug or "n-a"
