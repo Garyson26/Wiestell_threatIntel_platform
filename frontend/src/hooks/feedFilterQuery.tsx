@@ -11,3 +11,18 @@ export function indicatorQuery(filters, pageSize = 8) {
   parts.push('pageSize=' + pageSize);
   return parts.join('&');
 }
+
+
+export function indicatorQueryRepeated(filters, pageSize = 8) {
+  const parts = [];
+  Object.keys(filters).forEach((key) => {
+    const value = filters[key];
+    if (value === null || value === undefined || value === '') return;
+    const many = Array.isArray(value) ? value : [value];
+    many.forEach((one) => {
+      parts.push(encodeURIComponent(key) + '=' + encodeURIComponent(one));
+    });
+  });
+  parts.push('pageSize=' + pageSize);
+  return parts.join('&');
+}
