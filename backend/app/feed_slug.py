@@ -13,3 +13,13 @@ def slugify(text):
     ascii_only = normalised.encode("ascii", "ignore").decode("ascii")
     slug = NON_ALNUM_RE.sub("-", ascii_only.lower()).strip("-")
     return slug or "n-a"
+
+
+def unique_slug(slug, existing):
+    """Append a counter until *slug* is absent from *existing*."""
+    if slug not in existing:
+        return slug
+    counter = 2
+    while "%s-%d" % (slug, counter) in existing:
+        counter += 1
+    return "%s-%d" % (slug, counter)
