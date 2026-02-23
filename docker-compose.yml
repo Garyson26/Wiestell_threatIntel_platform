@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://sentinel:sentinel@db:5432/sentinel
+      - REDIS_URL=redis://redis:6379/0
+      - OTX_API_KEY=${OTX_API_KEY:-}
+      - ABUSEIPDB_API_KEY=${ABUSEIPDB_API_KEY:-}
+      - VT_API_KEY=${VT_API_KEY:-}
+      - SHODAN_API_KEY=${SHODAN_API_KEY:-}
+      - PHISHTANK_API_KEY=${PHISHTANK_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - FEED_SYNC_INTERVAL=${FEED_SYNC_INTERVAL:-3600}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  celery-worker:
+    build: ./backend
+    command: celery -A app.tasks.celery_app worker -l info -c 4
+    environment:
+      - DATABASE_URL=postgresql://sentinel:sentinel@db:5432/sentinel
+      - REDIS_URL=redis://redis:6379/0
+      - OTX_API_KEY=${OTX_API_KEY:-}
+      - ABUSEIPDB_API_KEY=${ABUSEIPDB_API_KEY:-}
+      - VT_API_KEY=${VT_API_KEY:-}
+      - SHODAN_API_KEY=${SHODAN_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  celery-beat:
+    build: ./backend
+    command: celery -A app.tasks.celery_app beat -l info
+    environment:
+      - DATABASE_URL=postgresql://sentinel:sentinel@db:5432/sentinel
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=sentinel
+      - POSTGRES_PASSWORD=sentinel
+      - POSTGRES_DB=sentinel
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
