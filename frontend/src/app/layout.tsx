@@ -1,7 +1,5 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import Sidebar from '@/components/layout/Sidebar';
-import Header from '@/components/layout/Header';
 import { AuthProvider } from '@/lib/auth';
 
 export const metadata: Metadata = {
@@ -18,15 +16,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="scanline-overlay">
         <AuthProvider>
-          <div className="flex h-screen overflow-hidden">
-            <Sidebar />
-            <div className="flex flex-col flex-1 overflow-hidden">
-              <Header />
-              <main className="flex-1 overflow-auto grid-pattern p-6">
-                {children}
-              </main>
-            </div>
-          </div>
+          {children}
         </AuthProvider>
       </body>
     </html>
