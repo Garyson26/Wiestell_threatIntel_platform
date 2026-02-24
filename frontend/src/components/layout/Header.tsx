@@ -209,10 +209,10 @@ export default function Header() {
                     Sign In
                   </button>
                   <button
-                    onClick={() => { router.push('/profile'); setShowUserMenu(false); }}
+                    onClick={() => { router.push('/signup'); setShowUserMenu(false); }}
                     className="w-full px-4 py-2.5 text-left text-xs font-mono text-sentinel-text-secondary hover:text-sentinel-text-primary hover:bg-sentinel-bg-hover transition-colors border-t border-sentinel-border/50"
                   >
-                    Register
+                    Sign Up
                   </button>
                 </>
               )}

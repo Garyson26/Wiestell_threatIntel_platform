@@ -78,6 +78,12 @@ export default function Home() {
               Sign In
             </button>
             <button
+              onClick={() => router.push('/signup')}
+              className="px-4 py-2 rounded border border-sentinel-border text-sentinel-text-primary text-sm font-mono hover:border-sentinel-accent/40 hover:text-sentinel-accent transition-colors"
+            >
+              Sign Up
+            </button>
+            <button
               onClick={() => router.push('/dashboard')}
               className="px-4 py-2 rounded bg-sentinel-accent/10 border border-sentinel-accent/30 text-sentinel-accent text-sm font-mono font-semibold hover:bg-sentinel-accent/20 transition-colors flex items-center gap-2"
             >
