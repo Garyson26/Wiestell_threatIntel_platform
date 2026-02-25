@@ -18,23 +18,35 @@ import {
   Database,
   Clock,
   Sparkles,
+  BarChart3,
+  Upload,
+  Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/lib/auth';
 
 const navItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/ioc', label: 'IOC Search', icon: Search },
-  { href: '/feeds', label: 'Threat Feeds', icon: Rss },
-  { href: '/attack-map', label: 'ATT&CK Map', icon: Grid3X3 },
-  { href: '/hunting', label: 'Threat Hunting', icon: Crosshair },
-  { href: '/ai-assistant', label: 'AI Assistant', icon: Sparkles },
-  { href: '/reports', label: 'Reports', icon: FileText },
-  { href: '/settings', label: 'Settings', icon: Settings },
+  // Admin-only routes
+  { href: '/dashboard', label: 'Admin Dashboard', icon: LayoutDashboard, roles: ['admin'] },
+  { href: '/ioc', label: 'IOC Management', icon: Search, roles: ['admin'] },
+  { href: '/feeds', label: 'Threat Feeds', icon: Rss, roles: ['admin'] },
+  { href: '/attack-map', label: 'ATT&CK Map', icon: Grid3X3, roles: ['admin'] },
+  { href: '/hunting', label: 'Threat Hunting', icon: Crosshair, roles: ['admin'] },
+  { href: '/ai-assistant', label: 'AI Assistant', icon: Sparkles, roles: ['admin'] },
+  { href: '/reports', label: 'Reports', icon: FileText, roles: ['admin'] },
+  { href: '/settings', label: 'Settings', icon: Settings, roles: ['admin'] },
+  
+  // Analytics routes (accessible by all roles)
+  { href: '/analytics', label: 'Dashboard', icon: BarChart3, roles: ['admin', 'analyst', 'viewer'] },
+  { href: '/ioc-search', label: 'IOC Search', icon: Search, roles: ['admin', 'analyst', 'viewer'] },
+  { href: '/submit', label: 'Submit IOCs', icon: Upload, roles: ['admin', 'analyst', 'viewer'] },
+  { href: '/history', label: 'History', icon: Clock, roles: ['admin', 'analyst', 'viewer'] },
 ];
 
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
+  const { user } = useAuth();
 
   return (
     <aside
@@ -48,7 +60,7 @@ export default function Sidebar() {
       <div className="flex items-center gap-3 px-4 py-5 border-b border-sentinel-border">
         <Shield className="w-7 h-7 text-sentinel-accent flex-shrink-0" />
         {!collapsed && (
-          <div>
+          <div className="flex-1">
             <h1 className="text-sm font-bold font-display text-sentinel-accent tracking-wider">
               SENTINEL
             </h1>
@@ -59,27 +71,48 @@ export default function Sidebar() {
         )}
       </div>
 
+      {/* User Role Badge */}
+      {!collapsed && user && (
+        <div className="px-4 py-3 border-b border-sentinel-border">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-mono text-sentinel-text-muted uppercase tracking-widest">
+              Role:
+            </span>
+            <span className={cn(
+              'text-xs font-mono px-2 py-0.5 rounded',
+              user.role === 'admin' 
+                ? 'bg-sentinel-accent/10 text-sentinel-accent border border-sentinel-accent/20'
+                : 'bg-sentinel-bg-tertiary text-sentinel-text-secondary border border-sentinel-border'
+            )}>
+              {user.role.toUpperCase()}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Navigation */}
       <nav className="flex-1 py-4 space-y-1 px-2 overflow-y-auto">
-        {navItems.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded text-sm font-mono transition-all duration-150',
-                isActive
-                  ? 'bg-sentinel-accent/10 text-sentinel-accent border border-sentinel-accent/20'
-                  : 'text-sentinel-text-secondary hover:text-sentinel-text-primary hover:bg-sentinel-bg-hover border border-transparent'
-              )}
-            >
-              <Icon className="w-4 h-4 flex-shrink-0" />
-              {!collapsed && <span className="truncate">{item.label}</span>}
-            </Link>
-          );
-        })}
+        {navItems
+          .filter((item) => user && item.roles.includes(user.role))
+          .map((item) => {
+            const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2.5 rounded text-sm font-mono transition-all duration-150',
+                  isActive
+                    ? 'bg-sentinel-accent/10 text-sentinel-accent border border-sentinel-accent/20'
+                    : 'text-sentinel-text-secondary hover:text-sentinel-text-primary hover:bg-sentinel-bg-hover border border-transparent'
+                )}
+              >
+                <Icon className="w-4 h-4 flex-shrink-0" />
+                {!collapsed && <span className="truncate">{item.label}</span>}
+              </Link>
+            );
+          })}
       </nav>
 
       {/* System Status */}

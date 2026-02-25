@@ -1,14 +1,14 @@
 import Sidebar from '@/components/layout/Sidebar';
 import Header from '@/components/layout/Header';
-import AdminRoute from '@/components/auth/AdminRoute';
+import AnalystRoute from '@/components/auth/AnalystRoute';
 
-export default function ProtectedLayout({
+export default function AnalyticsLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <AdminRoute>
+    <AnalystRoute>
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
         <div className="flex flex-col flex-1 overflow-hidden">
@@ -18,6 +18,6 @@ export default function ProtectedLayout({
           </main>
         </div>
       </div>
-    </AdminRoute>
+    </AnalystRoute>
   );
 }
