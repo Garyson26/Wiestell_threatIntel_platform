@@ -1,6 +1,6 @@
 import Sidebar from '@/components/layout/Sidebar';
 import Header from '@/components/layout/Header';
-import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import AdminRoute from '@/components/auth/AdminRoute';
 
 export default function ProtectedLayout({
   children,
@@ -8,7 +8,7 @@ export default function ProtectedLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ProtectedRoute>
+    <AdminRoute>
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
         <div className="flex flex-col flex-1 overflow-hidden">
@@ -18,6 +18,6 @@ export default function ProtectedLayout({
           </main>
         </div>
       </div>
-    </ProtectedRoute>
+    </AdminRoute>
   );
 }

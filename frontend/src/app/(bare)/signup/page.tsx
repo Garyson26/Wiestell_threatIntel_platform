@@ -68,7 +68,9 @@ export default function SignupPage() {
         full_name: formData.fullName || undefined,
       });
       login(res.access_token, res.user);
-      router.push('/dashboard');
+      // Redirect based on user role
+      const redirectPath = res.user.role === 'admin' ? '/dashboard' : '/analytics';
+      router.push(redirectPath);
     } catch (err: any) {
       setError(err.message || 'Registration failed. Please try again.');
     } finally {

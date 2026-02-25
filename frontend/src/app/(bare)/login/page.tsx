@@ -25,7 +25,9 @@ export default function LoginPage() {
     try {
       const res = await loginUser({ username, password });
       login(res.access_token, res.user);
-      router.push('/dashboard');
+      // Redirect based on user role
+      const redirectPath = res.user.role === 'admin' ? '/dashboard' : '/analytics';
+      router.push(redirectPath);
     } catch {
       setError('Invalid username or password.');
     } finally {
