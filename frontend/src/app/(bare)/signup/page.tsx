@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { UserPlus, Mail, Lock, User, ArrowLeft } from 'lucide-react';
-import { registerUser } from '@/lib/api';
+import { UserPlus, Mail, Lock, User, ArrowLeft, KeyRound } from 'lucide-react';
+import { registerUser, verifyOtp } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
 export default function SignupPage() {
@@ -14,6 +14,9 @@ export default function SignupPage() {
     confirmPassword: '',
     fullName: '',
   });
+  const [otp, setOtp] = useState('');
+  const [otpStep, setOtpStep] = useState(false);
+  const [otpMessage, setOtpMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -59,12 +62,31 @@ export default function SignupPage() {
         password: formData.password,
         full_name: formData.fullName || undefined,
       });
+      setOtpMessage(res.message);
+      setOtpStep(true);
+    } catch (err: any) {
+      setError(err.message || 'Registration failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleOtpSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    if (!otp.trim()) {
+      setError('OTP is required.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await verifyOtp({ email: formData.email, otp });
       login(res.access_token, res.user);
       // Redirect based on user role
       const redirectPath = res.user.role === 'admin' ? '/dashboard' : '/analytics';
       router.push(redirectPath);
     } catch (err: any) {
-      setError(err.message || 'Registration failed. Please try again.');
+      setError(err.message || 'Invalid OTP.');
     } finally {
       setLoading(false);
     }
@@ -93,7 +115,7 @@ export default function SignupPage() {
         </div>
 
         <h2 className="text-sm font-display font-semibold text-sentinel-text-primary mb-5 text-center">
-          Create Account
+          {otpStep ? 'Verify OTP' : 'Create Account'}
         </h2>
 
         {error && (
@@ -102,7 +124,14 @@ export default function SignupPage() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        {otpMessage && otpStep && (
+          <div className="mb-4 p-2.5 rounded bg-sentinel-accent/5 border border-sentinel-accent/20">
+            <p className="text-xs font-mono text-sentinel-accent text-center">{otpMessage}</p>
+          </div>
+        )}
+
+        {!otpStep ? (
+          <form onSubmit={handleSubmit} className="space-y-4">{/* Full Name */}
           {/* Full Name */}
           <div>
             <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">
@@ -185,6 +214,42 @@ export default function SignupPage() {
             {loading ? 'CREATING ACCOUNT...' : 'CREATE ACCOUNT'}
           </button>
         </form>
+        ) : (
+          <form onSubmit={handleOtpSubmit} className="space-y-4">
+            <div>
+              <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Enter OTP</label>
+              <input
+                type="text"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                placeholder="Enter 6-digit OTP"
+                maxLength={6}
+                autoFocus
+                className="w-full px-3 py-2.5 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40 transition-colors text-center text-xl tracking-widest"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded bg-black text-white text-xs font-mono font-semibold hover:bg-gray-800 disabled:opacity-30 transition-colors"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              {loading ? 'VERIFYING...' : 'VERIFY OTP'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOtpStep(false);
+                setOtp('');
+                setError('');
+                setOtpMessage('');
+              }}
+              className="w-full text-xs font-mono text-sentinel-text-muted hover:text-sentinel-accent transition-colors"
+            >
+              ← Back to registration
+            </button>
+          </form>
+        )}
 
         <button
           onClick={() => router.push('/')}
