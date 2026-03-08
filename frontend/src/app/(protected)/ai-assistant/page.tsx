@@ -34,9 +34,9 @@ IOCs are the foundation of threat intelligence and are used to detect, block, an
 - Operational TI — Details about specific campaigns and attack timelines
 - Technical TI — IOCs like IPs, hashes, and domains for automated detection
 
-SENTINEL aggregates technical threat intelligence from multiple feeds, enriches IOCs with contextual data, and provides scoring to help analysts prioritize threats effectively.`,
+Wiestell aggregates technical threat intelligence from multiple feeds, enriches IOCs with contextual data, and provides scoring to help analysts prioritize threats effectively.`,
 
-  'how does sentinel work': `SENTINEL is a Threat Intelligence Platform (TIP) that operates in several stages:
+  'how does sentinel work': `Wiestell is a Threat Intelligence Platform (TIP) that operates in several stages:
 
 1. INGESTION — Collects IOCs from multiple threat feeds (OTX, AbuseIPDB, PhishTank, etc.)
 2. ENRICHMENT — Enriches IOCs with WHOIS, DNS, GeoIP, and reputation data
@@ -62,14 +62,14 @@ TACTICS (the "why"):
 TECHNIQUES (the "how"):
 Each tactic contains specific techniques (e.g., T1566 Phishing under Initial Access).
 
-In SENTINEL, IOCs are mapped to ATT&CK techniques to help analysts understand:
+In Wiestell, IOCs are mapped to ATT&CK techniques to help analysts understand:
 - What stage of an attack an IOC relates to
 - What TTPs a threat actor is using
 - Where to focus defensive efforts
 
 Use the ATT&CK Map page to visualize technique coverage across your IOC data.`,
 
-  'how to investigate an ioc': `Step-by-step IOC investigation workflow in SENTINEL:
+  'how to investigate an ioc': `Step-by-step IOC investigation workflow in Wiestell:
 
 1. IDENTIFY — Find the IOC via search or alert triage
 2. ENRICH — Click "Enrich" to pull WHOIS, DNS, GeoIP, and reputation data
@@ -88,7 +88,7 @@ Pro tips:
 - Cross-reference multiple enrichment sources
 - Look for related IOCs that may indicate a broader campaign`,
 
-  'what are threat feeds': `Threat feeds are continuous streams of IOC data from various sources. SENTINEL supports multiple feed types:
+  'what are threat feeds': `Threat feeds are continuous streams of IOC data from various sources. Wiestell supports multiple feed types:
 
 PUBLIC FEEDS (Free):
 - AlienVault OTX — Community-driven threat data
@@ -106,7 +106,7 @@ CUSTOM FEEDS:
 
 Feeds sync automatically at configurable intervals. Check the Threat Feeds page to manage sources, trigger manual syncs, and monitor feed health.`,
 
-  'explain threat scoring': `SENTINEL uses a 0-100 threat scoring system:
+  'explain threat scoring': `Wiestell uses a 0-100 threat scoring system:
 
 SCORE RANGES:
 - 0-25   LOW      — Minimal risk, likely benign or low-confidence
@@ -140,7 +140,7 @@ WHAT TO DO:
    - Disable compromised user accounts
 
 3. INVESTIGATION
-   - Correlate the IOC with related indicators in SENTINEL
+   - Correlate the IOC with related indicators in Wiestell
    - Review MITRE ATT&CK mappings to understand the attack stage
    - Check logs (SIEM, EDR, proxy) for additional activity
    - Use AI Analysis for automated threat assessment
@@ -156,7 +156,7 @@ WHAT TO DO:
    - Monitor for re-infection
 
 6. POST-INCIDENT
-   - Document findings in a report (use SENTINEL's report generator)
+   - Document findings in a report (use Wiestell's report generator)
    - Update detection rules and blocklists
    - Conduct lessons learned with the team`,
 
@@ -168,7 +168,7 @@ PURPOSE:
 - Deploy additional payloads
 - Maintain persistent access
 
-DETECTION IN SENTINEL:
+DETECTION IN WIESTELL:
 - IP IOCs with high threat scores from multiple feeds
 - Domains with short lifespans or DGA-like patterns
 - URLs matching known C2 framework paths (Cobalt Strike, Metasploit, etc.)
@@ -186,19 +186,19 @@ RESPONSE:
 - Investigate all hosts that communicated with the C2
 - Check for lateral movement from compromised hosts`,
 
-  'default': `I'm SENTINEL AI, your threat intelligence assistant. Here are some topics I can help with:
+  'default': `I'm Wiestell AI, your threat intelligence assistant. Here are some topics I can help with:
 
 - "What are IOCs?" — Learn about Indicators of Compromise
-- "How does SENTINEL work?" — Platform overview and features
+- "How does Wiestell work?" — Platform overview and features
 - "What is MITRE ATT&CK?" — Attack framework explained
 - "How to investigate an IOC" — Step-by-step investigation workflow
 - "What are threat feeds?" — Understanding threat intelligence feeds
-- "Explain threat scoring" — How SENTINEL scores threats (0-100)
+- "Explain threat scoring" — How Wiestell scores threats (0-100)
 - "Incident response steps" — IR playbook for critical alerts
 - "What is a C2 server?" — Command & Control infrastructure
 - "What is threat intelligence?" — TI fundamentals
 
-Type any question about cybersecurity, threat intelligence, or SENTINEL platform features!
+Type any question about cybersecurity, threat intelligence, or Wiestell platform features!
 
 Note: For AI-powered responses, ensure your GROQ_API_KEY is configured.`,
 };
@@ -209,7 +209,7 @@ function matchFAQ(input: string): string {
   const keywordMap: [string[], string][] = [
     [['what are ioc', 'what is an ioc', 'ioc types', 'types of ioc', 'indicator of compromise', 'what is ioc'], 'what are iocs'],
     [['threat intelligence', 'what is ti', 'what is threat intel'], 'what is threat intelligence'],
-    [['how does sentinel', 'how sentinel works', 'sentinel features', 'about sentinel', 'what is sentinel'], 'how does sentinel work'],
+    [['how does wiestell', 'how wiestell works', 'wiestell features', 'about wiestell', 'what is wiestell', 'how does sentinel', 'how sentinel works', 'sentinel features', 'about sentinel', 'what is sentinel'], 'how does sentinel work'],
     [['mitre att', 'mitre attack', 'attack framework', 'what is att&ck', 'attack matrix'], 'what is mitre attack'],
     [['investigate', 'investigation', 'how to investigate', 'analyze ioc', 'triage'], 'how to investigate an ioc'],
     [['threat feed', 'what are feeds', 'feed sources', 'otx', 'abuseipdb'], 'what are threat feeds'],
@@ -305,7 +305,7 @@ export default function AIAssistantPage() {
               <Bot className="w-10 h-10 text-sentinel-accent/50" />
             </div>
             <h2 className="text-sm font-display font-semibold text-sentinel-text-primary mb-1">
-              SENTINEL AI Assistant
+              Wiestell AI Assistant
             </h2>
             <p className="text-xs font-mono text-sentinel-text-muted mb-6 max-w-md">
               Ask questions about threats, IOCs, attack patterns, incident response, or any cybersecurity topic.
