@@ -2,26 +2,56 @@ const API_BASE = '';
 
 async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
+  
+  // Get auth token from localStorage if available
+  const token = typeof window !== 'undefined' ? localStorage.getItem('sentinel_token') : null;
+  
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options?.headers as Record<string, string> || {}),
+  };
+  
+  // Add Authorization header if token exists
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  
+  console.log('fetchAPI:', endpoint, 'with auth:', !!token, 'full URL:', url);
+  
   const res = await fetch(url, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
+    headers,
   });
+
+  console.log('fetchAPI response status:', res.status, res.statusText);
+  console.log('fetchAPI response headers:', Object.fromEntries(res.headers.entries()));
 
   if (!res.ok) {
     let message = `API error: ${res.status} ${res.statusText}`;
     try {
       const body = await res.json();
+      console.error('fetchAPI error body:', body);
       if (body.detail) message = body.detail;
     } catch {
       // use default message
     }
+    console.error('fetchAPI error:', message, 'for', endpoint);
     throw new Error(message);
   }
 
-  return res.json();
+  const text = await res.text();
+  console.log('fetchAPI response text:', text);
+  
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    console.error('fetchAPI JSON parse error:', e);
+    throw new Error(`Invalid JSON response: ${text.substring(0, 100)}`);
+  }
+  
+  console.log('fetchAPI response data:', data);
+  return data;
 }
 
 // Dashboard
@@ -38,11 +68,15 @@ export const getIOCs = (params?: Record<string, string>) => {
   return fetchAPI<import('./types').PaginatedResponse<import('./types').IOC>>(`/api/v1/iocs${query}`);
 };
 export const getIOC = (id: string) => fetchAPI<import('./types').IOCDetail>(`/api/v1/iocs/${id}`);
-export const searchIOCs = (filters: import('./types').SearchFilters) =>
-  fetchAPI<import('./types').PaginatedResponse<import('./types').IOC>>('/api/v1/iocs/search', {
+export const searchIOCs = async (filters: import('./types').SearchFilters) => {
+  console.log('searchIOCs API call with filters:', filters);
+  const result = await fetchAPI<import('./types').PaginatedResponse<import('./types').IOC>>('/api/v1/iocs/search', {
     method: 'POST',
     body: JSON.stringify(filters),
   });
+  console.log('searchIOCs API response:', result);
+  return result;
+};
 export const bulkLookup = (values: string[]) =>
   fetchAPI<import('./types').IOC[]>('/api/v1/iocs/bulk', {
     method: 'POST',
@@ -94,7 +128,14 @@ export const getDailyBrief = () => fetchAPI<import('./types').Report>('/api/v1/r
 
 export async function downloadReport(id: string): Promise<Blob> {
   const url = `${API_BASE}/api/v1/reports/${id}/download`;
-  const res = await fetch(url);
+  const token = typeof window !== 'undefined' ? localStorage.getItem('sentinel_token') : null;
+  
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  
+  const res = await fetch(url, { headers });
   if (!res.ok) {
     throw new Error(`API error: ${res.status} ${res.statusText}`);
   }
@@ -110,15 +151,17 @@ export const registerUser = (data: { username: string; email: string; password: 
     method: 'POST',
     body: JSON.stringify(data),
   });
-export const loginUser = (data: { username: string; password: string }) =>
-  fetchAPI<import('./types').TokenResponse>('/api/v1/users/login', {
+export const loginUser = (data: { email: string; password: string }) =>
+  fetchAPI<{ message: string; otp_required: boolean }>('/api/v1/users/login', {
     method: 'POST',
     body: JSON.stringify(data),
   });
-export const getMe = (token: string) =>
-  fetchAPI<import('./types').UserProfile>('/api/v1/users/me', {
-    headers: { Authorization: `Bearer ${token}` },
+export const verifyOtp = (data: { email: string; otp: string }) =>
+  fetchAPI<import('./types').TokenResponse>('/api/v1/users/verify-otp', {
+    method: 'POST',
+    body: JSON.stringify(data),
   });
+export const getMe = () => fetchAPI<import('./types').UserProfile>('/api/v1/users/me');
 export const getUsers = () => fetchAPI<{ items: import('./types').UserProfile[]; total: number }>('/api/v1/users');
 export const getUser = (id: string) => fetchAPI<import('./types').UserProfile>(`/api/v1/users/${id}`);
 export const updateUser = (id: string, data: { full_name?: string; email?: string }) =>

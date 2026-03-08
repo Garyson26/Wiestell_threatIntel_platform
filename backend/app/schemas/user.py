@@ -34,8 +34,18 @@ class UserResponse(BaseModel):
 
 
 class UserLogin(BaseModel):
-    username: str
+    email: str
     password: str
+
+
+class OTPVerify(BaseModel):
+    email: str
+    otp: str
+
+
+class OTPResponse(BaseModel):
+    message: str
+    otp_required: bool = True
 
 
 class TokenResponse(BaseModel):
