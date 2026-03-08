@@ -69,7 +69,7 @@ export default function Header() {
   };
 
   return (
-    <header className="flex items-center justify-between h-14 px-6 border-b border-sentinel-border bg-sentinel-bg-secondary/80 backdrop-blur-sm">
+    <header className="relative z-50 flex items-center justify-between h-14 px-6 border-b border-sentinel-border bg-sentinel-bg-secondary/80 backdrop-blur-sm">
       {/* Global Search */}
       <form onSubmit={handleSearch} className="flex items-center gap-2 flex-1 max-w-xl">
         <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-sentinel-bg-primary border border-sentinel-border w-full focus-within:border-sentinel-accent/40 transition-colors">
