@@ -72,7 +72,7 @@ export default function ProfilePage() {
 
   const roleColor = (role: string) => {
     switch (role) {
-      case 'admin': return 'text-red-400 bg-red-500/10';
+      case 'admin': return 'text-gray-700 bg-gray-200';
       case 'analyst': return 'text-sentinel-accent bg-sentinel-accent/10';
       case 'viewer': return 'text-sentinel-text-muted bg-sentinel-bg-tertiary';
       default: return 'text-sentinel-text-muted bg-sentinel-bg-tertiary';
@@ -99,13 +99,13 @@ export default function ProfilePage() {
 
       {/* Status Messages */}
       {error && (
-        <div className="sentinel-card p-3 border-red-500/30 bg-red-500/5">
-          <p className="text-xs font-mono text-red-400">{error}</p>
+        <div className="sentinel-card p-3 border-gray-300 bg-gray-200">
+          <p className="text-xs font-mono text-gray-700">{error}</p>
         </div>
       )}
       {success && (
-        <div className="sentinel-card p-3 border-green-500/30 bg-green-500/5">
-          <p className="text-xs font-mono text-green-400">{success}</p>
+        <div className="sentinel-card p-3 border-gray-400 bg-gray-300">
+          <p className="text-xs font-mono text-gray-800">{success}</p>
         </div>
       )}
 

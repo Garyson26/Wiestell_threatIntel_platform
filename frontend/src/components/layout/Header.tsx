@@ -62,9 +62,9 @@ export default function Header() {
 
   const levelIcon = (level: string) => {
     switch (level) {
-      case 'critical': return <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />;
-      case 'warning': return <AlertCircle className="w-3 h-3 text-yellow-400 flex-shrink-0" />;
-      default: return <Info className="w-3 h-3 text-blue-400 flex-shrink-0" />;
+      case 'critical': return <AlertTriangle className="w-3 h-3 text-gray-600 flex-shrink-0" />;
+      case 'warning': return <AlertCircle className="w-3 h-3 text-gray-700 flex-shrink-0" />;
+      default: return <Info className="w-3 h-3 text-gray-700 flex-shrink-0" />;
     }
   };
 
@@ -133,9 +133,9 @@ export default function Header() {
                           <div className="flex items-center gap-2 mt-1">
                             <span className={cn(
                               'text-[10px] font-mono px-1.5 py-0.5 rounded',
-                              n.level === 'critical' ? 'bg-red-500/10 text-red-400' :
-                              n.level === 'warning' ? 'bg-yellow-500/10 text-yellow-400' :
-                              'bg-blue-500/10 text-blue-400'
+                              n.level === 'critical' ? 'bg-gray-200 text-gray-600' :
+                              n.level === 'warning' ? 'bg-gray-300 text-gray-700' :
+                              'bg-gray-500/10 text-gray-300'
                             )}>
                               SCORE {n.threat_score}
                             </span>
@@ -193,7 +193,7 @@ export default function Header() {
                   </button>
                   <button
                     onClick={handleLogout}
-                    className="w-full px-4 py-2.5 text-left text-xs font-mono text-red-400 hover:bg-red-500/10 transition-colors border-t border-sentinel-border/50 flex items-center gap-2"
+                    className="w-full px-4 py-2.5 text-left text-xs font-mono text-gray-700 hover:bg-gray-200 transition-colors border-t border-sentinel-border/50 flex items-center gap-2"
                   >
                     <LogOut className="w-3 h-3" />
                     Sign Out

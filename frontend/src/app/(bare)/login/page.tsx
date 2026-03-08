@@ -77,8 +77,8 @@ export default function LoginPage() {
         </h2>
 
         {error && (
-          <div className="mb-4 p-2.5 rounded bg-red-500/5 border border-red-500/20">
-            <p className="text-xs font-mono text-red-400 text-center">{error}</p>
+          <div className="mb-4 p-2.5 rounded bg-gray-200 border border-gray-300">
+            <p className="text-xs font-mono text-gray-700 text-center">{error}</p>
           </div>
         )}
 
@@ -114,7 +114,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded bg-sentinel-accent/10 border border-sentinel-accent/30 text-sentinel-accent text-xs font-mono font-semibold hover:bg-sentinel-accent/20 disabled:opacity-30 transition-colors"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded bg-black text-white text-xs font-mono font-semibold hover:bg-gray-800 disabled:opacity-30 transition-colors"
             >
               <LogIn className="w-3.5 h-3.5" />
               {loading ? 'PROCESSING...' : 'CONTINUE'}
@@ -137,7 +137,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded bg-sentinel-accent/10 border border-sentinel-accent/30 text-sentinel-accent text-xs font-mono font-semibold hover:bg-sentinel-accent/20 disabled:opacity-30 transition-colors"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded bg-black text-white text-xs font-mono font-semibold hover:bg-gray-800 disabled:opacity-30 transition-colors"
             >
               <KeyRound className="w-3.5 h-3.5" />
               {loading ? 'VERIFYING...' : 'VERIFY OTP'}

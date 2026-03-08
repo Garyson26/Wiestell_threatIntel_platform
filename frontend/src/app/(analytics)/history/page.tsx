@@ -68,9 +68,9 @@ export default function HistoryPage() {
   const getActivityColor = (type: string) => {
     switch (type) {
       case 'search':
-        return 'text-blue-400';
+        return 'text-gray-700';
       case 'submit':
-        return 'text-green-400';
+        return 'text-gray-800';
       case 'view':
         return 'text-sentinel-accent';
       default:
@@ -115,8 +115,8 @@ export default function HistoryPage() {
         </div>
         <div className="sentinel-card p-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded bg-blue-500/10">
-              <Search className="w-5 h-5 text-blue-400" />
+            <div className="p-2 rounded bg-gray-200">
+              <Search className="w-5 h-5 text-gray-700" />
             </div>
             <div>
               <p className="text-xs font-mono text-sentinel-text-muted">Searches</p>
@@ -128,8 +128,8 @@ export default function HistoryPage() {
         </div>
         <div className="sentinel-card p-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded bg-green-500/10">
-              <Upload className="w-5 h-5 text-green-400" />
+            <div className="p-2 rounded bg-gray-200">
+              <Upload className="w-5 h-5 text-gray-800" />
             </div>
             <div>
               <p className="text-xs font-mono text-sentinel-text-muted">Submissions</p>

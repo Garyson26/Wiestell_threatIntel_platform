@@ -5,23 +5,23 @@
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
 
 :root {
-  --bg-primary: #0a0f1a;
-  --bg-secondary: #111827;
-  --bg-tertiary: #1a2332;
-  --bg-hover: #1e2a3a;
-  --border: #1e293b;
-  --border-hover: #334155;
-  --accent-primary: #00e5ff;
-  --accent-secondary: #7c3aed;
-  --accent-warning: #f59e0b;
-  --accent-danger: #ef4444;
-  --accent-success: #10b981;
-  --text-primary: #e2e8f0;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
-  --glow-teal: rgba(0, 229, 255, 0.15);
-  --glow-red: rgba(239, 68, 68, 0.15);
-  --glow-purple: rgba(124, 58, 237, 0.15);
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f5;
+  --bg-tertiary: #ebebeb;
+  --bg-hover: #e0e0e0;
+  --border: #d4d4d4;
+  --border-hover: #b3b3b3;
+  --accent-primary: #000000;
+  --accent-secondary: #1a1a1a;
+  --accent-warning: #333333;
+  --accent-danger: #666666;
+  --accent-success: #2a2a2a;
+  --text-primary: #000000;
+  --text-secondary: #4a4a4a;
+  --text-muted: #8c8c8c;
+  --glow-teal: rgba(0, 0, 0, 0.1);
+  --glow-red: rgba(102, 102, 102, 0.1);
+  --glow-purple: rgba(26, 26, 26, 0.1);
 }
 
 * {
@@ -60,7 +60,7 @@ html, body {
 /* Grid background pattern */
 .grid-pattern {
   background-image:
-    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.03) 1px, transparent 0);
+    radial-gradient(circle at 1px 1px, rgba(0, 0, 0, 0.03) 1px, transparent 0);
   background-size: 24px 24px;
 }
 
@@ -156,7 +156,7 @@ html, body {
 
 .sentinel-card:hover {
   border-color: var(--border-hover);
-  box-shadow: 0 0 15px rgba(0, 229, 255, 0.05);
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.05);
 }
 
 /* Score bar */

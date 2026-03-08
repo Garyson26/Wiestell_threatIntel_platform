@@ -162,7 +162,7 @@ export default function IOCDetailPage() {
           <div className="flex items-center gap-2 mt-3 flex-wrap">
             <ShieldAlert className="w-3 h-3 text-sentinel-text-muted" />
             {ioc.mitre_techniques.map((tech) => (
-              <span key={tech} className="px-2 py-0.5 text-[10px] font-mono rounded bg-sentinel-accent-secondary/10 text-purple-400 border border-purple-500/20">
+              <span key={tech} className="px-2 py-0.5 text-[10px] font-mono rounded bg-gray-200 text-gray-700 border border-gray-300">
                 {tech}
               </span>
             ))}
@@ -312,10 +312,10 @@ export default function IOCDetailPage() {
                     <div className="flex items-center gap-2">
                       <span className={cn(
                         'px-2 py-0.5 text-[10px] font-mono font-semibold uppercase rounded',
-                        aiAnalysis.risk_level === 'critical' && 'bg-red-500/10 text-red-400 border border-red-500/20',
-                        aiAnalysis.risk_level === 'high' && 'bg-orange-500/10 text-orange-400 border border-orange-500/20',
-                        aiAnalysis.risk_level === 'medium' && 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20',
-                        aiAnalysis.risk_level === 'low' && 'bg-green-500/10 text-green-400 border border-green-500/20',
+                        aiAnalysis.risk_level === 'critical' && 'bg-gray-300 text-gray-600 border border-gray-400',
+                        aiAnalysis.risk_level === 'high' && 'bg-gray-300 text-gray-700 border border-gray-400',
+                        aiAnalysis.risk_level === 'medium' && 'bg-gray-200 text-gray-800 border border-gray-300',
+                        aiAnalysis.risk_level === 'low' && 'bg-gray-100 text-gray-900 border border-gray-200',
                       )}>
                         {aiAnalysis.risk_level} risk
                       </span>

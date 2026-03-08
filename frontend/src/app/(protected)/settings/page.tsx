@@ -161,7 +161,7 @@ export default function SettingsPage() {
                         <p className="text-xs font-mono text-sentinel-text-primary">Model</p>
                         <p className="text-[10px] font-mono text-sentinel-text-muted">llama-3.3-70b-versatile</p>
                       </div>
-                      <span className="text-[10px] font-mono text-green-400 px-2 py-0.5 rounded bg-green-500/10 border border-green-500/20">
+                      <span className="text-[10px] font-mono text-gray-800 px-2 py-0.5 rounded bg-gray-300 border border-gray-400">
                         FAST
                       </span>
                     </div>

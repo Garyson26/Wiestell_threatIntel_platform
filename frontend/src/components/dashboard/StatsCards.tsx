@@ -17,7 +17,7 @@ export default function StatsCards({ stats, loading }: StatsCardsProps) {
       delta: stats?.delta_pct ?? 0,
       deltaLabel: `+${formatNumber(stats?.new_24h ?? 0)} today`,
       icon: Shield,
-      color: '#00e5ff',
+      color: '#000000',
     },
     {
       label: 'ACTIVE FEEDS',
@@ -25,7 +25,7 @@ export default function StatsCards({ stats, loading }: StatsCardsProps) {
       delta: 0,
       deltaLabel: `${stats?.total_feeds ?? 0} total`,
       icon: Rss,
-      color: '#10b981',
+      color: '#1a1a1a',
     },
     {
       label: 'CRITICAL THREATS',
@@ -33,7 +33,7 @@ export default function StatsCards({ stats, loading }: StatsCardsProps) {
       delta: 0,
       deltaLabel: 'score >= 76',
       icon: AlertTriangle,
-      color: '#ef4444',
+      color: '#2a2a2a',
     },
     {
       label: 'AVG THREAT SCORE',
@@ -41,7 +41,7 @@ export default function StatsCards({ stats, loading }: StatsCardsProps) {
       delta: 0,
       deltaLabel: 'across all IOCs',
       icon: Activity,
-      color: '#f59e0b',
+      color: '#333333',
     },
   ];
 
@@ -69,7 +69,7 @@ export default function StatsCards({ stats, loading }: StatsCardsProps) {
                 </span>
               )}
               {card.delta < 0 && (
-                <span className="flex items-center gap-0.5 text-[10px] font-mono text-red-400">
+                <span className="flex items-center gap-0.5 text-[10px] font-mono text-gray-600">
                   <TrendingDown className="w-3 h-3" />
                   {Math.abs(card.delta)}%
                 </span>
