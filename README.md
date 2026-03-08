@@ -20,7 +20,7 @@
 
 ---
 
-SENTINEL is a production-grade, full-stack Threat Intelligence Platform (TIP) designed for SOC analysts, threat hunters, and cybersecurity professionals. It aggregates indicators of compromise (IOCs) from 10+ open-source threat feeds, enriches them with WHOIS/DNS/GeoIP/Shodan data, calculates composite threat scores using a weighted algorithm, maps indicators to the MITRE ATT&CK framework, and presents everything through a tactical dark-themed SOC dashboard built with Next.js 14 and TypeScript.
+Wiestell is a production-grade, full-stack Threat Intelligence Platform (TIP) designed for SOC analysts, threat hunters, and cybersecurity professionals. It aggregates indicators of compromise (IOCs) from 10+ open-source threat feeds, enriches them with WHOIS/DNS/GeoIP/Shodan data, calculates composite threat scores using a weighted algorithm, maps indicators to the MITRE ATT&CK framework, and presents everything through a tactical dark-themed SOC dashboard built with Next.js 14 and TypeScript.
 
 ---
 
@@ -73,8 +73,8 @@ SENTINEL is a production-grade, full-stack Threat Intelligence Platform (TIP) de
 
 ```bash
 # Clone the repository
-git clone https://github.com/dev0558/sentinel-tip.git
-cd sentinel-tip
+git clone https://github.com/dev0558/wiestell-tip.git
+cd wiestell-tip
 
 # Copy environment file
 cp .env.example .env
@@ -154,7 +154,7 @@ GET    /api/v1/reports/daily-brief     # Daily threat brief
 
 ## Scoring Algorithm
 
-SENTINEL calculates a composite threat score (0-100) using weighted factors:
+Wiestell calculates a composite threat score (0-100) using weighted factors:
 
 ```
 Score = Base Reputation (30%) + Source Diversity (20%) + Recency (15%)
@@ -172,12 +172,12 @@ Score = Base Reputation (30%) + Source Diversity (20%) + Recency (15%)
 
 ```bash
 # Backend development
-cd sentinel/backend
+cd backend
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 
 # Frontend development
-cd sentinel/frontend
+cd frontend
 npm install
 npm run dev
 ```

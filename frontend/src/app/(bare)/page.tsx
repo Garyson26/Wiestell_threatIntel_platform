@@ -2,7 +2,8 @@
 
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Upload, Link2, Search, FileText, Shield, ArrowRight, Zap, Database, TrendingUp } from 'lucide-react';
+import Image from 'next/image';
+import { Upload, Link2, Search, FileText, ArrowRight, Zap, Database, TrendingUp } from 'lucide-react';
 
 export default function Home() {
   const router = useRouter();
@@ -63,12 +64,15 @@ export default function Home() {
       {/* Header */}
       <header className="border-b border-sentinel-border bg-sentinel-bg-secondary/50 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Shield className="w-8 h-8 text-sentinel-accent" />
-            <div>
-              <h1 className="text-xl font-bold font-display text-sentinel-accent tracking-wider">SENTINEL</h1>
-              <p className="text-[10px] font-mono text-sentinel-text-muted tracking-wide">Threat Intelligence Platform</p>
-            </div>
+          <div className="flex items-center">
+            <Image
+              src="/images/Wiestell-Logo.png"
+              alt="Wiestell Logo"
+              width={140}
+              height={47}
+              className="object-contain"
+              priority
+            />
           </div>
           <div className="flex gap-3">
             <button
@@ -315,7 +319,7 @@ export default function Home() {
       <footer className="border-t border-sentinel-border bg-sentinel-bg-secondary/50 py-6">
         <div className="container mx-auto px-6 text-center">
           <p className="text-xs font-mono text-sentinel-text-muted">
-            © 2026 SENTINEL Threat Intelligence Platform. Open Source.
+            © 2026 Wiestell Threat Intelligence Platform. Open Source.
           </p>
         </div>
       </footer>

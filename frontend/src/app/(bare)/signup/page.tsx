@@ -3,13 +3,12 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { UserPlus, Mail, Lock, User } from 'lucide-react';
+import { UserPlus, Mail, Lock, User, ArrowLeft } from 'lucide-react';
 import { registerUser } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
 export default function SignupPage() {
   const [formData, setFormData] = useState({
-    username: '',
     email: '',
     password: '',
     confirmPassword: '',
@@ -21,14 +20,6 @@ export default function SignupPage() {
   const { login } = useAuth();
 
   const validateForm = () => {
-    if (!formData.username.trim()) {
-      setError('Username is required');
-      return false;
-    }
-    if (formData.username.length < 3) {
-      setError('Username must be at least 3 characters');
-      return false;
-    }
     if (!formData.email.trim()) {
       setError('Email is required');
       return false;
@@ -63,7 +54,7 @@ export default function SignupPage() {
     setLoading(true);
     try {
       const res = await registerUser({
-        username: formData.username,
+        username: formData.email.split('@')[0],
         email: formData.email,
         password: formData.password,
         full_name: formData.fullName || undefined,
@@ -112,25 +103,6 @@ export default function SignupPage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Username */}
-          <div>
-            <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">
-              Username *
-            </label>
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sentinel-text-muted" />
-              <input
-                type="text"
-                name="username"
-                value={formData.username}
-                onChange={handleChange}
-                placeholder="Enter username"
-                autoFocus
-                className="w-full pl-10 pr-3 py-2.5 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40 transition-colors"
-              />
-            </div>
-          </div>
-
           {/* Full Name */}
           <div>
             <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">
@@ -144,6 +116,7 @@ export default function SignupPage() {
                 value={formData.fullName}
                 onChange={handleChange}
                 placeholder="Enter full name"
+                autoFocus
                 className="w-full pl-10 pr-3 py-2.5 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40 transition-colors"
               />
             </div>
@@ -212,6 +185,14 @@ export default function SignupPage() {
             {loading ? 'CREATING ACCOUNT...' : 'CREATE ACCOUNT'}
           </button>
         </form>
+
+        <button
+          onClick={() => router.push('/')}
+          className="w-full mt-4 flex items-center justify-center gap-2 text-xs font-mono text-sentinel-text-muted hover:text-sentinel-accent transition-colors"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Back to Home
+        </button>
 
         <p className="text-center text-[10px] font-mono text-sentinel-text-muted mt-5">
           Already have an account?{' '}

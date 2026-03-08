@@ -24,7 +24,7 @@ def send_otp_email(to_email: str, otp: str, username: str) -> bool:
     try:
         # Create message
         message = MIMEMultipart("alternative")
-        message["Subject"] = "SENTINEL - Your Login OTP Code"
+        message["Subject"] = "Wiestell - Your Login OTP Code"
         message["From"] = settings.EMAIL_USER
         message["To"] = to_email
 
@@ -32,14 +32,14 @@ def send_otp_email(to_email: str, otp: str, username: str) -> bool:
         text_content = f"""
 Hello {username},
 
-Your OTP code for SENTINEL Threat Intelligence Platform is: {otp}
+Your OTP code for Wiestell Threat Intelligence Platform is: {otp}
 
 This code will expire in 5 minutes.
 
 If you did not request this code, please ignore this email.
 
 Best regards,
-SENTINEL Security Team
+Wiestell Security Team
 """
 
         html_content = f"""
@@ -108,9 +108,9 @@ SENTINEL Security Team
 </head>
 <body>
     <div class="container">
-        <div class="header">🛡️ SENTINEL</div>
+        <div class="header">🛡️ Wiestell</div>
         <p class="message">Hello <strong>{username}</strong>,</p>
-        <p class="message">Your OTP code for SENTINEL Threat Intelligence Platform:</p>
+        <p class="message">Your OTP code for Wiestell Threat Intelligence Platform:</p>
         
         <div class="otp-box">
             <div class="otp-code">{otp}</div>
@@ -120,7 +120,7 @@ SENTINEL Security Team
         <p class="warning">⚠️ If you did not request this code, please ignore this email.</p>
         
         <div class="footer">
-            © 2026 SENTINEL Threat Intelligence Platform<br>
+            © 2026 Wiestell Threat Intelligence Platform<br>
             This is an automated message. Please do not reply.
         </div>
     </div>

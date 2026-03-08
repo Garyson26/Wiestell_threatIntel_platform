@@ -8,7 +8,7 @@ interface AdminRouteProps {
 
 export default function AdminRoute({ children }: AdminRouteProps) {
   return (
-    <RoleBasedRoute allowedRoles={['admin']}>
+    <RoleBasedRoute allowedRoles={['admin']} redirectTo="/analytics">
       {children}
     </RoleBasedRoute>
   );

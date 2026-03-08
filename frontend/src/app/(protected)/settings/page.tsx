@@ -60,7 +60,7 @@ export default function SettingsPage() {
                     <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Platform Name</label>
                     <input
                       type="text"
-                      defaultValue="SENTINEL"
+                      defaultValue="Wiestell"
                       className="w-full max-w-md px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40"
                     />
                   </div>
@@ -143,7 +143,7 @@ export default function SettingsPage() {
               <>
                 <h2 className="text-sm font-display font-semibold text-sentinel-text-primary">AI Configuration</h2>
                 <p className="text-xs font-mono text-sentinel-text-muted">
-                  SENTINEL uses Groq (Llama 3.3 70B) for AI-powered threat analysis, chat assistance, and report generation.
+                  Wiestell uses Groq (Llama 3.3 70B) for AI-powered threat analysis, chat assistance, and report generation.
                 </p>
                 <div className="space-y-3">
                   <div className="p-3 rounded bg-sentinel-bg-primary border border-sentinel-border">

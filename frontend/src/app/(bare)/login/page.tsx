@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { LogIn, KeyRound } from 'lucide-react';
+import { LogIn, KeyRound, ArrowLeft } from 'lucide-react';
 import { loginUser, verifyOtp } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
@@ -48,8 +48,9 @@ export default function LoginPage() {
     try {
       const res = await verifyOtp({ email, otp });
       login(res.access_token, res.user);
-      // Redirect to dashboard
-      router.push('/dashboard');
+      // Redirect based on user role
+      const redirectPath = res.user.role === 'admin' ? '/dashboard' : '/analytics';
+      router.push(redirectPath);
     } catch (err: any) {
       setError(err.message || 'Invalid OTP.');
     } finally {
@@ -156,6 +157,14 @@ export default function LoginPage() {
             </button>
           </form>
         )}
+
+        <button
+          onClick={() => router.push('/')}
+          className="w-full mt-4 flex items-center justify-center gap-2 text-xs font-mono text-sentinel-text-muted hover:text-sentinel-accent transition-colors"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Back to Home
+        </button>
 
         <p className="text-center text-[10px] font-mono text-sentinel-text-muted mt-5">
           No account?{' '}

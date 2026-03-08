@@ -14,7 +14,7 @@ interface RoleBasedRouteProps {
 export default function RoleBasedRoute({ 
   children, 
   allowedRoles,
-  redirectTo = '/dashboard'
+  redirectTo
 }: RoleBasedRouteProps) {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -42,6 +42,9 @@ export default function RoleBasedRoute({
 
   // Check if user has the required role
   if (!allowedRoles.includes(user.role)) {
+    // Smart redirect based on user role
+    const defaultRedirect = redirectTo || (user.role === 'admin' ? '/dashboard' : '/analytics');
+    
     return (
       <div className="flex items-center justify-center min-h-screen p-6">
         <div className="sentinel-card max-w-md w-full p-8 text-center">
@@ -67,7 +70,7 @@ export default function RoleBasedRoute({
           </p>
           
           <button
-            onClick={() => router.push(redirectTo)}
+            onClick={() => router.push(defaultRedirect)}
             className="px-6 py-3 bg-black text-white hover:bg-gray-800 font-semibold rounded transition-colors duration-200"
           >
             Return to Dashboard
