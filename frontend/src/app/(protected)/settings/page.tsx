@@ -1,5 +1,6 @@
 'use client';
 
+import AdminRoute from '@/components/auth/AdminRoute';
 import { useState } from 'react';
 import { Settings, Save, Shield, Database, Rss, Key, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -16,6 +17,7 @@ export default function SettingsPage() {
   ];
 
   return (
+    <AdminRoute>
     <div className="space-y-6">
       <div>
         <h1 className="text-lg font-display font-bold text-sentinel-text-primary">Settings</h1>
@@ -203,5 +205,6 @@ export default function SettingsPage() {
         </div>
       </div>
     </div>
+    </AdminRoute>
   );
 }

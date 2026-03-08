@@ -1,5 +1,6 @@
 'use client';
 
+import AdminRoute from '@/components/auth/AdminRoute';
 import { useDashboardData } from '@/hooks/useDashboardData';
 import StatsCards from '@/components/dashboard/StatsCards';
 import ThreatGauge from '@/components/dashboard/ThreatGauge';
@@ -17,6 +18,7 @@ export default function DashboardPage() {
   } = useDashboardData();
 
   return (
+    <AdminRoute>
     <div className="space-y-6">
       {/* Page Header */}
       <div className="flex items-center justify-between">
@@ -70,5 +72,6 @@ export default function DashboardPage() {
       {/* Top Threats Table */}
       <TopThreats threats={topThreats} loading={topThreatsLoading} />
     </div>
+    </AdminRoute>
   );
 }

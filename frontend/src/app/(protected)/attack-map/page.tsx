@@ -1,5 +1,6 @@
 'use client';
 
+import AdminRoute from '@/components/auth/AdminRoute';
 import { useState, useEffect, useCallback } from 'react';
 import { Grid3X3, RefreshCw, ExternalLink, Target, Shield, Zap, Eye, ChevronRight } from 'lucide-react';
 import { getAttackHeatmap, getAttackTechnique } from '@/lib/api';
@@ -113,6 +114,7 @@ export default function AttackMapPage() {
   const activeTactics = TACTICS_ORDER.filter(t => (groupedByTactic[t.id] || []).some(e => e.ioc_count > 0)).length;
 
   return (
+    <AdminRoute>
     <div className="space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -462,5 +464,6 @@ export default function AttackMapPage() {
         </div>
       )}
     </div>
+    </AdminRoute>
   );
 }

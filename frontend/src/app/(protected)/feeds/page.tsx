@@ -1,5 +1,6 @@
 'use client';
 
+import AdminRoute from '@/components/auth/AdminRoute';
 import { useState, useEffect, useMemo } from 'react';
 import {
   Rss, RefreshCw, ExternalLink, Power, PowerOff, Plus, X,
@@ -210,6 +211,7 @@ export default function FeedsPage() {
   };
 
   return (
+    <AdminRoute>
     <div className="space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -638,6 +640,7 @@ export default function FeedsPage() {
         </div>
       )}
     </div>
+    </AdminRoute>
   );
 }
 
