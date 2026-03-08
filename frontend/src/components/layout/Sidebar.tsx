@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import Image from 'next/image';
 import {
   LayoutDashboard,
   Search,
@@ -13,7 +14,6 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  Shield,
   Activity,
   Database,
   Clock,
@@ -57,16 +57,18 @@ export default function Sidebar() {
       )}
     >
       {/* Logo */}
-      <div className="flex items-center gap-3 px-4 py-5 border-b border-sentinel-border">
-        <Shield className="w-7 h-7 text-sentinel-accent flex-shrink-0" />
-        {!collapsed && (
-          <div className="flex-1">
-            <h1 className="text-sm font-bold font-display text-sentinel-accent tracking-wider">
-              SENTINEL
-            </h1>
-            <p className="text-[10px] font-mono text-sentinel-text-muted tracking-wide">
-              TIP v1.0
-            </p>
+      <div className="flex items-center gap-3 px-4 py-5 border-b border-sentinel-border justify-center">
+        {!collapsed ? (
+          <Image
+            src="/images/Wiestell-Logo.png"
+            alt="Wiestell Logo"
+            width={150}
+            height={50}
+            className="object-contain"
+          />
+        ) : (
+          <div className="w-7 h-7 rounded bg-sentinel-accent/20 flex items-center justify-center">
+            <span className="text-sentinel-accent font-bold text-sm">W</span>
           </div>
         )}
       </div>
