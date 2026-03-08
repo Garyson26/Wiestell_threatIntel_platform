@@ -80,7 +80,7 @@ export default function GeoThreatMap({ data, loading }: GeoThreatMapProps) {
                     className="h-full rounded transition-all duration-500"
                     style={{
                       width: `${(item.count / maxCount) * 100}%`,
-                      backgroundColor: item.avg_score >= 76 ? '#ef4444' : item.avg_score >= 51 ? '#f59e0b' : '#00e5ff',
+                      backgroundColor: item.avg_score >= 76 ? '#666666' : item.avg_score >= 51 ? '#333333' : '#000000',
                     }}
                   />
                 </div>
