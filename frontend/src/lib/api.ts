@@ -147,7 +147,7 @@ export const getNotifications = (limit = 20) => fetchAPI<import('./types').Notif
 
 // Users & Auth
 export const registerUser = (data: { username: string; email: string; password: string; full_name?: string; role?: string }) =>
-  fetchAPI<import('./types').TokenResponse>('/api/v1/users/register', {
+  fetchAPI<{ message: string; otp_required: boolean }>('/api/v1/users/register', {
     method: 'POST',
     body: JSON.stringify(data),
   });

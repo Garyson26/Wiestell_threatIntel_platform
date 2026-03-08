@@ -6,6 +6,7 @@ import { registerUser, getUsers } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { formatDate } from '@/lib/utils';
 import type { UserProfile } from '@/lib/types';
+import AdminRoute from '@/components/auth/AdminRoute';
 
 export default function ProfilePage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -18,7 +19,6 @@ export default function ProfilePage() {
   const { login } = useAuth();
 
   const [form, setForm] = useState({
-    username: '',
     email: '',
     password: '',
     full_name: '',
@@ -45,23 +45,23 @@ export default function ProfilePage() {
     e.preventDefault();
     setError('');
     setSuccess('');
-    if (!form.username.trim() || !form.email.trim() || !form.password.trim()) {
-      setError('Username, email, and password are required.');
+    if (!form.email.trim() || !form.password.trim()) {
+      setError('Email and password are required.');
       return;
     }
     setRegistering(true);
     try {
       const res = await registerUser({
-        username: form.username,
+        username: form.email.split('@')[0],
         email: form.email,
         password: form.password,
         full_name: form.full_name || undefined,
         role: form.role,
       });
-      login(res.access_token, res.user);
-      setSuccess(`User "${form.username}" registered and signed in.`);
-      setForm({ username: '', email: '', password: '', full_name: '', role: 'analyst' });
+      setSuccess(`Registration initiated for ${form.email}. An OTP has been sent to their email for verification.`);
+      setForm({ email: '', password: '', full_name: '', role: 'analyst' });
       setShowRegister(false);
+      // Reload users list - the new user will appear as inactive until OTP is verified
       await loadUsers();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed.');
@@ -80,22 +80,23 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-display font-bold text-sentinel-text-primary">User Management</h1>
-          <p className="text-xs font-mono text-sentinel-text-muted mt-0.5">
-            Register new users and manage profiles
-          </p>
+    <AdminRoute>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-lg font-display font-bold text-sentinel-text-primary">User Management</h1>
+            <p className="text-xs font-mono text-sentinel-text-muted mt-0.5">
+              Register new users and manage profiles
+            </p>
+          </div>
+          <button
+            onClick={() => { setShowRegister(!showRegister); setError(''); setSuccess(''); }}
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded bg-sentinel-accent/10 border border-sentinel-accent/30 text-sentinel-accent hover:bg-sentinel-accent/20 transition-colors"
+          >
+            <UserPlus className="w-3 h-3" />
+            REGISTER USER
+          </button>
         </div>
-        <button
-          onClick={() => { setShowRegister(!showRegister); setError(''); setSuccess(''); }}
-          className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded bg-sentinel-accent/10 border border-sentinel-accent/30 text-sentinel-accent hover:bg-sentinel-accent/20 transition-colors"
-        >
-          <UserPlus className="w-3 h-3" />
-          REGISTER USER
-        </button>
-      </div>
 
       {/* Status Messages */}
       {error && (
@@ -116,12 +117,13 @@ export default function ProfilePage() {
           <form onSubmit={handleRegister} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Username *</label>
+                <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Email *</label>
                 <input
-                  type="text"
-                  value={form.username}
-                  onChange={(e) => setForm({ ...form, username: e.target.value })}
-                  placeholder="e.g., jsmith"
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  placeholder="user@example.com"
+                  autoFocus
                   className="w-full px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40"
                 />
               </div>
@@ -138,16 +140,6 @@ export default function ProfilePage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Email *</label>
-                <input
-                  type="email"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  placeholder="user@example.com"
-                  className="w-full px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40"
-                />
-              </div>
-              <div>
                 <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Password *</label>
                 <input
                   type="password"
@@ -157,18 +149,18 @@ export default function ProfilePage() {
                   className="w-full px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40"
                 />
               </div>
-            </div>
-            <div>
-              <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Role</label>
-              <select
-                value={form.role}
-                onChange={(e) => setForm({ ...form, role: e.target.value })}
-                className="w-full px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40"
-              >
-                <option value="analyst">Analyst</option>
-                <option value="admin">Admin</option>
-                <option value="viewer">Viewer</option>
-              </select>
+              <div>
+                <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Role</label>
+                <select
+                  value={form.role}
+                  onChange={(e) => setForm({ ...form, role: e.target.value })}
+                  className="w-full px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40"
+                >
+                  <option value="analyst">Analyst</option>
+                  <option value="admin">Admin</option>
+                  <option value="viewer">Viewer</option>
+                </select>
+              </div>
             </div>
             <div className="flex gap-2 pt-2">
               <button
@@ -248,6 +240,7 @@ export default function ProfilePage() {
           ))}
         </div>
       )}
-    </div>
+      </div>
+    </AdminRoute>
   );
 }
