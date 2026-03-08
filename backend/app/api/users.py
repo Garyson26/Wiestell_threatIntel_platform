@@ -40,29 +40,55 @@ def create_access_token(user_id: str) -> str:
     return jwt.encode({"sub": user_id, "exp": expire}, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
-@router.post("/register", response_model=TokenResponse, status_code=201)
+@router.post("/register", response_model=OTPResponse, status_code=201)
 async def register_user(data: UserRegister, db: AsyncSession = Depends(get_db)):
-    """Register a new user and return a token."""
+    """Store registration data and send OTP for verification. User is created only after OTP verification."""
+    # Check if user already exists
     existing = await db.execute(
         select(User).where((User.username == data.username) | (User.email == data.email))
     )
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Username or email already registered")
 
-    user = User(
-        username=data.username,
+    # Delete any existing OTPs for this email
+    existing_otps = (await db.execute(
+        select(OTP).where(OTP.email == data.email)
+    )).scalars().all()
+    for old_otp in existing_otps:
+        await db.delete(old_otp)
+
+    # Generate OTP and store registration data temporarily (user NOT created yet)
+    otp_code = generate_otp()
+    otp_record = OTP(
+        user_id=None,  # No user yet - will be created after OTP verification
         email=data.email,
+        otp=otp_code,
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+        verified="pending",
+        # Store registration data temporarily
+        username=data.username,
         hashed_password=pwd_context.hash(data.password),
         full_name=data.full_name,
-        role=data.role,
+        role=data.role
     )
-    db.add(user)
-    await db.flush()
-
-    token = create_access_token(str(user.id))
-    return TokenResponse(
-        access_token=token,
-        user=UserResponse.model_validate(user),
+    db.add(otp_record)
+    await db.commit()
+    
+    # Send OTP via email
+    email_sent = send_otp_email(data.email, otp_code, data.username)
+    
+    if not email_sent:
+        print(f"⚠️ Email failed. OTP for {data.email}: {otp_code}")
+        return OTPResponse(
+            message=f"Registration initiated. OTP (email failed, for demo): {otp_code}",
+            otp_required=True
+        )
+    
+    print(f"✓ Registration OTP sent to {data.email}: {otp_code}")
+    
+    return OTPResponse(
+        message="Registration initiated. Please check your email for the OTP code.",
+        otp_required=True
     )
 
 
@@ -124,7 +150,7 @@ async def login_user(data: UserLogin, db: AsyncSession = Depends(get_db)):
 
 @router.post("/verify-otp", response_model=TokenResponse)
 async def verify_otp(data: OTPVerify, db: AsyncSession = Depends(get_db)):
-    """Verify OTP and return JWT token."""
+    """Verify OTP and return JWT token. Creates user if it's a signup OTP."""
     # Get OTP from database
     result = await db.execute(
         select(OTP).where(
@@ -147,20 +173,42 @@ async def verify_otp(data: OTPVerify, db: AsyncSession = Depends(get_db)):
     if otp_record.otp != data.otp:
         raise HTTPException(status_code=401, detail="Invalid OTP")
     
-    # Get user
-    result = await db.execute(
-        select(User).where(User.id == otp_record.user_id)
-    )
-    user = result.scalar_one_or_none()
-    
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    # Check if this is a signup OTP (user_id is None)
+    if otp_record.user_id is None:
+        # This is a signup - create the user now
+        if not all([otp_record.username, otp_record.hashed_password, otp_record.email]):
+            raise HTTPException(status_code=400, detail="Invalid registration data in OTP")
+        
+        # Create the user
+        user = User(
+            username=otp_record.username,
+            email=otp_record.email,
+            hashed_password=otp_record.hashed_password,
+            full_name=otp_record.full_name,
+            role=otp_record.role or "viewer",
+            is_active=True,  # Activate immediately since OTP is verified
+        )
+        db.add(user)
+        user.last_login = datetime.now(timezone.utc)
+    else:
+        # This is a login OTP - get existing user
+        result = await db.execute(
+            select(User).where(User.id == otp_record.user_id)
+        )
+        user = result.scalar_one_or_none()
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Activate user account (in case it was a signup)
+        user.is_active = True
+        
+        # Update last login
+        user.last_login = datetime.now(timezone.utc)
     
     # Mark OTP as verified
     otp_record.verified = "verified"
     
-    # Update last login
-    user.last_login = datetime.now(timezone.utc)
     await db.commit()
     
     # Generate token

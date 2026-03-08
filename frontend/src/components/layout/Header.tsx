@@ -179,18 +179,26 @@ export default function Header() {
                     <p className="text-[10px] font-mono text-sentinel-text-muted">{user.email}</p>
                     <span className="text-[10px] font-mono text-sentinel-accent uppercase">{user.role}</span>
                   </div>
-                  <button
-                    onClick={() => { router.push('/profile'); setShowUserMenu(false); }}
-                    className="w-full px-4 py-2.5 text-left text-xs font-mono text-sentinel-text-secondary hover:text-sentinel-text-primary hover:bg-sentinel-bg-hover transition-colors"
-                  >
-                    User Management
-                  </button>
+                  {user.role === 'admin' && (
+                    <>
+                    <button
+                      onClick={() => { router.push('/profile'); setShowUserMenu(false); }}
+                      className="w-full px-4 py-2.5 text-left text-xs font-mono text-sentinel-text-secondary hover:text-sentinel-text-primary hover:bg-sentinel-bg-hover transition-colors"
+                    >
+                      User Management
+                    </button>
+                
                   <button
                     onClick={() => { router.push('/settings'); setShowUserMenu(false); }}
-                    className="w-full px-4 py-2.5 text-left text-xs font-mono text-sentinel-text-secondary hover:text-sentinel-text-primary hover:bg-sentinel-bg-hover transition-colors border-t border-sentinel-border/50"
+                    className={cn(
+                      'w-full px-4 py-2.5 text-left text-xs font-mono text-sentinel-text-secondary hover:text-sentinel-text-primary hover:bg-sentinel-bg-hover transition-colors',
+                      'border-t border-sentinel-border/50'
+                    )}
                   >
                     Settings
                   </button>
+                  </>
+                    )}
                   <button
                     onClick={handleLogout}
                     className="w-full px-4 py-2.5 text-left text-xs font-mono text-gray-700 hover:bg-gray-200 transition-colors border-t border-sentinel-border/50 flex items-center gap-2"
