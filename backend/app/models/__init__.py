@@ -8,6 +8,7 @@ from app.models.ioc_relationship import IOCRelationship
 from app.models.attack_technique import AttackTechnique
 from app.models.report import Report
 from app.models.user import User
+from app.models.otp import OTP
 
 __all__ = [
     "IOC",
@@ -18,4 +19,5 @@ __all__ = [
     "AttackTechnique",
     "Report",
     "User",
+    "OTP",
 ]

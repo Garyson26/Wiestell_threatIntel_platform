@@ -29,7 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const saved = localStorage.getItem('sentinel_token');
     if (saved) {
       setToken(saved);
-      getMe(saved)
+      getMe()
         .then((u) => setUser(u))
         .catch(() => {
           localStorage.removeItem('sentinel_token');

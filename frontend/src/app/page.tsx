@@ -6,7 +6,7 @@ import { Upload, Link2, Search, FileText, Shield, ArrowRight, Zap, Database, Tre
 
 export default function Home() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'file' | 'url' | 'search'>('file');
+  const [activeTab, setActiveTab] = useState<'file' | 'url' | 'search'>('search');
   const [dragActive, setDragActive] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -105,34 +105,6 @@ export default function Home() {
           {/* Tabs */}
           <div className="flex gap-2 mb-6 border-b border-sentinel-border">
             <button
-              onClick={() => setActiveTab('file')}
-              className={`flex items-center gap-2 px-4 py-3 font-mono text-sm font-medium transition-colors relative ${
-                activeTab === 'file'
-                  ? 'text-sentinel-accent'
-                  : 'text-sentinel-text-muted hover:text-sentinel-text-secondary'
-              }`}
-            >
-              <Upload className="w-4 h-4" />
-              File
-              {activeTab === 'file' && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-sentinel-accent"></div>
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('url')}
-              className={`flex items-center gap-2 px-4 py-3 font-mono text-sm font-medium transition-colors relative ${
-                activeTab === 'url'
-                  ? 'text-sentinel-accent'
-                  : 'text-sentinel-text-muted hover:text-sentinel-text-secondary'
-              }`}
-            >
-              <Link2 className="w-4 h-4" />
-              URL
-              {activeTab === 'url' && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-sentinel-accent"></div>
-              )}
-            </button>
-            <button
               onClick={() => setActiveTab('search')}
               className={`flex items-center gap-2 px-4 py-3 font-mono text-sm font-medium transition-colors relative ${
                 activeTab === 'search'
@@ -150,93 +122,6 @@ export default function Home() {
 
           {/* Tab Content */}
           <div className="min-h-[300px]">
-            {/* File Upload Tab */}
-            {activeTab === 'file' && (
-              <div className="space-y-4">
-                <div
-                  onDragEnter={handleDrag}
-                  onDragLeave={handleDrag}
-                  onDragOver={handleDrag}
-                  onDrop={handleDrop}
-                  className={`border-2 border-dashed rounded-lg p-12 text-center transition-all ${
-                    dragActive
-                      ? 'border-sentinel-accent bg-sentinel-accent/5'
-                      : 'border-sentinel-border hover:border-sentinel-accent/50'
-                  }`}
-                >
-                  <Upload className={`w-16 h-16 mx-auto mb-4 ${dragActive ? 'text-sentinel-accent' : 'text-sentinel-text-muted'}`} />
-                  {file ? (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-center gap-2 text-sentinel-text-primary">
-                        <FileText className="w-5 h-5" />
-                        <span className="font-mono text-sm">{file.name}</span>
-                      </div>
-                      <p className="text-xs font-mono text-sentinel-text-muted">
-                        {(file.size / 1024 / 1024).toFixed(2)} MB
-                      </p>
-                      <div className="flex gap-3 justify-center">
-                        <button
-                          onClick={handleFileSubmit}
-                          className="px-6 py-2.5 rounded bg-sentinel-accent/10 border border-sentinel-accent/30 text-sentinel-accent text-sm font-mono font-semibold hover:bg-sentinel-accent/20 transition-colors"
-                        >
-                          Analyze File
-                        </button>
-                        <button
-                          onClick={() => setFile(null)}
-                          className="px-6 py-2.5 rounded border border-sentinel-border text-sentinel-text-secondary text-sm font-mono hover:border-sentinel-border-hover transition-colors"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <p className="text-sentinel-text-primary font-mono mb-2">
-                        Drop file here or click to browse
-                      </p>
-                      <p className="text-xs font-mono text-sentinel-text-muted mb-4">
-                        Maximum file size: 32 MB
-                      </p>
-                      <label className="inline-block px-6 py-2.5 rounded bg-sentinel-accent/10 border border-sentinel-accent/30 text-sentinel-accent text-sm font-mono font-semibold hover:bg-sentinel-accent/20 transition-colors cursor-pointer">
-                        Choose File
-                        <input
-                          type="file"
-                          onChange={handleFileChange}
-                          className="hidden"
-                        />
-                      </label>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* URL Tab */}
-            {activeTab === 'url' && (
-              <form onSubmit={handleUrlSubmit} className="space-y-4">
-                <div>
-                  <label className="text-sm font-mono text-sentinel-text-muted block mb-3">
-                    Enter a URL to scan for threats
-                  </label>
-                  <input
-                    type="text"
-                    value={urlInput}
-                    onChange={(e) => setUrlInput(e.target.value)}
-                    placeholder="https://example.com"
-                    className="w-full px-4 py-3 rounded bg-sentinel-bg-primary border border-sentinel-border text-sentinel-text-primary font-mono text-sm outline-none focus:border-sentinel-accent/40 transition-colors"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={!urlInput.trim()}
-                  className="w-full px-6 py-3 rounded bg-sentinel-accent/10 border border-sentinel-accent/30 text-sentinel-accent text-sm font-mono font-semibold hover:bg-sentinel-accent/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-                >
-                  <Link2 className="w-4 h-4" />
-                  Scan URL
-                </button>
-              </form>
-            )}
-
             {/* Search Tab */}
             {activeTab === 'search' && (
               <form onSubmit={handleSearchSubmit} className="space-y-4">

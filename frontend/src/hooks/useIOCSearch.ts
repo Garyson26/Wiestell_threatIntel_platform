@@ -26,14 +26,19 @@ export function useIOCSearch(): IOCSearchResult {
   });
 
   const search = useCallback(async (newFilters: SearchFilters) => {
+    console.log('useIOCSearch: Starting search with filters:', newFilters);
     setLoading(true);
     setError(null);
     setFilters(newFilters);
     try {
       const result = await searchIOCs(newFilters);
+      console.log('useIOCSearch: Search successful, got result:', result);
+      console.log('useIOCSearch: Result total:', result?.total, 'items:', result?.items?.length);
       setData(result);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Search failed');
+      const errorMsg = e instanceof Error ? e.message : 'Search failed';
+      console.error('useIOCSearch: Search failed:', errorMsg, e);
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }

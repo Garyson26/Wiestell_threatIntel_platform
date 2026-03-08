@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     CACHE_TTL_REPUTATION: int = 21600   # 6 hours
     CACHE_TTL_DASHBOARD: int = 60       # 1 minute
 
+    # Email Configuration
+    EMAIL_SERVICE: str = "smtp"
+    EMAIL_USER: str = "noreply@foroceanfoundation.com"
+    EMAIL_PASSWORD: str = "1UXj?Vs2+O"
+    SMTP_HOST: str = "smtp.hostinger.com"
+    SMTP_PORT: int = 465
+    SMTP_SECURE: bool = True
+
     class Config:
         env_file = ".env"
         case_sensitive = True
