@@ -29,6 +29,12 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - FEED_SYNC_INTERVAL=${FEED_SYNC_INTERVAL:-3600}
+      - EMAIL_SERVICE=${EMAIL_SERVICE:-smtp}
+      - EMAIL_USER=${EMAIL_USER:-noreply@foroceanfoundation.com}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD:-}
+      - SMTP_HOST=${SMTP_HOST:-smtp.hostinger.com}
+      - SMTP_PORT=${SMTP_PORT:-465}
+      - SMTP_SECURE=${SMTP_SECURE:-true}
     depends_on:
       db:
         condition: service_healthy
@@ -54,6 +60,12 @@ services:
       - SHODAN_API_KEY=${SHODAN_API_KEY:-}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - EMAIL_SERVICE=${EMAIL_SERVICE:-smtp}
+      - EMAIL_USER=${EMAIL_USER:-noreply@foroceanfoundation.com}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD:-}
+      - SMTP_HOST=${SMTP_HOST:-smtp.hostinger.com}
+      - SMTP_PORT=${SMTP_PORT:-465}
+      - SMTP_SECURE=${SMTP_SECURE:-true}
     depends_on:
       db:
         condition: service_healthy
