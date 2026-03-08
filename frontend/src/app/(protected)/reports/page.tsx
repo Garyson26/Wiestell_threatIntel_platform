@@ -98,7 +98,7 @@ export default function ReportsPage() {
           <button
             onClick={handleAIBrief}
             disabled={generatingAI}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded border border-purple-500/30 text-purple-400 hover:bg-purple-500/10 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded border border-gray-400 text-gray-700 hover:bg-gray-200 disabled:opacity-50 transition-colors"
           >
             <Sparkles className="w-3 h-3" />
             {generatingAI ? 'GENERATING...' : 'AI BRIEF'}
@@ -158,7 +158,7 @@ export default function ReportsPage() {
                     <Download className="w-3 h-3" />
                   </button>
                   {report.report_type === 'ai_insight' && (
-                    <span className="text-[10px] font-mono text-purple-400 uppercase px-2 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 flex items-center gap-1">
+                    <span className="text-[10px] font-mono text-gray-700 uppercase px-2 py-0.5 rounded bg-gray-200 border border-gray-300 flex items-center gap-1">
                       <Sparkles className="w-2.5 h-2.5" />
                       AI
                     </span>
@@ -195,7 +195,7 @@ export default function ReportsPage() {
           <button
             onClick={handleCreate}
             disabled={creating || !title.trim()}
-            className="w-full px-4 py-2 rounded bg-sentinel-accent/10 border border-sentinel-accent/30 text-sentinel-accent text-xs font-mono font-semibold hover:bg-sentinel-accent/20 disabled:opacity-30 transition-colors"
+            className="w-full px-4 py-2 rounded bg-black text-white text-xs font-mono font-semibold hover:bg-gray-800 disabled:opacity-30 transition-colors"
           >
             {creating ? 'GENERATING...' : 'GENERATE REPORT'}
           </button>
@@ -219,7 +219,7 @@ export default function ReportsPage() {
             </pre>
             <button
               onClick={() => handleDownload(selectedReport)}
-              className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded bg-sentinel-accent/10 border border-sentinel-accent/30 text-sentinel-accent hover:bg-sentinel-accent/20 transition-colors"
+              className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded bg-black text-white hover:bg-gray-800 transition-colors"
             >
               <Download className="w-3 h-3" />
               DOWNLOAD TXT

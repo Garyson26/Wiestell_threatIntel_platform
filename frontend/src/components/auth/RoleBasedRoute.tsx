@@ -68,7 +68,7 @@ export default function RoleBasedRoute({
           
           <button
             onClick={() => router.push(redirectTo)}
-            className="px-6 py-3 bg-sentinel-accent hover:bg-sentinel-accent-secondary text-sentinel-bg-primary font-semibold rounded transition-colors duration-200"
+            className="px-6 py-3 bg-black text-white hover:bg-gray-800 font-semibold rounded transition-colors duration-200"
           >
             Return to Dashboard
           </button>

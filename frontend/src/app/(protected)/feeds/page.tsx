@@ -180,7 +180,7 @@ export default function FeedsPage() {
 
   const feedTypeColor = (type: string) => {
     switch (type) {
-      case 'api': return 'text-blue-400 bg-blue-500/10 border-blue-500/20';
+      case 'api': return 'text-gray-700 bg-gray-200 border-gray-300';
       case 'csv': return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
       case 'stix': return 'text-purple-400 bg-purple-500/10 border-purple-500/20';
       default: return 'text-sentinel-text-muted bg-sentinel-bg-tertiary border-sentinel-border';
@@ -198,7 +198,7 @@ export default function FeedsPage() {
 
   const iocBarColor = (count: number) => {
     if (count > 10000) return 'bg-sentinel-accent';
-    if (count > 1000) return 'bg-blue-500';
+    if (count > 1000) return 'bg-gray-600';
     if (count > 0) return 'bg-emerald-500';
     return 'bg-slate-600';
   };
@@ -251,7 +251,7 @@ export default function FeedsPage() {
           {[
             { label: 'Total Feeds', value: stats.total, icon: <Rss className="w-4 h-4" />, accent: 'text-sentinel-accent' },
             { label: 'Active Feeds', value: stats.active, icon: <Activity className="w-4 h-4" />, accent: 'text-emerald-400' },
-            { label: 'Total IOCs Ingested', value: formatNumber(stats.totalIOCs), icon: <Database className="w-4 h-4" />, accent: 'text-blue-400' },
+            { label: 'Total IOCs Ingested', value: formatNumber(stats.totalIOCs), icon: <Database className="w-4 h-4" />, accent: 'text-gray-700' },
             { label: 'Healthy Syncs', value: `${stats.healthy}/${stats.total}`, icon: <CheckCircle2 className="w-4 h-4" />, accent: stats.failed > 0 ? 'text-amber-400' : 'text-emerald-400' },
           ].map((s, i) => (
             <div key={i} className="sentinel-card p-4 animate-fade-in" style={{ animationDelay: `${i * 50}ms` }}>

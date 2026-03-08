@@ -76,7 +76,7 @@ function IOCSearchContent() {
           </div>
           <button
             type="submit"
-            className="px-5 py-2.5 rounded bg-sentinel-accent/10 border border-sentinel-accent/30 text-sentinel-accent text-xs font-mono font-semibold hover:bg-sentinel-accent/20 transition-colors"
+            className="px-5 py-2.5 rounded bg-black text-white text-xs font-mono font-semibold hover:bg-gray-800 transition-colors"
           >
             SEARCH
           </button>
