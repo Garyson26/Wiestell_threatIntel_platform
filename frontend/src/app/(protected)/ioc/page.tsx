@@ -1,5 +1,6 @@
 'use client';
 
+import AdminRoute from '@/components/auth/AdminRoute';
 import { Suspense, useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Search, Filter, Download, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -12,9 +13,11 @@ const IOC_TYPES = ['all', 'ip', 'domain', 'hash', 'url', 'email', 'cve'];
 
 export default function IOCSearchPage() {
   return (
-    <Suspense fallback={<div className="text-sentinel-text-muted text-sm font-mono p-8">Loading...</div>}>
-      <IOCSearchContent />
-    </Suspense>
+    <AdminRoute>
+      <Suspense fallback={<div className="text-sentinel-text-muted text-sm font-mono p-8">Loading...</div>}>
+        <IOCSearchContent />
+      </Suspense>
+    </AdminRoute>
   );
 }
 
