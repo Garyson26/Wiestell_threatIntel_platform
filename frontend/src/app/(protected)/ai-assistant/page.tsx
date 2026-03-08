@@ -1,5 +1,6 @@
 'use client';
 
+import AdminRoute from '@/components/auth/AdminRoute';
 import { useState, useRef, useEffect } from 'react';
 import { Send, Sparkles, Bot, User, Loader2, Trash2 } from 'lucide-react';
 import { chatWithAI } from '@/lib/api';
@@ -270,6 +271,7 @@ export default function AIAssistantPage() {
   }
 
   return (
+    <AdminRoute>
     <div className="flex flex-col h-[calc(100vh-3rem)]">
       {/* Header */}
       <div className="flex items-center justify-between pb-4 border-b border-sentinel-border">
@@ -400,5 +402,6 @@ export default function AIAssistantPage() {
         </p>
       </div>
     </div>
+    </AdminRoute>
   );
 }

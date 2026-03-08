@@ -1,5 +1,6 @@
 'use client';
 
+import AdminRoute from '@/components/auth/AdminRoute';
 import { useState } from 'react';
 import { Crosshair, Search, Plus, X } from 'lucide-react';
 import { bulkLookup } from '@/lib/api';
@@ -29,6 +30,7 @@ export default function HuntingPage() {
   };
 
   return (
+    <AdminRoute>
     <div className="space-y-6">
       <div>
         <h1 className="text-lg font-display font-bold text-sentinel-text-primary">Threat Hunting</h1>
@@ -121,5 +123,6 @@ export default function HuntingPage() {
         </div>
       )}
     </div>
+    </AdminRoute>
   );
 }

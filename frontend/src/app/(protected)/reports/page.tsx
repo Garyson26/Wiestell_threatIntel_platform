@@ -1,5 +1,6 @@
 'use client';
 
+import AdminRoute from '@/components/auth/AdminRoute';
 import { useState, useEffect } from 'react';
 import { FileText, Plus, RefreshCw, Calendar, Download, Sparkles } from 'lucide-react';
 import { getReports, getDailyBrief, generateReport, downloadReport, generateAIReport } from '@/lib/api';
@@ -86,6 +87,7 @@ export default function ReportsPage() {
   }
 
   return (
+    <AdminRoute>
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -228,5 +230,6 @@ export default function ReportsPage() {
         )}
       </Modal>
     </div>
+    </AdminRoute>
   );
 }
