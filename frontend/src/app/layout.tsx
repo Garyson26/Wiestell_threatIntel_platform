@@ -3,8 +3,11 @@ import './globals.css';
 import { AuthProvider } from '@/lib/auth';
 
 export const metadata: Metadata = {
-  title: 'SENTINEL — Threat Intelligence Platform',
+  title: 'Wiestell — Threat Intelligence Platform',
   description: 'Open-source threat intelligence platform that aggregates, enriches, and scores IOCs from multiple feeds.',
+  icons: {
+    icon: '/images/favicon.ico',
+  },
 };
 
 export default function RootLayout({

@@ -48,8 +48,8 @@ class Settings(BaseSettings):
 
     # Email Configuration
     EMAIL_SERVICE: str = "smtp"
-    EMAIL_USER: str = "noreply@foroceanfoundation.com"
-    EMAIL_PASSWORD: str = "1UXj?Vs2+O"
+    EMAIL_USER: str = "noreply@wiestell.com"
+    EMAIL_PASSWORD: str = "q9#pcv5aC~"
     SMTP_HOST: str = "smtp.hostinger.com"
     SMTP_PORT: int = 465
     SMTP_SECURE: bool = True
