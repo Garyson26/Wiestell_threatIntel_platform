@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Shield, LogIn, KeyRound } from 'lucide-react';
+import Image from 'next/image';
+import { LogIn, KeyRound } from 'lucide-react';
 import { loginUser, verifyOtp } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
@@ -60,12 +61,15 @@ export default function LoginPage() {
     <div className="flex items-center justify-center min-h-[80vh]">
       <div className="sentinel-card w-full max-w-sm p-8 animate-fade-in">
         {/* Logo */}
-        <div className="flex items-center gap-3 mb-8 justify-center">
-          <Shield className="w-8 h-8 text-sentinel-accent" />
-          <div>
-            <h1 className="text-lg font-bold font-display text-sentinel-accent tracking-wider">SENTINEL</h1>
-            <p className="text-[10px] font-mono text-sentinel-text-muted tracking-wide">Threat Intelligence Platform</p>
-          </div>
+        <div className="flex items-center justify-center mb-8">
+          <Image
+            src="/images/Wiestell-Logo.png"
+            alt="Wiestell Logo"
+            width={180}
+            height={60}
+            className="object-contain"
+            priority
+          />
         </div>
 
         <h2 className="text-sm font-display font-semibold text-sentinel-text-primary mb-5 text-center">
