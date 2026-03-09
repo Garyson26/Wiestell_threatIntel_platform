@@ -76,10 +76,16 @@ export default function Home() {
           </div>
           <div className="flex gap-3">
             <button
+              onClick={() => router.push('/admin')}
+              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+            >
+              Admin Login
+            </button>
+            <button
               onClick={() => router.push('/login')}
               className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
             >
-              Sign In
+              Analytics Login
             </button>
             <button
               onClick={() => router.push('/signup')}

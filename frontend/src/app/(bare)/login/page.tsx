@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { LogIn, KeyRound, ArrowLeft } from 'lucide-react';
+import { LogIn, KeyRound, ArrowLeft, BarChart3 } from 'lucide-react';
 import { loginUser, verifyOtp } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
@@ -47,10 +47,17 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await verifyOtp({ email, otp });
+      
+      // Verify that the user has analyst/viewer role (not admin)
+      if (res.user.role === 'admin') {
+        setError('Please use the admin login portal.');
+        setLoading(false);
+        return;
+      }
+      
       login(res.access_token, res.user);
-      // Redirect based on user role
-      const redirectPath = res.user.role === 'admin' ? '/dashboard' : '/analytics';
-      router.push(redirectPath);
+      // Redirect to analytics dashboard
+      router.push('/analytics');
     } catch (err: any) {
       setError(err.message || 'Invalid OTP.');
     } finally {
@@ -73,13 +80,17 @@ export default function LoginPage() {
           />
         </div>
 
-        <h2 className="text-sm font-display font-semibold text-sentinel-text-primary mb-5 text-center">
-          {otpStep ? 'Enter OTP' : 'Sign In'}
-        </h2>
+        {/* Analytics Badge */}
+        <div className="flex items-center justify-center gap-2 mb-6">
+          <BarChart3 className="w-4 h-4 text-sentinel-accent" />
+          <h2 className="text-sm font-display font-semibold text-sentinel-text-primary">
+            {otpStep ? 'Enter OTP' : 'Sign In'}
+          </h2>
+        </div>
 
         {error && (
-          <div className="mb-4 p-2.5 rounded bg-gray-200 border border-gray-300">
-            <p className="text-xs font-mono text-gray-700 text-center">{error}</p>
+          <div className="mb-4 p-2.5 rounded bg-red-50 border border-red-200">
+            <p className="text-xs font-mono text-red-700 text-center">{error}</p>
           </div>
         )}
 
@@ -165,16 +176,6 @@ export default function LoginPage() {
           <ArrowLeft className="w-3.5 h-3.5" />
           Back to Home
         </button>
-
-        <p className="text-center text-[10px] font-mono text-sentinel-text-muted mt-5">
-          No account?{' '}
-          <button
-            onClick={() => router.push('/signup')}
-            className="text-sentinel-accent hover:underline"
-          >
-            Sign up
-          </button>
-        </p>
       </div>
     </div>
   );
