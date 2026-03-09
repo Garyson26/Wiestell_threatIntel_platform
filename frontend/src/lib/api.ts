@@ -50,7 +50,6 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
     throw new Error(`Invalid JSON response: ${text.substring(0, 100)}`);
   }
   
-  console.log('fetchAPI response data:', data);
   return data;
 }
 

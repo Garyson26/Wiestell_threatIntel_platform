@@ -21,9 +21,13 @@ export default function RoleBasedRoute({
 
   useEffect(() => {
     if (!loading && !user) {
-      router.push('/login');
+      // Redirect to appropriate login based on required roles
+      const loginPath = allowedRoles.includes('admin') && allowedRoles.length === 1 
+        ? '/admin' 
+        : '/login';
+      router.push(loginPath);
     }
-  }, [user, loading, router]);
+  }, [user, loading, router, allowedRoles]);
 
   if (loading) {
     return (
