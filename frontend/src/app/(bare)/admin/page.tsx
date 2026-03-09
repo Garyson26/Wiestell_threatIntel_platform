@@ -3,11 +3,11 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { LogIn, KeyRound, ArrowLeft, BarChart3 } from 'lucide-react';
+import { LogIn, KeyRound, ArrowLeft, Shield } from 'lucide-react';
 import { loginUser, verifyOtp } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
-export default function LoginPage() {
+export default function AdminLoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
@@ -48,16 +48,16 @@ export default function LoginPage() {
     try {
       const res = await verifyOtp({ email, otp });
       
-      // Verify that the user has analyst/viewer role (not admin)
-      if (res.user.role === 'admin') {
-        setError('Please use the admin login portal.');
+      // Verify that the user has admin role
+      if (res.user.role !== 'admin') {
+        setError('Access denied. Admin credentials required.');
         setLoading(false);
         return;
       }
       
       login(res.access_token, res.user);
-      // Redirect to analytics dashboard
-      router.push('/analytics');
+      // Redirect to admin dashboard
+      router.push('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Invalid OTP.');
     } finally {
@@ -80,11 +80,11 @@ export default function LoginPage() {
           />
         </div>
 
-        {/* Analytics Badge */}
+        {/* Admin Badge */}
         <div className="flex items-center justify-center gap-2 mb-6">
-          <BarChart3 className="w-4 h-4 text-sentinel-accent" />
+          <Shield className="w-4 h-4 text-sentinel-accent" />
           <h2 className="text-sm font-display font-semibold text-sentinel-text-primary">
-            {otpStep ? 'Enter OTP' : 'Sign In'}
+            {otpStep ? 'Enter OTP' : 'Admin Sign In'}
           </h2>
         </div>
 
@@ -103,12 +103,12 @@ export default function LoginPage() {
         {!otpStep ? (
           <form onSubmit={handleCredentialsSubmit} className="space-y-4">
             <div>
-              <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Email</label>
+              <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Admin Email</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter email"
+                placeholder="Enter admin email"
                 autoFocus
                 className="w-full px-3 py-2.5 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40 transition-colors"
               />
@@ -176,6 +176,16 @@ export default function LoginPage() {
           <ArrowLeft className="w-3.5 h-3.5" />
           Back to Home
         </button>
+
+        <p className="text-center text-[10px] font-mono text-sentinel-text-muted mt-5">
+          Not an admin?{' '}
+          <button
+            onClick={() => router.push('/login')}
+            className="text-sentinel-accent hover:underline"
+          >
+            Login
+          </button>
+        </p>
       </div>
     </div>
   );
