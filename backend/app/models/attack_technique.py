@@ -1,7 +1,6 @@
 """MITRE ATT&CK Technique database model."""
 
-from sqlalchemy import Column, String, Text
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy import Column, String, Text, JSON
 
 from app.database import Base
 
@@ -14,7 +13,7 @@ class AttackTechnique(Base):
     tactic = Column(String(100), nullable=False)
     description = Column(Text)
     url = Column(Text)
-    data_sources = Column(ARRAY(Text), default=list)
+    data_sources = Column(JSON, default=list)
 
     def __repr__(self):
         return f"<AttackTechnique(id={self.id}, name={self.name})>"

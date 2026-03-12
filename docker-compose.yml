@@ -17,7 +17,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://sentinel:sentinel@db:5432/sentinel
+      - DATABASE_URL=mysql+pymysql://u433859718_wiest_tell:C9b%3E%3BxrFy@193.203.184.197/u433859718_intel_wies_tel
       - REDIS_URL=redis://redis:6379/0
       - OTX_API_KEY=${OTX_API_KEY:-}
       - ABUSEIPDB_API_KEY=${ABUSEIPDB_API_KEY:-}
@@ -36,8 +36,6 @@ services:
       - SMTP_PORT=${SMTP_PORT:-465}
       - SMTP_SECURE=${SMTP_SECURE:-true}
     depends_on:
-      db:
-        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
@@ -52,7 +50,7 @@ services:
     build: ./backend
     command: celery -A app.tasks.celery_app worker -l info -c 4
     environment:
-      - DATABASE_URL=postgresql://sentinel:sentinel@db:5432/sentinel
+      - DATABASE_URL=mysql+pymysql://u433859718_wiest_tell:C9b%3E%3BxrFy@193.203.184.197/u433859718_intel_wies_tel
       - REDIS_URL=redis://redis:6379/0
       - OTX_API_KEY=${OTX_API_KEY:-}
       - ABUSEIPDB_API_KEY=${ABUSEIPDB_API_KEY:-}
@@ -67,8 +65,6 @@ services:
       - SMTP_PORT=${SMTP_PORT:-465}
       - SMTP_SECURE=${SMTP_SECURE:-true}
     depends_on:
-      db:
-        condition: service_healthy
       redis:
         condition: service_healthy
     restart: unless-stopped
@@ -77,7 +73,7 @@ services:
     build: ./backend
     command: celery -A app.tasks.celery_app beat -l info
     environment:
-      - DATABASE_URL=postgresql://sentinel:sentinel@db:5432/sentinel
+      - DATABASE_URL=mysql+pymysql://u433859718_wiest_tell:C9b%3E%3BxrFy@193.203.184.197/u433859718_intel_wies_tel
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
     depends_on:
@@ -85,22 +81,24 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  db:
-    image: postgres:16-alpine
-    environment:
-      - POSTGRES_USER=sentinel
-      - POSTGRES_PASSWORD=sentinel
-      - POSTGRES_DB=sentinel
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5433:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sentinel"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
+  # Commented out - using external MySQL database (Hostinger)
+  # Uncomment below for local PostgreSQL development
+  # db:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     - POSTGRES_USER=sentinel
+  #     - POSTGRES_PASSWORD=sentinel
+  #     - POSTGRES_DB=sentinel
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5433:5432"
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U sentinel"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   restart: unless-stopped
 
   redis:
     image: redis:7-alpine

@@ -1,13 +1,12 @@
 """IOC (Indicator of Compromise) database model."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import (
     Column, String, Integer, Text, DateTime, Index,
-    UniqueConstraint
+    UniqueConstraint, JSON
 )
-from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -16,22 +15,22 @@ from app.database import Base
 class IOC(Base):
     __tablename__ = "iocs"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     type = Column(String(20), nullable=False, index=True)  # ip, domain, hash, url, email, cve
     value = Column(Text, nullable=False)
     threat_score = Column(Integer, default=0)  # 0-100
     confidence = Column(Integer, default=0)     # 0-100
-    first_seen = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    last_seen = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    first_seen = Column(DateTime, default=datetime.utcnow)
+    last_seen = Column(DateTime, default=datetime.utcnow)
     sighting_count = Column(Integer, default=1)
-    tags = Column(ARRAY(Text), default=list)
-    metadata_ = Column("metadata", JSONB, default=dict)
-    mitre_techniques = Column(ARRAY(Text), default=list)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    tags = Column(JSON, default=list)
+    metadata_ = Column("metadata", JSON, default=dict)
+    mitre_techniques = Column(JSON, default=list)
+    created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
     )
 
     # Relationships
@@ -54,8 +53,6 @@ class IOC(Base):
         UniqueConstraint("type", "value", name="uq_ioc_type_value"),
         Index("idx_iocs_threat_score", threat_score.desc()),
         Index("idx_iocs_last_seen", last_seen.desc()),
-        Index("idx_iocs_tags", tags, postgresql_using="gin"),
-        Index("idx_iocs_metadata", "metadata", postgresql_using="gin"),
     )
 
     def __repr__(self):
