@@ -36,7 +36,7 @@ def generate_otp() -> str:
 
 
 def create_access_token(user_id: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRE_HOURS)
+    expire = datetime.utcnow() + timedelta(hours=JWT_EXPIRE_HOURS)
     return jwt.encode({"sub": user_id, "exp": expire}, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
@@ -63,7 +63,7 @@ async def register_user(data: UserRegister, db: AsyncSession = Depends(get_db)):
         user_id=None,  # No user yet - will be created after OTP verification
         email=data.email,
         otp=otp_code,
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+        expires_at=datetime.utcnow() + timedelta(minutes=5),
         verified="pending",
         # Store registration data temporarily
         username=data.username,
@@ -107,9 +107,6 @@ async def login_user(data: UserLogin, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=403, detail="Account is disabled")
 
     # Delete any existing OTPs for this user
-    await db.execute(
-        select(OTP).where(OTP.email == data.email)
-    )
     existing_otps = (await db.execute(
         select(OTP).where(OTP.email == data.email)
     )).scalars().all()
@@ -122,7 +119,7 @@ async def login_user(data: UserLogin, db: AsyncSession = Depends(get_db)):
         user_id=user.id,
         email=data.email,
         otp=otp_code,
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+        expires_at=datetime.utcnow() + timedelta(minutes=5),
         verified="pending"
     )
     db.add(otp_record)
@@ -164,7 +161,7 @@ async def verify_otp(data: OTPVerify, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=401, detail="OTP not found or already used")
     
     # Check if OTP is expired
-    if datetime.now(timezone.utc) > otp_record.expires_at:
+    if datetime.utcnow() > otp_record.expires_at:
         otp_record.verified = "expired"
         await db.commit()
         raise HTTPException(status_code=401, detail="OTP has expired")
@@ -189,7 +186,8 @@ async def verify_otp(data: OTPVerify, db: AsyncSession = Depends(get_db)):
             is_active=True,  # Activate immediately since OTP is verified
         )
         db.add(user)
-        user.last_login = datetime.now(timezone.utc)
+        await db.flush()  # Flush to get the user ID
+        user.last_login = datetime.utcnow()
     else:
         # This is a login OTP - get existing user
         result = await db.execute(
@@ -204,7 +202,7 @@ async def verify_otp(data: OTPVerify, db: AsyncSession = Depends(get_db)):
         user.is_active = True
         
         # Update last login
-        user.last_login = datetime.now(timezone.utc)
+        user.last_login = datetime.utcnow()
     
     # Mark OTP as verified
     otp_record.verified = "verified"

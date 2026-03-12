@@ -9,18 +9,25 @@ from app.config import settings
 # Sync engine (for Alembic migrations and Celery tasks)
 sync_engine = create_engine(
     settings.DATABASE_URL,
-    pool_size=20,
-    max_overflow=10,
+    pool_size=10,
+    max_overflow=5,
     pool_pre_ping=True,
+    pool_recycle=3600,  # Recycle connections after 1 hour
+    echo=False,
 )
 SyncSessionLocal = sessionmaker(bind=sync_engine)
 
 # Async engine (for FastAPI endpoints)
 async_engine = create_async_engine(
     settings.DATABASE_ASYNC_URL,
-    pool_size=20,
-    max_overflow=10,
+    pool_size=10,
+    max_overflow=5,
     pool_pre_ping=True,
+    pool_recycle=3600,  # Recycle connections after 1 hour
+    echo=False,
+    connect_args={
+        "autocommit": False,
+    }
 )
 AsyncSessionLocal = async_sessionmaker(
     bind=async_engine,
@@ -38,8 +45,7 @@ async def get_db() -> AsyncSession:
     async with AsyncSessionLocal() as session:
         try:
             yield session
-            await session.commit()
-        except Exception:
+        except Exception as e:
             await session.rollback()
             raise
         finally:

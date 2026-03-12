@@ -74,7 +74,7 @@ export default function Sidebar() {
       </div>
 
       {/* User Role Badge */}
-      {!collapsed && user && (
+      {/* {!collapsed && user && (
         <div className="px-4 py-3 border-b border-sentinel-border">
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-mono text-sentinel-text-muted uppercase tracking-widest">
@@ -90,7 +90,7 @@ export default function Sidebar() {
             </span>
           </div>
         </div>
-      )}
+      )} */}
 
       {/* Navigation */}
       <nav className="flex-1 py-4 space-y-1 px-2 overflow-y-auto">
@@ -118,7 +118,7 @@ export default function Sidebar() {
       </nav>
 
       {/* System Status */}
-      {!collapsed && (
+      {/* {!collapsed && (
         <div className="px-4 py-4 border-t border-sentinel-border space-y-2">
           <p className="text-[10px] font-mono text-sentinel-text-muted uppercase tracking-widest">
             System Status
@@ -129,7 +129,7 @@ export default function Sidebar() {
             <StatusLine icon={Clock} label="Last Sync" value="--" color="#64748b" />
           </div>
         </div>
-      )}
+      )} */}
 
       {/* Collapse Toggle */}
       <button
