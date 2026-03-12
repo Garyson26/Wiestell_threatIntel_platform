@@ -1,10 +1,9 @@
 """IOC Source mapping (many-to-many between IOCs and Feed Sources)."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import Column, String, DateTime, ForeignKey, UniqueConstraint, JSON
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -13,11 +12,11 @@ from app.database import Base
 class IOCSource(Base):
     __tablename__ = "ioc_sources"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    ioc_id = Column(UUID(as_uuid=True), ForeignKey("iocs.id", ondelete="CASCADE"), nullable=False)
-    feed_id = Column(UUID(as_uuid=True), ForeignKey("feed_sources.id", ondelete="CASCADE"), nullable=False)
-    raw_data = Column(JSONB)
-    ingested_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    ioc_id = Column(String(36), ForeignKey("iocs.id", ondelete="CASCADE"), nullable=False)
+    feed_id = Column(String(36), ForeignKey("feed_sources.id", ondelete="CASCADE"), nullable=False)
+    raw_data = Column(JSON)
+    ingested_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
     ioc = relationship("IOC", back_populates="sources")

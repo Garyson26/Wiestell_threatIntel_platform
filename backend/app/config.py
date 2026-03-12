@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     # Database
-    DATABASE_URL: str = "postgresql://sentinel:sentinel@db:5432/sentinel"
+    DATABASE_URL: str = "mysql+pymysql://u433859718_wiest_tell:C9b%3E%3BxrFy@193.203.184.197/u433859718_intel_wies_tel"
     DATABASE_ASYNC_URL: str = ""
 
     # Redis
@@ -55,13 +55,14 @@ class Settings(BaseSettings):
     SMTP_SECURE: bool = True
 
     class Config:
-        env_file = ".env"
+        env_file = "/home/cloudpeak/Desktop/Viraj/Wiestell_threatIntel_platform/backend/.env"
         case_sensitive = True
+        extra = 'ignore'  # Ignore extra environment variables not in Settings
 
     def model_post_init(self, __context) -> None:
         if not self.DATABASE_ASYNC_URL:
             self.DATABASE_ASYNC_URL = self.DATABASE_URL.replace(
-                "postgresql://", "postgresql+asyncpg://"
+                "mysql+pymysql://", "mysql+aiomysql://"
             )
 
 

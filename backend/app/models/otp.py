@@ -1,10 +1,9 @@
 """OTP database model."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import Column, String, DateTime, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
 
 from app.database import Base
 
@@ -12,12 +11,12 @@ from app.database import Base
 class OTP(Base):
     __tablename__ = "otps"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)  # Nullable for signup OTPs
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True)  # Nullable for signup OTPs
     email = Column(String(255), nullable=False, index=True)
     otp = Column(String(10), nullable=False)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
     verified = Column(String(10), default="pending")  # pending, verified, expired
     
     # Registration data (for signup OTPs only)

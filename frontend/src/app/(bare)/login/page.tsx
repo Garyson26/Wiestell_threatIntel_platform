@@ -169,6 +169,19 @@ export default function LoginPage() {
           </form>
         )}
 
+        {/* Signup Option */}
+        <div className="mt-6 pt-4 border-t border-sentinel-border">
+          <p className="text-xs font-mono text-sentinel-text-muted text-center mb-2">
+            Don't have an account?
+          </p>
+          <button
+            onClick={() => router.push('/signup')}
+            className="w-full px-4 py-2.5 rounded bg-sentinel-accent/10 border border-sentinel-accent/30 text-sentinel-accent text-xs font-mono font-semibold hover:bg-sentinel-accent/20 transition-colors"
+          >
+            CREATE ACCOUNT
+          </button>
+        </div>
+
         <button
           onClick={() => router.push('/')}
           className="w-full mt-4 flex items-center justify-center gap-2 text-xs font-mono text-sentinel-text-muted hover:text-sentinel-accent transition-colors"

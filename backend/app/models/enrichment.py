@@ -1,10 +1,9 @@
 """Enrichment result database model."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
-from sqlalchemy import Column, String, DateTime, ForeignKey, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import Column, String, DateTime, ForeignKey, UniqueConstraint, JSON
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -13,12 +12,12 @@ from app.database import Base
 class Enrichment(Base):
     __tablename__ = "enrichments"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    ioc_id = Column(UUID(as_uuid=True), ForeignKey("iocs.id", ondelete="CASCADE"), nullable=False)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    ioc_id = Column(String(36), ForeignKey("iocs.id", ondelete="CASCADE"), nullable=False)
     source = Column(String(50), nullable=False)  # whois, dns, geoip, shodan, reputation
-    data = Column(JSONB, nullable=False)
-    enriched_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    expires_at = Column(DateTime(timezone=True))
+    data = Column(JSON, nullable=False)
+    enriched_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime)
 
     # Relationships
     ioc = relationship("IOC", back_populates="enrichments")
