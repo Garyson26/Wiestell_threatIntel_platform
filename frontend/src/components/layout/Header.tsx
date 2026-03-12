@@ -177,7 +177,7 @@ export default function Header() {
                   <div className="px-4 py-3 border-b border-sentinel-border/50">
                     <p className="text-xs font-mono font-semibold text-sentinel-text-primary">{user.full_name || user.username}</p>
                     <p className="text-[10px] font-mono text-sentinel-text-muted">{user.email}</p>
-                    <span className="text-[10px] font-mono text-sentinel-accent uppercase">{user.role}</span>
+                    {/* <span className="text-[10px] font-mono text-sentinel-accent uppercase">{user.role}</span> */}
                   </div>
                   {user.role === 'admin' && (
                     <>

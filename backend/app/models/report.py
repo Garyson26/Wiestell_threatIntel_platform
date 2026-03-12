@@ -1,10 +1,9 @@
 """Threat Report database model."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
-from sqlalchemy import Column, String, Text, DateTime
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import Column, String, Text, DateTime, JSON
 
 from app.database import Base
 
@@ -12,13 +11,13 @@ from app.database import Base
 class Report(Base):
     __tablename__ = "reports"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     title = Column(String(300), nullable=False)
     report_type = Column(String(50), nullable=False)  # daily_brief, weekly_brief, custom, investigation
     summary = Column(Text)
-    content = Column(JSONB, default=dict)  # Structured report data
-    parameters = Column(JSONB, default=dict)  # Generation parameters (date range, filters, etc.)
-    generated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    content = Column(JSON, default=dict)  # Structured report data
+    parameters = Column(JSON, default=dict)  # Generation parameters (date range, filters, etc.)
+    generated_at = Column(DateTime, default=datetime.utcnow)
     created_by = Column(String(100))
 
     def __repr__(self):
