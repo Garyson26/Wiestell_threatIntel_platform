@@ -7,7 +7,7 @@ python-multipart==0.0.9
 sqlalchemy==2.0.27
 aiomysql==0.2.0
 pymysql==1.1.0
-cryptography==42.0.2
+cryptography==46.0.5
 alembic==1.13.1
 
 # Redis
