@@ -12,7 +12,9 @@ from app.config import settings
 import app.models  # noqa: F401
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+# Escape % characters for configparser by doubling them
+database_url = settings.DATABASE_URL.replace('%', '%%')
+config.set_main_option("sqlalchemy.url", database_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
