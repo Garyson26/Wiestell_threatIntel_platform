@@ -9,10 +9,10 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = "mysql+pymysql://u433859718_wiest_tell:C9b%3E%3BxrFy@193.203.184.197/u433859718_intel_wies_tel"
-    DATABASE_ASYNC_URL: str = ""
+    DATABASE_ASYNC_URL: str = "mysql+aiomysql://u433859718_wiest_tell:C9b%3E%3BxrFy@193.203.184.197/u433859718_intel_wies_tel"
 
-    # Redis
-    REDIS_URL: str = "redis://redis:6379/0"
+    # Redis (Optional - not available on Vercel serverless)
+    REDIS_URL: Optional[str] = None
 
     # API Keys (all optional)
     OTX_API_KEY: Optional[str] = None
