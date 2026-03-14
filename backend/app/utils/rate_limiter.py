@@ -5,12 +5,11 @@ import asyncio
 from collections import defaultdict
 from typing import Optional
 
-import redis
 from app.config import settings
 
 
 class RateLimiter:
-    """Token bucket rate limiter backed by Redis."""
+    """Token bucket rate limiter backed by Redis (with local fallback)."""
 
     def __init__(self, redis_url: Optional[str] = None):
         self._redis_url = redis_url or settings.REDIS_URL
@@ -19,11 +18,14 @@ class RateLimiter:
 
     @property
     def redis_client(self):
-        if self._redis is None:
+        """Lazy Redis client initialization with fallback to None if unavailable."""
+        if self._redis is None and self._redis_url:
             try:
+                import redis
                 self._redis = redis.from_url(self._redis_url)
                 self._redis.ping()
             except Exception:
+                # Redis unavailable - will use local fallback
                 self._redis = None
         return self._redis
 

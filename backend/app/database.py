@@ -9,25 +9,24 @@ from app.config import settings
 # Sync engine (for Alembic migrations and Celery tasks)
 sync_engine = create_engine(
     settings.DATABASE_URL,
-    pool_size=10,
-    max_overflow=5,
+    pool_size=5,
+    max_overflow=0,
     pool_pre_ping=True,
-    pool_recycle=3600,  # Recycle connections after 1 hour
+    pool_recycle=300,  # Recycle connections after 5 minutes (serverless friendly)
     echo=False,
 )
 SyncSessionLocal = sessionmaker(bind=sync_engine)
 
-# Async engine (for FastAPI endpoints)
+# Async engine (for FastAPI endpoints) - optimized for serverless
+async_db_url = settings.DATABASE_ASYNC_URL or settings.DATABASE_URL.replace("mysql+pymysql://", "mysql+aiomysql://")
+
 async_engine = create_async_engine(
-    settings.DATABASE_ASYNC_URL,
-    pool_size=10,
-    max_overflow=5,
+    async_db_url,
+    pool_size=2,  # Reduced for serverless
+    max_overflow=1,
     pool_pre_ping=True,
-    pool_recycle=3600,  # Recycle connections after 1 hour
+    pool_recycle=300,  # Shorter recycle time for serverless
     echo=False,
-    connect_args={
-        "autocommit": False,
-    }
 )
 AsyncSessionLocal = async_sessionmaker(
     bind=async_engine,
