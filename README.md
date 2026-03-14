@@ -174,18 +174,3 @@ npm install
 npm run dev
 ```
 
-## License
-
-This project is licensed under the MIT License. 
-
-## Authors
-
-Built by **Bhargav Raj Dutta**, **Taha Nagdawala** & **Uphar** — Dubai, UAE
-
-- Bhargav Raj Dutta — [GitHub](https://github.com/dev0558) | [LinkedIn](https://www.linkedin.com/in/bhargav-raj-dutta-80251a1b4/)
-- Taha Nagdawala — [GitHub](https://github.com/techtrail42) | [LinkedIn](https://www.linkedin.com/in/taha-nagdawala/)
-- Uphar Jaiswal — [GitHub](https://github.com/uph3r) | [LinkedIn](https://www.linkedin.com/in/uphar-jaiswal/)
-
----
-
-If you find this useful, give it a star on GitHub!
