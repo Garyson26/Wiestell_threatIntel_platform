@@ -10,11 +10,9 @@
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
----
 
 Wiestell is a production-grade, full-stack Threat Intelligence Platform (TIP) designed for SOC analysts, threat hunters, and cybersecurity professionals. It aggregates indicators of compromise (IOCs) from 10+ open-source threat feeds, enriches them with WHOIS/DNS/GeoIP/Shodan data, calculates composite threat scores using a weighted algorithm, maps indicators to the MITRE ATT&CK framework, and presents everything through a tactical dark-themed SOC dashboard built with Next.js 14 and TypeScript.
 
----
 
 ## Features
 
