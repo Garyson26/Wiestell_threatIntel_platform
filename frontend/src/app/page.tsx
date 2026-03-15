@@ -4,6 +4,8 @@ import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Upload, Link2, Search, FileText, ArrowRight, Zap, Database, TrendingUp } from 'lucide-react';
+import { SoftwareApplicationSchema } from '@/components/shared/JsonLd';
+import { PoweredBy } from '@/components/shared/PoweredBy';
 
 export default function Home() {
   const router = useRouter();
@@ -61,6 +63,9 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      {/* JSON-LD Structured Data */}
+      <SoftwareApplicationSchema />
+      
       {/* Header */}
       <header className="border-b border-sentinel-border bg-sentinel-bg-secondary/50 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
@@ -198,7 +203,43 @@ export default function Home() {
             </p>
           </div>
         </div>
+
+        {/* SEO Content Section */}
+        <section className="max-w-4xl mx-auto mt-20 mb-16">
+          <article className="prose prose-invert max-w-none">
+            <div className="sentinel-card p-8 md:p-10">
+              <h1 className="text-2xl md:text-3xl font-display font-bold text-sentinel-text-primary mb-6">
+                Free Threat Intelligence Platform — IP, Domain & Hash IOC Lookup
+              </h1>
+              
+              <div className="space-y-4 text-sentinel-text-secondary font-mono text-sm leading-relaxed">
+                <p>
+                  <strong className="text-sentinel-accent font-semibold">Wiestell</strong> is a comprehensive, free Threat Intelligence Platform (TIP) designed to empower security researchers, SOC analysts, incident responders, and cybersecurity professionals with actionable threat intelligence. Our platform enables rapid analysis of suspicious files, URLs, domains, IP addresses, and other Indicators of Compromise (IOCs) to help organizations identify, investigate, and respond to cyber threats effectively.
+                </p>
+
+                <p>
+                  Built with security operations in mind, Wiestell supports analysis of multiple IOC types including <strong className="text-sentinel-text-primary">IP addresses</strong>, <strong className="text-sentinel-text-primary">domain names</strong>, <strong className="text-sentinel-text-primary">file hashes (MD5, SHA1, SHA256)</strong>, and <strong className="text-sentinel-text-primary">URLs</strong>. Whether you're investigating a potential breach, conducting threat hunting activities, or performing routine security assessments, our platform provides the intelligence you need to make informed decisions quickly.
+                </p>
+
+                <p>
+                  The platform is powered by a curated collection of <strong className="text-sentinel-text-primary">open-source threat intelligence feeds</strong> from trusted sources including AlienVault OTX, AbuseIPDB, URLhaus, MalwareBazaar, PhishTank, and ThreatFox. Our enrichment engine automatically correlates data across multiple feeds, performs geolocation lookups, conducts WHOIS queries, and assesses reputation scores to provide comprehensive context for every IOC analyzed.
+                </p>
+
+                <p>
+                  Designed for both novice and experienced security practitioners, Wiestell offers an intuitive interface combined with powerful backend analytics. Security teams can leverage our AI-driven threat scoring system to prioritize investigations, while developers and researchers can integrate threat intelligence into their workflows. The platform features automated feed ingestion, real-time enrichment, correlation analysis, and detailed reporting capabilities—all available at no cost.
+                </p>
+
+                <p className="text-sentinel-text-muted text-xs pt-4">
+                  Start analyzing threats today with Wiestell's free threat intelligence platform and join a community of security professionals dedicated to making the internet safer for everyone.
+                </p>
+              </div>
+            </div>
+          </article>
+        </section>
       </main>
+
+      {/* Powered By Section */}
+      <PoweredBy />
 
       {/* Footer */}
       <footer className="border-t border-sentinel-border bg-sentinel-bg-secondary/50 py-6">
