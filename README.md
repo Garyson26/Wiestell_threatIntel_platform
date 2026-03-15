@@ -1,5 +1,5 @@
 
-**Open-source free threat intelligence platform that aggregates, enriches, and scores IOCs from multiple feeds.**
+**Opensource free threat intelligence platform that aggregates, enriches, and scores IOCs from multiple feeds.**
 
 ![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688?logo=fastapi)
