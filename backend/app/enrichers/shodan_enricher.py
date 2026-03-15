@@ -17,6 +17,10 @@ class ShodanEnricher(BaseEnricher):
 
         try:
             import shodan
+        except ImportError:
+            return {"error": "Shodan library not installed (optional dependency)"}
+
+        try:
             api = shodan.Shodan(settings.SHODAN_API_KEY)
             host = api.host(value)
             return {
