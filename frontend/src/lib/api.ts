@@ -161,6 +161,16 @@ export const verifyOtp = (data: { email: string; otp: string }) =>
     body: JSON.stringify(data),
   });
 export const getMe = () => fetchAPI<import('./types').UserProfile>('/api/v1/users/me');
+export const updateMe = (data: { full_name?: string; email?: string }) =>
+  fetchAPI<import('./types').UserProfile>('/api/v1/users/me', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+export const changePassword = (data: { current_password: string; new_password: string }) =>
+  fetchAPI<{ message: string }>('/api/v1/users/me/password', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
 export const getUsers = () => fetchAPI<{ items: import('./types').UserProfile[]; total: number }>('/api/v1/users');
 export const getUser = (id: string) => fetchAPI<import('./types').UserProfile>(`/api/v1/users/${id}`);
 export const updateUser = (id: string, data: { full_name?: string; email?: string }) =>

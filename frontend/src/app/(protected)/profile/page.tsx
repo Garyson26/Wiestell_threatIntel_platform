@@ -70,15 +70,6 @@ export default function ProfilePage() {
     }
   }
 
-  const roleColor = (role: string) => {
-    switch (role) {
-      case 'admin': return 'text-gray-700 bg-gray-200';
-      case 'analyst': return 'text-sentinel-accent bg-sentinel-accent/10';
-      case 'viewer': return 'text-sentinel-text-muted bg-sentinel-bg-tertiary';
-      default: return 'text-sentinel-text-muted bg-sentinel-bg-tertiary';
-    }
-  };
-
   return (
     <AdminRoute>
       <div className="space-y-6">
@@ -218,9 +209,6 @@ export default function ProfilePage() {
                     <p className="text-[10px] font-mono text-sentinel-text-muted">@{user.username}</p>
                   </div>
                 </div>
-                <span className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded ${roleColor(user.role)}`}>
-                  {user.role}
-                </span>
               </div>
               <div className="flex items-center gap-4 ml-11 text-[11px] font-mono text-sentinel-text-muted">
                 <span className="flex items-center gap-1">

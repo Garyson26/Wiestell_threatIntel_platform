@@ -17,6 +17,7 @@ from app.models.otp import OTP
 from app.schemas.user import (
     UserRegister, UserUpdate, UserLogin, UserResponse,
     TokenResponse, UserListResponse, OTPVerify, OTPResponse,
+    PasswordChange,
 )
 from app.utils.email_service import send_otp_email
 
@@ -243,6 +244,70 @@ async def get_me(request: Request, db: AsyncSession = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return UserResponse.model_validate(user)
+
+
+@router.put("/me", response_model=UserResponse)
+async def update_me(request: Request, data: UserUpdate, db: AsyncSession = Depends(get_db)):
+    """Update current user's own profile from JWT token."""
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    token = auth.split(" ", 1)[1]
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if data.full_name is not None:
+        user.full_name = data.full_name
+    if data.email is not None:
+        user.email = data.email
+
+    await db.commit()
+    await db.refresh(user)
+    return UserResponse.model_validate(user)
+
+
+@router.put("/me/password", response_model=dict)
+async def change_password(request: Request, data: PasswordChange, db: AsyncSession = Depends(get_db)):
+    """Change current user's password."""
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    token = auth.split(" ", 1)[1]
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Verify current password
+    if not pwd_context.verify(data.current_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    # Hash and update new password
+    user.hashed_password = pwd_context.hash(data.new_password)
+    
+    await db.commit()
+    
+    return {"message": "Password changed successfully"}
 
 
 @router.get("", response_model=UserListResponse)

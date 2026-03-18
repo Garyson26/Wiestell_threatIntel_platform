@@ -200,6 +200,15 @@ export default function Header() {
                   </>
                     )}
                   <button
+                    onClick={() => { router.push('/my-profile'); setShowUserMenu(false); }}
+                    className={cn(
+                      'w-full px-4 py-2.5 text-left text-xs font-mono text-sentinel-text-secondary hover:text-sentinel-text-primary hover:bg-sentinel-bg-hover transition-colors',
+                      user.role === 'admin' ? '' : 'border-t border-sentinel-border/50'
+                    )}
+                  >
+                    My Profile
+                  </button>
+                  <button
                     onClick={handleLogout}
                     className="w-full px-4 py-2.5 text-left text-xs font-mono text-gray-700 hover:bg-gray-200 transition-colors border-t border-sentinel-border/50 flex items-center gap-2"
                   >

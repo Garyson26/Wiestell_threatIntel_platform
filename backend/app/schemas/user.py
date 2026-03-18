@@ -18,6 +18,11 @@ class UserUpdate(BaseModel):
     email: Optional[str] = Field(None, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
+class PasswordChange(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=6, max_length=128)
+
+
 class UserResponse(BaseModel):
     id: str  # Changed from UUID to str to match User model
     username: str
