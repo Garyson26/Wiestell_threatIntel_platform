@@ -2,11 +2,13 @@
 module.exports = {
   siteUrl: 'https://wiestell.com',
   generateRobotsTxt: true,
+  sitemapSize: 5000,
   robotsTxtOptions: {
     policies: [
       {
         userAgent: '*',
         allow: '/',
+        disallow: ['/api/', '/admin'],
       },
     ],
   },
