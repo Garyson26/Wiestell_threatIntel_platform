@@ -1,7 +1,7 @@
 """Threat Report database model."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, String, Text, DateTime, JSON
 
@@ -17,7 +17,7 @@ class Report(Base):
     summary = Column(Text)
     content = Column(JSON, default=dict)  # Structured report data
     parameters = Column(JSON, default=dict)  # Generation parameters (date range, filters, etc.)
-    generated_at = Column(DateTime, default=datetime.utcnow)
+    generated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     created_by = Column(String(100))
 
     def __repr__(self):

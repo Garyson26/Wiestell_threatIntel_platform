@@ -1,6 +1,5 @@
 """Report generation API endpoints."""
 
-from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import select, desc
@@ -57,7 +56,7 @@ async def get_daily_brief(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{report_id}/download")
-async def download_report(report_id: UUID, db: AsyncSession = Depends(get_db)):
+async def download_report(report_id: str, db: AsyncSession = Depends(get_db)):
     """Download a report as a plain text file."""
     result = await db.execute(select(Report).where(Report.id == report_id))
     report = result.scalar_one_or_none()
@@ -121,7 +120,7 @@ async def download_report(report_id: UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{report_id}", response_model=ReportResponse)
-async def get_report(report_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_report(report_id: str, db: AsyncSession = Depends(get_db)):
     """Get a specific report."""
     result = await db.execute(select(Report).where(Report.id == report_id))
     report = result.scalar_one_or_none()

@@ -1,7 +1,6 @@
 """User management API endpoints."""
 
 from datetime import datetime, timezone, timedelta
-from uuid import UUID
 import random
 import string
 
@@ -36,7 +35,7 @@ def generate_otp() -> str:
 
 
 def create_access_token(user_id: str) -> str:
-    expire = datetime.utcnow() + timedelta(hours=JWT_EXPIRE_HOURS)
+    expire = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRE_HOURS)
     return jwt.encode({"sub": user_id, "exp": expire}, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
@@ -59,11 +58,12 @@ async def register_user(data: UserRegister, db: AsyncSession = Depends(get_db)):
 
     # Generate OTP and store registration data temporarily (user NOT created yet)
     otp_code = generate_otp()
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)  # Naive UTC for database
     otp_record = OTP(
         user_id=None,  # No user yet - will be created after OTP verification
         email=data.email,
         otp=otp_code,
-        expires_at=datetime.utcnow() + timedelta(minutes=5),
+        expires_at=now_utc + timedelta(minutes=5),
         verified="pending",
         # Store registration data temporarily
         username=data.username,
@@ -115,11 +115,12 @@ async def login_user(data: UserLogin, db: AsyncSession = Depends(get_db)):
 
     # Generate and store OTP in database
     otp_code = generate_otp()
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)  # Naive UTC for database
     otp_record = OTP(
         user_id=user.id,
         email=data.email,
         otp=otp_code,
-        expires_at=datetime.utcnow() + timedelta(minutes=5),
+        expires_at=now_utc + timedelta(minutes=5),
         verified="pending"
     )
     db.add(otp_record)
@@ -160,8 +161,9 @@ async def verify_otp(data: OTPVerify, db: AsyncSession = Depends(get_db)):
     if not otp_record:
         raise HTTPException(status_code=401, detail="OTP not found or already used")
     
-    # Check if OTP is expired
-    if datetime.utcnow() > otp_record.expires_at:
+    # Check if OTP is expired (compare naive datetimes since DB returns naive)
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    if now_utc > otp_record.expires_at:
         otp_record.verified = "expired"
         await db.commit()
         raise HTTPException(status_code=401, detail="OTP has expired")
@@ -187,7 +189,7 @@ async def verify_otp(data: OTPVerify, db: AsyncSession = Depends(get_db)):
         )
         db.add(user)
         await db.flush()  # Flush to get the user ID
-        user.last_login = datetime.utcnow()
+        user.last_login = datetime.now(timezone.utc).replace(tzinfo=None)  # Naive UTC
     else:
         # This is a login OTP - get existing user
         result = await db.execute(
@@ -202,7 +204,7 @@ async def verify_otp(data: OTPVerify, db: AsyncSession = Depends(get_db)):
         user.is_active = True
         
         # Update last login
-        user.last_login = datetime.utcnow()
+        user.last_login = datetime.now(timezone.utc).replace(tzinfo=None)  # Naive UTC
     
     # Mark OTP as verified
     otp_record.verified = "verified"
@@ -236,7 +238,7 @@ async def get_me(request: Request, db: AsyncSession = Depends(get_db)):
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    result = await db.execute(select(User).where(User.id == UUID(user_id)))
+    result = await db.execute(select(User).where(User.id == user_id))  # Removed UUID cast
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -255,7 +257,7 @@ async def list_users(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{user_id}", response_model=UserResponse)
-async def get_user(user_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_user(user_id: str, db: AsyncSession = Depends(get_db)):  # Changed from UUID to str
     """Get a specific user profile."""
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -265,7 +267,7 @@ async def get_user(user_id: UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{user_id}", response_model=UserResponse)
-async def update_user(user_id: UUID, data: UserUpdate, db: AsyncSession = Depends(get_db)):
+async def update_user(user_id: str, data: UserUpdate, db: AsyncSession = Depends(get_db)):  # Changed from UUID to str
     """Update user profile."""
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()

@@ -44,16 +44,16 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
         )
     )).one()
 
-    # 7-day trend using date truncation - single query
+    # 7-day trend using DATE() function for MySQL compatibility
     trend_start = (now - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
-    day_col = cast(func.date_trunc('day', IOC.created_at), IOC.created_at.type).label("day")
+    day_col = func.DATE(IOC.created_at).label("day")
     trend_result = await db.execute(
         select(day_col, func.count(IOC.id).label("cnt"))
         .where(IOC.created_at >= trend_start)
         .group_by(day_col)
         .order_by(day_col)
     )
-    trend_rows = {row.day.strftime("%Y-%m-%d"): row.cnt for row in trend_result}
+    trend_rows = {str(row.day): row.cnt for row in trend_result}
 
     trends = []
     for i in range(7):

@@ -1,7 +1,7 @@
 """IOC Source mapping (many-to-many between IOCs and Feed Sources)."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, String, DateTime, ForeignKey, UniqueConstraint, JSON
 from sqlalchemy.orm import relationship
@@ -16,7 +16,7 @@ class IOCSource(Base):
     ioc_id = Column(String(36), ForeignKey("iocs.id", ondelete="CASCADE"), nullable=False)
     feed_id = Column(String(36), ForeignKey("feed_sources.id", ondelete="CASCADE"), nullable=False)
     raw_data = Column(JSON)
-    ingested_at = Column(DateTime, default=datetime.utcnow)
+    ingested_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     ioc = relationship("IOC", back_populates="sources")

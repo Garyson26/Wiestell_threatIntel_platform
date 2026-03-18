@@ -2,13 +2,12 @@
 
 from datetime import datetime
 from typing import Optional
-from uuid import UUID
 from pydantic import BaseModel
 
 
 class EnrichmentResponse(BaseModel):
-    id: UUID
-    ioc_id: UUID
+    id: str  # Changed from UUID to str to match Enrichment model
+    ioc_id: str  # Changed from UUID to str
     source: str
     data: dict
     enriched_at: datetime
