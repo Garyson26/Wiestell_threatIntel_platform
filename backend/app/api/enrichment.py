@@ -1,6 +1,5 @@
 """Enrichment API endpoints."""
 
-from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +14,7 @@ router = APIRouter()
 
 
 @router.get("/{ioc_id}", response_model=list[EnrichmentResponse])
-async def get_enrichments(ioc_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_enrichments(ioc_id: str, db: AsyncSession = Depends(get_db)):
     """Get all enrichment data for an IOC."""
     result = await db.execute(
         select(Enrichment).where(Enrichment.ioc_id == ioc_id)
@@ -26,7 +25,7 @@ async def get_enrichments(ioc_id: UUID, db: AsyncSession = Depends(get_db)):
 
 @router.post("/{ioc_id}/enrich")
 async def trigger_enrichment(
-    ioc_id: UUID,
+    ioc_id: str,
     request: EnrichmentRequest = EnrichmentRequest(),
     db: AsyncSession = Depends(get_db),
 ):

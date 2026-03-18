@@ -1,7 +1,7 @@
 """Feed Source database model."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, String, Integer, Text, Boolean, DateTime, JSON
 from sqlalchemy.orm import relationship
@@ -25,7 +25,7 @@ class FeedSource(Base):
     last_sync_status = Column(String(20))  # success, failed, partial
     ioc_count = Column(Integer, default=0)
     config = Column(JSON, default=dict)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     ioc_sources = relationship("IOCSource", back_populates="feed", cascade="all, delete-orphan")

@@ -2,7 +2,6 @@
 
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -60,7 +59,7 @@ async def ai_status():
 
 
 @router.post("/analyze/{ioc_id}", response_model=AIAnalysisResponse)
-async def analyze_ioc(ioc_id: UUID, db: AsyncSession = Depends(get_db)):
+async def analyze_ioc(ioc_id: str, db: AsyncSession = Depends(get_db)):
     """Generate AI threat analysis for a specific IOC."""
     if not groq_service.is_available:
         raise HTTPException(status_code=503, detail="AI service not configured. Set GROQ_API_KEY.")

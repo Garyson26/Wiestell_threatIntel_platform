@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from typing import Optional
-from uuid import UUID
+
 from pydantic import BaseModel, Field
 
 
@@ -30,7 +30,7 @@ class FeedUpdate(BaseModel):
 
 
 class FeedResponse(FeedBase):
-    id: UUID
+    id: str  # Changed from UUID to str to match Feed model
     slug: str
     api_key_env: Optional[str]
     is_enabled: bool
@@ -45,7 +45,7 @@ class FeedResponse(FeedBase):
 
 
 class FeedSyncLog(BaseModel):
-    feed_id: UUID
+    feed_id: str  # Changed from UUID to str
     feed_name: str
     status: str
     iocs_ingested: int

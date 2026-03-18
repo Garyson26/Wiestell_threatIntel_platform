@@ -1,6 +1,5 @@
 """Feed management API endpoints."""
 
-from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,7 +44,7 @@ async def create_feed(feed_data: FeedCreate, db: AsyncSession = Depends(get_db))
 
 
 @router.put("/{feed_id}", response_model=FeedResponse)
-async def update_feed(feed_id: UUID, update: FeedUpdate, db: AsyncSession = Depends(get_db)):
+async def update_feed(feed_id: str, update: FeedUpdate, db: AsyncSession = Depends(get_db)):
     """Update feed configuration."""
     result = await db.execute(select(FeedSource).where(FeedSource.id == feed_id))
     feed = result.scalar_one_or_none()
@@ -60,7 +59,7 @@ async def update_feed(feed_id: UUID, update: FeedUpdate, db: AsyncSession = Depe
 
 
 @router.delete("/{feed_id}")
-async def delete_feed(feed_id: UUID, db: AsyncSession = Depends(get_db)):
+async def delete_feed(feed_id: str, db: AsyncSession = Depends(get_db)):
     """Remove a feed source."""
     result = await db.execute(select(FeedSource).where(FeedSource.id == feed_id))
     feed = result.scalar_one_or_none()
@@ -73,7 +72,7 @@ async def delete_feed(feed_id: UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{feed_id}/sync")
-async def trigger_sync(feed_id: UUID, db: AsyncSession = Depends(get_db)):
+async def trigger_sync(feed_id: str, db: AsyncSession = Depends(get_db)):
     """Trigger manual feed sync."""
     result = await db.execute(select(FeedSource).where(FeedSource.id == feed_id))
     feed = result.scalar_one_or_none()
@@ -90,7 +89,7 @@ async def trigger_sync(feed_id: UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{feed_id}/logs")
-async def get_sync_logs(feed_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_sync_logs(feed_id: str, db: AsyncSession = Depends(get_db)):
     """Get recent sync logs for a feed."""
     result = await db.execute(select(FeedSource).where(FeedSource.id == feed_id))
     feed = result.scalar_one_or_none()

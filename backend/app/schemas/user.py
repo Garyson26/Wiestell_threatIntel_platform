@@ -2,7 +2,6 @@
 
 from datetime import datetime
 from typing import Optional
-from uuid import UUID
 from pydantic import BaseModel, Field
 
 
@@ -20,7 +19,7 @@ class UserUpdate(BaseModel):
 
 
 class UserResponse(BaseModel):
-    id: UUID
+    id: str  # Changed from UUID to str to match User model
     username: str
     email: str
     full_name: Optional[str]
