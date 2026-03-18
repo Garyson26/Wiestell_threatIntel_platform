@@ -9,7 +9,7 @@ import ssl
 from app.config import settings
 
 
-def send_otp_email(to_email: str, otp: str, username: str) -> bool:
+def send_otp_email(to_email: str, otp: str, username: str, is_password_reset: bool = False) -> bool:
     """
     Send OTP via email using SMTP.
     
@@ -17,6 +17,7 @@ def send_otp_email(to_email: str, otp: str, username: str) -> bool:
         to_email: Recipient email address
         otp: The OTP code to send
         username: Username of the recipient
+        is_password_reset: Whether this is for password reset (default: False)
         
     Returns:
         True if email sent successfully, False otherwise
@@ -24,7 +25,16 @@ def send_otp_email(to_email: str, otp: str, username: str) -> bool:
     try:
         # Create message
         message = MIMEMultipart("alternative")
-        message["Subject"] = "Wiestell - Your Login OTP Code"
+        
+        if is_password_reset:
+            message["Subject"] = "Wiestell - Password Reset OTP"
+            purpose = "password reset"
+            expiry = "10 minutes"
+        else:
+            message["Subject"] = "Wiestell - Your Login OTP Code"
+            purpose = "login"
+            expiry = "5 minutes"
+            
         message["From"] = settings.EMAIL_USER
         message["To"] = to_email
 
@@ -32,9 +42,9 @@ def send_otp_email(to_email: str, otp: str, username: str) -> bool:
         text_content = f"""
 Hello {username},
 
-Your OTP code for Wiestell Threat Intelligence Platform is: {otp}
+Your OTP code for {purpose} on Wiestell Threat Intelligence Platform is: {otp}
 
-This code will expire in 5 minutes.
+This code will expire in {expiry}.
 
 If you did not request this code, please ignore this email.
 
@@ -110,13 +120,13 @@ Wiestell Security Team
     <div class="container">
         <div class="header">🛡️ Wiestell</div>
         <p class="message">Hello <strong>{username}</strong>,</p>
-        <p class="message">Your OTP code for Wiestell Threat Intelligence Platform:</p>
+        <p class="message">Your OTP code for <strong>{purpose}</strong> on Wiestell Threat Intelligence Platform:</p>
         
         <div class="otp-box">
             <div class="otp-code">{otp}</div>
         </div>
         
-        <p class="message">This code will expire in <strong>5 minutes</strong>.</p>
+        <p class="message">This code will expire in <strong>{expiry}</strong>.</p>
         <p class="warning">⚠️ If you did not request this code, please ignore this email.</p>
         
         <div class="footer">

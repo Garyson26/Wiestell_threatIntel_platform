@@ -23,6 +23,16 @@ class PasswordChange(BaseModel):
     new_password: str = Field(..., min_length=6, max_length=128)
 
 
+class PasswordResetRequest(BaseModel):
+    email: str = Field(..., pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+class PasswordReset(BaseModel):
+    email: str = Field(..., pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    otp: str = Field(..., min_length=6, max_length=6)
+    new_password: str = Field(..., min_length=6, max_length=128)
+
+
 class UserResponse(BaseModel):
     id: str  # Changed from UUID to str to match User model
     username: str
