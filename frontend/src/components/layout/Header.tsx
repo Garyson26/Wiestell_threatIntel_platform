@@ -84,6 +84,36 @@ export default function Header() {
         </div>
       </form>
 
+      {/* Navigation Links - Only show on public pages */}
+      {!pathname.startsWith('/dashboard') && 
+       !pathname.startsWith('/analytics') && 
+       !pathname.startsWith('/ioc') && 
+       !pathname.startsWith('/feeds') && 
+       !pathname.startsWith('/attack-map') && 
+       !pathname.startsWith('/hunting') && 
+       !pathname.startsWith('/ai-assistant') && 
+       !pathname.startsWith('/reports') && 
+       !pathname.startsWith('/settings') && 
+       !pathname.startsWith('/profile') && 
+       !pathname.startsWith('/my-profile') && 
+       !pathname.startsWith('/submit') && 
+       !pathname.startsWith('/history') && 
+       !pathname.startsWith('/ioc-search') && (
+        <nav className="flex items-center gap-1 mx-4">
+          <button
+            onClick={() => router.push('/about')}
+            className={cn(
+              'text-xs font-mono font-medium transition-colors px-3 py-1.5 rounded',
+              pathname === '/about'
+                ? 'text-sentinel-accent bg-sentinel-accent/10'
+                : 'text-sentinel-text-secondary hover:text-sentinel-text-primary hover:bg-sentinel-bg-hover'
+            )}
+          >
+            About
+          </button>
+        </nav>
+      )}
+
       {/* Right Side Actions */}
       <div className="flex items-center gap-3 ml-4">
         {/* Refresh Button */}
@@ -219,8 +249,15 @@ export default function Header() {
               ) : (
                 <>
                   <button
+                    onClick={() => { router.push('/about'); setShowUserMenu(false); }}
+                    className="w-full px-4 py-2.5 text-left text-xs font-mono text-sentinel-text-secondary hover:text-sentinel-text-primary hover:bg-sentinel-bg-hover transition-colors flex items-center gap-2"
+                  >
+                    <Info className="w-3 h-3" />
+                    About
+                  </button>
+                  <button
                     onClick={() => { router.push('/login'); setShowUserMenu(false); }}
-                    className="w-full px-4 py-2.5 text-left text-xs font-mono text-sentinel-accent hover:bg-sentinel-accent/10 transition-colors flex items-center gap-2"
+                    className="w-full px-4 py-2.5 text-left text-xs font-mono text-sentinel-accent hover:bg-sentinel-accent/10 transition-colors flex items-center gap-2 border-t border-sentinel-border/50"
                   >
                     <LogIn className="w-3 h-3" />
                     Sign In

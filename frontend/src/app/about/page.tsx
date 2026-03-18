@@ -30,12 +30,30 @@ export default function AboutPage() {
   ];
 
   const expertise = [
-    'Threat Intelligence & Detection',
-    'Incident Response & Automation',
-    'Cloud & Infrastructure Security',
-    'Governance, Risk & Compliance',
-    'Identity & Access Management',
-    'AI/ML Security',
+    {
+      title: 'Threat Intelligence & Detection',
+      description: 'Threat Intelligence, Threat Hunting, MITRE ATT&CK-mapped detections, IOC enrichment and correlation'
+    },
+    {
+      title: 'Incident Response & Automation',
+      description: 'Incident Response, SOAR automation, automated alert triage pipelines, SOC workflow design'
+    },
+    {
+      title: 'Cloud & Infrastructure Security',
+      description: 'Cloud-native Kubernetes security, Zero Trust design, secure architecture reviews, system design'
+    },
+    {
+      title: 'Governance, Risk & Compliance',
+      description: 'NIST CSF, ISO 27001, PCI-DSS, OWASP Top 10, CIS Controls, UK Cyber Essentials, vendor risk assessments'
+    },
+    {
+      title: 'Identity & Access Management',
+      description: 'IAM, RBAC, Data Loss Prevention (DLP), Zero Trust access principles'
+    },
+    {
+      title: 'AI / ML Security',
+      description: 'AI/ML security research, threat modelling'
+    },
   ];
 
   return (
@@ -185,26 +203,43 @@ export default function AboutPage() {
                 <h3 className="text-xl font-mono font-bold text-sentinel-text-primary mb-3">
                   Gary(son) Pereira
                 </h3>
-                <p className="text-sm font-mono text-sentinel-text-secondary leading-relaxed">
-                  With over <strong className="text-sentinel-accent">11 years of experience</strong> in cybersecurity, Gary(son) holds an <strong className="text-sentinel-text-primary">M.Sc. in Computer Forensics</strong> and currently serves as <strong className="text-sentinel-text-primary">Lead Security Engineer at Oakbrook Finance</strong>. His expertise spans threat intelligence, incident response, cloud security, and AI/ML security.
+                <div className="space-y-4 text-sm font-mono text-sentinel-text-secondary leading-relaxed">
+                  <p>
+                    Gary(son) is a cybersecurity leader with <strong className="text-sentinel-accent">11 years of experience</strong> spanning professional practice and advanced academic research. He holds an <strong className="text-sentinel-text-primary">M.Sc. in Computer Forensics and Cyber Security from the University of Greenwich, London</strong>, and currently serves as <strong className="text-sentinel-text-primary">Lead Security Engineer in the fintech sector at Oakbrook Finance</strong>.
+                  </p>
+                  <p>
+                    Garyson built Wiestell out of the conviction that high-quality threat intelligence should be freely available to every defender—not just organisations with enterprise budgets. Drawing on his day-to-day work leading threat intelligence programmes, SOC workflows, and security automation, he designed Wiestell to aggregate the best open-source feeds into a single, fast, and accessible platform.
+                  </p>
+                </div>
+              </div>
+
+              {/* Professional Role */}
+              <div>
+                <h4 className="text-sm font-mono font-semibold text-sentinel-text-primary mb-3 uppercase tracking-wider">
+                  Expertise
+                </h4>
+                <p className="text-sm font-mono text-sentinel-text-secondary leading-relaxed mb-4">
+                  In his professional role, Garyson leads the implementation of a threat intelligence-driven <strong className="text-sentinel-text-primary">Continuous Threat Exposure Management (CTEM)</strong> framework, enhancing organisational resilience against evolving cyber threats. His work spans the full spectrum of modern security engineering:
                 </p>
               </div>
 
               {/* Expertise Grid */}
               <div>
-                <h4 className="text-sm font-mono font-semibold text-sentinel-text-primary mb-4 uppercase tracking-wider">
-                  Core Competencies
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {expertise.map((skill, index) => (
                     <div
                       key={index}
-                      className="flex items-center gap-2 p-3 rounded bg-sentinel-bg-secondary border border-sentinel-border hover:border-sentinel-accent/40 transition-colors"
+                      className="flex flex-col gap-2 p-4 rounded bg-sentinel-bg-secondary border border-sentinel-border hover:border-sentinel-accent/40 transition-colors"
                     >
-                      <Zap className="w-4 h-4 text-sentinel-accent flex-shrink-0" />
-                      <span className="text-xs font-mono text-sentinel-text-primary">
-                        {skill}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-sentinel-accent flex-shrink-0" />
+                        <h5 className="text-xs font-mono font-bold text-sentinel-text-primary">
+                          {skill.title}
+                        </h5>
+                      </div>
+                      <p className="text-xs font-mono text-sentinel-text-muted leading-relaxed pl-6">
+                        {skill.description}
+                      </p>
                     </div>
                   ))}
                 </div>
