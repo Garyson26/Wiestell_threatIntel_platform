@@ -17,7 +17,7 @@ from app.models.otp import OTP
 from app.schemas.user import (
     UserRegister, UserUpdate, UserLogin, UserResponse,
     TokenResponse, UserListResponse, OTPVerify, OTPResponse,
-    PasswordChange,
+    PasswordChange, PasswordResetRequest, PasswordReset,
 )
 from app.utils.email_service import send_otp_email
 
@@ -218,6 +218,98 @@ async def verify_otp(data: OTPVerify, db: AsyncSession = Depends(get_db)):
         access_token=token,
         user=UserResponse.model_validate(user),
     )
+
+
+@router.post("/forgot-password", response_model=OTPResponse)
+async def forgot_password(data: PasswordResetRequest, db: AsyncSession = Depends(get_db)):
+    """Request password reset - send OTP to user's email."""
+    # Check if user exists
+    result = await db.execute(
+        select(User).where(User.email == data.email)
+    )
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        # Don't reveal if email exists or not for security
+        return OTPResponse(
+            message="If the email exists, an OTP has been sent for password reset.",
+            otp_required=True
+        )
+    
+    # Delete any existing OTPs for this email
+    existing_otps = (await db.execute(
+        select(OTP).where(OTP.email == data.email)
+    )).scalars().all()
+    for old_otp in existing_otps:
+        await db.delete(old_otp)
+    
+    # Generate OTP for password reset
+    otp_code = generate_otp()
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    otp_record = OTP(
+        user_id=user.id,
+        email=data.email,
+        otp=otp_code,
+        expires_at=now_utc + timedelta(minutes=10),  # 10 minutes for password reset
+        verified="pending"
+    )
+    db.add(otp_record)
+    await db.commit()
+    
+    # Send OTP via email
+    email_sent = send_otp_email(data.email, otp_code, user.username, is_password_reset=True)
+    
+    if not email_sent:
+        print(f"⚠️ Password reset email failed. OTP for {data.email}: {otp_code}")
+        return OTPResponse(
+            message=f"Email service unavailable. For demo, OTP: {otp_code}",
+            otp_required=True
+        )
+    
+    print(f"✓ Password reset OTP sent to {data.email}: {otp_code}")
+    
+    return OTPResponse(
+        message="If the email exists, an OTP has been sent for password reset.",
+        otp_required=True
+    )
+
+
+@router.post("/reset-password", response_model=dict)
+async def reset_password(data: PasswordReset, db: AsyncSession = Depends(get_db)):
+    """Reset password using OTP."""
+    # Find the OTP record
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    result = await db.execute(
+        select(OTP).where(
+            (OTP.email == data.email) & 
+            (OTP.otp == data.otp) & 
+            (OTP.verified == "pending") &
+            (OTP.expires_at > now_utc)
+        )
+    )
+    otp_record = result.scalar_one_or_none()
+    
+    if not otp_record:
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+    
+    # Get the user
+    user_result = await db.execute(
+        select(User).where(User.email == data.email)
+    )
+    user = user_result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Update password
+    user.hashed_password = pwd_context.hash(data.new_password)
+    
+    # Mark OTP as verified
+    otp_record.verified = "verified"
+    
+    await db.commit()
+    
+    return {"message": "Password reset successfully"}
 
 
 from fastapi import Request

@@ -122,6 +122,15 @@ export default function LoginPage() {
                 placeholder="Enter password"
                 className="w-full px-3 py-2.5 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40 transition-colors"
               />
+              <div className="mt-2 text-right">
+                <button
+                  type="button"
+                  onClick={() => router.push('/forgot-password')}
+                  className="text-xs font-mono text-sentinel-accent hover:underline transition-colors"
+                >
+                  Forgot Password?
+                </button>
+              </div>
             </div>
             <button
               type="submit"

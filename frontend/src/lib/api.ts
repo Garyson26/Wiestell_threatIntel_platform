@@ -171,6 +171,16 @@ export const changePassword = (data: { current_password: string; new_password: s
     method: 'PUT',
     body: JSON.stringify(data),
   });
+export const forgotPassword = (data: { email: string }) =>
+  fetchAPI<{ message: string; otp_required: boolean }>('/api/v1/users/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+export const resetPassword = (data: { email: string; otp: string; new_password: string }) =>
+  fetchAPI<{ message: string }>('/api/v1/users/reset-password', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 export const getUsers = () => fetchAPI<{ items: import('./types').UserProfile[]; total: number }>('/api/v1/users');
 export const getUser = (id: string) => fetchAPI<import('./types').UserProfile>(`/api/v1/users/${id}`);
 export const updateUser = (id: string, data: { full_name?: string; email?: string }) =>
