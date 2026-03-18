@@ -4,11 +4,11 @@ import { AuthProvider } from '@/lib/auth';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://wiestell.com'),
-  title: {
-    default: 'Wiestell — Free Open Source Threat Intelligence Platform | IOC Lookup',
-    template: '%s | Wiestell',
+  verification: {
+    google: 'your-google-verification-code-here',
   },
-  description: 'Open-source threat intelligence platform for IOC analysis. Community-driven, transparent threat detection with 10+ free feeds. Analyze IPs, domains, file hashes & URLs. No restrictions, fully extensible.',
+  title: 'Wiestell — Free Open Source Threat Intelligence Platform | IOC Lookup',
+  description: 'Free open-source threat intelligence platform aggregating IOC data from URLhaus, ThreatFox, AlienVault OTX, AbuseIPDB, and more. Analyze IPs, domains, file hashes & URLs with comprehensive threat feeds.',
   keywords: [
     'open source threat intelligence',
     'free TIP',
@@ -17,6 +17,9 @@ export const metadata: Metadata = {
     'malware detection',
     'security research',
     'threat feeds',
+    'URLhaus',
+    'ThreatFox',
+    'AlienVault OTX',
     'SOC tools',
     'cybersecurity',
     'IP reputation',
@@ -42,12 +45,12 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'en_US',
     url: 'https://wiestell.com',
-    title: 'Wiestell — Free Open Source Threat Intelligence Platform | IOC Lookup',
-    description: 'Open-source threat intelligence platform for IOC analysis. Community-driven, transparent threat detection with 10+ free feeds. Analyze IPs, domains, file hashes & URLs.',
     siteName: 'Wiestell',
+    title: 'Wiestell — Free Open Source Threat Intelligence Platform | IOC Lookup',
+    description: 'Free open-source threat intelligence platform aggregating IOC data from URLhaus, ThreatFox, AlienVault OTX, AbuseIPDB, and more. Analyze IPs, domains, file hashes & URLs with comprehensive threat feeds.',
     images: [
       {
-        url: '/images/og-image.jpg',
+        url: '/og-image.png',
         width: 1200,
         height: 630,
         alt: 'Wiestell Threat Intelligence Platform',
@@ -57,8 +60,8 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'Wiestell — Free Open Source Threat Intelligence Platform | IOC Lookup',
-    description: 'Open-source threat intelligence platform for IOC analysis. Community-driven, transparent threat detection with 10+ free feeds.',
-    images: ['/images/og-image.jpg'],
+    description: 'Free open-source threat intelligence platform aggregating IOC data from URLhaus, ThreatFox, AlienVault OTX, AbuseIPDB, and more.',
+    images: ['/og-image.png'],
     creator: '@wiestell',
   },
   icons: {
@@ -81,8 +84,29 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'Wiestell',
+    url: 'https://wiestell.com',
+    applicationCategory: 'SecurityApplication',
+    operatingSystem: 'Web',
+    description: 'Free threat intelligence platform for IOC lookup.',
+    offers: {
+      '@type': 'Offer',
+      price: '0',
+      priceCurrency: 'USD',
+    },
+  };
+
   return (
     <html lang="en">
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      </head>
       <body className="scanline-overlay">
         <AuthProvider>
           {children}

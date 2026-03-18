@@ -1,9 +1,8 @@
-# *
+# robots.txt
 User-agent: *
 Allow: /
-
-# Host
-Host: https://wiestell.com
+Disallow: /api/
+Disallow: /admin
 
 # Sitemaps
 Sitemap: https://wiestell.com/sitemap.xml
