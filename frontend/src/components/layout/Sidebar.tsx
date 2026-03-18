@@ -25,8 +25,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
 
-const navItems = [
-  // Admin-only routes
+const adminNavItems = [
   { href: '/dashboard', label: 'Admin Dashboard', icon: LayoutDashboard, roles: ['admin'] },
   { href: '/ioc', label: 'IOC Management', icon: Search, roles: ['admin'] },
   { href: '/feeds', label: 'Threat Feeds', icon: Rss, roles: ['admin'] },
@@ -35,8 +34,9 @@ const navItems = [
   { href: '/ai-assistant', label: 'AI Assistant', icon: Sparkles, roles: ['admin'] },
   { href: '/reports', label: 'Reports', icon: FileText, roles: ['admin'] },
   { href: '/settings', label: 'Settings', icon: Settings, roles: ['admin'] },
-  
-  // Analytics routes (accessible by all roles)
+];
+
+const analyticsNavItems = [
   { href: '/analytics', label: 'Dashboard', icon: BarChart3, roles: ['admin', 'analyst', 'viewer'] },
   { href: '/ioc-search', label: 'IOC Search', icon: Search, roles: ['admin', 'analyst', 'viewer'] },
   { href: '/submit', label: 'Submit IOCs', icon: Upload, roles: ['admin', 'analyst', 'viewer'] },
@@ -47,6 +47,17 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
   const { user } = useAuth();
+
+  // Determine if we're in analytics section
+  const isAnalyticsSection = pathname.startsWith('/analytics') || 
+                             pathname.startsWith('/ioc-search') || 
+                             pathname.startsWith('/ioc-detail') ||
+                             pathname.startsWith('/submit') || 
+                             pathname.startsWith('/history');
+
+  // For admin users on admin routes, show only admin menu
+  // For analytics section, show analytics menu
+  const navItems = isAnalyticsSection ? analyticsNavItems : adminNavItems;
 
   return (
     <aside
