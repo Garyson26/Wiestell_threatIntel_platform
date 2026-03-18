@@ -107,11 +107,11 @@ export default function Home() {
       <main className="flex-1 container mx-auto px-6 py-12">
         {/* Hero Section */}
         <div className="text-center mb-12 animate-fade-in">
-          <h2 className="text-4xl font-bold font-display text-sentinel-text-primary mb-3">
-            Analyze Suspicious Files, URLs, and IOCs
-          </h2>
-          <p className="text-sentinel-text-secondary font-mono text-sm max-w-2xl mx-auto">
-            Powered by advanced threat intelligence feeds, enrichment engines, and AI-driven analysis
+          <h1 className="text-4xl md:text-5xl font-bold font-display text-sentinel-text-primary mb-4 leading-tight">
+            Free Threat Intelligence Platform — IP, Domain & Hash IOC Lookup
+          </h1>
+          <p className="text-sentinel-text-muted font-mono text-sm max-w-3xl mx-auto leading-relaxed">
+            Powered by URLhaus, ThreatFox, MalwareBazaar, AbuseIPDB, VirusTotal, AlienVault OTX, Feodo Tracker, PhishTank and more — completely free.
           </p>
         </div>
 
@@ -175,7 +175,7 @@ export default function Home() {
               Real-time Analysis
             </h3>
             <p className="text-xs font-mono text-sentinel-text-muted">
-              Instant threat detection powered by multiple intelligence feeds
+              Instant IOC detection powered by multiple live intelligence feeds.
             </p>
           </div>
 
@@ -187,7 +187,7 @@ export default function Home() {
               Enrichment Engine
             </h3>
             <p className="text-xs font-mono text-sentinel-text-muted">
-              Comprehensive IOC enrichment with geolocation, WHOIS, and reputation data
+              Comprehensive enrichment including geolocation, WHOIS records, and ASN data.
             </p>
           </div>
 
@@ -199,34 +199,39 @@ export default function Home() {
               Threat Scoring
             </h3>
             <p className="text-xs font-mono text-sentinel-text-muted">
-              AI-powered risk assessment and correlation analysis
+              AI-powered risk correlation across all data sources for a single actionable verdict.
             </p>
           </div>
         </div>
 
-        {/* SEO Content Section */}
+        {/* About Wiestell Section */}
         <section className="max-w-4xl mx-auto mt-20 mb-16">
           <article className="prose prose-invert max-w-none">
             <div className="sentinel-card p-8 md:p-10">
-              <h1 className="text-2xl md:text-3xl font-display font-bold text-sentinel-text-primary mb-6">
-                Free Threat Intelligence Platform — IP, Domain & Hash IOC Lookup
-              </h1>
+              <h2 className="text-2xl md:text-3xl font-display font-bold text-sentinel-text-primary mb-6">
+                About Wiestell
+              </h2>
               
-              <div className="space-y-4 text-sentinel-text-secondary font-mono text-sm leading-relaxed">
+              <div className="space-y-6 text-sentinel-text-secondary font-mono text-sm leading-relaxed">
                 <p>
-                  <strong className="text-sentinel-accent font-semibold">Wiestell</strong> is a comprehensive, free Threat Intelligence Platform (TIP) designed to empower security researchers, SOC analysts, incident responders, and cybersecurity professionals with actionable threat intelligence. Our platform enables rapid analysis of suspicious files, URLs, domains, IP addresses, and other Indicators of Compromise (IOCs) to help organizations identify, investigate, and respond to cyber threats effectively.
+                  <strong className="text-sentinel-accent font-semibold">Wiestell</strong> is a free, open-source platform designed for security analysts and SOC teams to look up IP addresses, domains, and file hashes. Our comprehensive Threat Intelligence Platform (TIP) enables rapid analysis of Indicators of Compromise (IOCs), helping organizations identify, investigate, and respond to cyber threats effectively. Whether you're investigating a potential breach, conducting threat hunting activities, or performing routine security assessments, Wiestell provides the intelligence you need to make informed decisions quickly.
+                </p>
+
+                <blockquote className="border-l-4 border-sentinel-accent pl-6 py-4 my-8 bg-sentinel-bg-tertiary/30 rounded-r">
+                  <p className="text-sentinel-text-primary font-mono text-base italic mb-3 leading-relaxed">
+                    "Threat intelligence shouldn't be a privilege. Every defender... deserves access to the same quality of threat data. That's why Wiestell exists."
+                  </p>
+                  <footer className="text-sentinel-text-muted text-xs font-mono not-italic">
+                    — <cite className="font-semibold text-sentinel-accent">Gary(son) Pereira</cite>, Founder, Wiestell
+                  </footer>
+                </blockquote>
+
+                <p>
+                  Built with security operations in mind, Wiestell supports analysis of multiple IOC types including <strong className="text-sentinel-text-primary">IP addresses</strong>, <strong className="text-sentinel-text-primary">domain names</strong>, <strong className="text-sentinel-text-primary">file hashes (MD5, SHA1, SHA256)</strong>, and <strong className="text-sentinel-text-primary">URLs</strong>. The platform is powered by a curated collection of <strong className="text-sentinel-text-primary">open-source threat intelligence feeds</strong> from trusted sources including AlienVault OTX, AbuseIPDB, URLhaus, MalwareBazaar, PhishTank, and ThreatFox.
                 </p>
 
                 <p>
-                  Built with security operations in mind, Wiestell supports analysis of multiple IOC types including <strong className="text-sentinel-text-primary">IP addresses</strong>, <strong className="text-sentinel-text-primary">domain names</strong>, <strong className="text-sentinel-text-primary">file hashes (MD5, SHA1, SHA256)</strong>, and <strong className="text-sentinel-text-primary">URLs</strong>. Whether you're investigating a potential breach, conducting threat hunting activities, or performing routine security assessments, our platform provides the intelligence you need to make informed decisions quickly.
-                </p>
-
-                <p>
-                  The platform is powered by a curated collection of <strong className="text-sentinel-text-primary">open-source threat intelligence feeds</strong> from trusted sources including AlienVault OTX, AbuseIPDB, URLhaus, MalwareBazaar, PhishTank, and ThreatFox. Our enrichment engine automatically correlates data across multiple feeds, performs geolocation lookups, conducts WHOIS queries, and assesses reputation scores to provide comprehensive context for every IOC analyzed.
-                </p>
-
-                <p>
-                  Designed for both novice and experienced security practitioners, Wiestell offers an intuitive interface combined with powerful backend analytics. Security teams can leverage our AI-driven threat scoring system to prioritize investigations, while developers and researchers can integrate threat intelligence into their workflows. The platform features automated feed ingestion, real-time enrichment, correlation analysis, and detailed reporting capabilities—all available at no cost.
+                  Our enrichment engine automatically correlates data across multiple feeds, performs geolocation lookups, conducts WHOIS queries, and assesses reputation scores to provide comprehensive context for every IOC analyzed. Security teams can leverage our AI-driven threat scoring system to prioritize investigations, while developers and researchers can integrate threat intelligence into their workflows. The platform features automated feed ingestion, real-time enrichment, correlation analysis, and detailed reporting capabilities—all available at no cost.
                 </p>
 
                 <p className="text-sentinel-text-muted text-xs pt-4">
