@@ -2,7 +2,6 @@
 
 from datetime import datetime
 from typing import Optional, List
-from uuid import UUID
 from pydantic import AliasChoices, BaseModel, Field
 
 
@@ -31,7 +30,7 @@ class IOCUpdate(BaseModel):
 
 
 class IOCResponse(IOCBase):
-    id: UUID
+    id: str  # Changed from UUID to str to match IOC model
     threat_score: int
     confidence: int
     first_seen: Optional[datetime]
@@ -73,7 +72,7 @@ class IOCBulkRequest(BaseModel):
 
 class IOCExportRequest(BaseModel):
     format: str = Field(default="json", description="Export format: json, csv, stix")
-    ioc_ids: Optional[List[UUID]] = None
+    ioc_ids: Optional[List[str]] = None  # Changed from UUID to str
     filters: Optional[IOCSearchRequest] = None
 
 

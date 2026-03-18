@@ -1,7 +1,6 @@
 """Celery tasks for background enrichment."""
 
 import asyncio
-from uuid import UUID
 
 import structlog
 from app.tasks.celery_app import celery_app
@@ -18,7 +17,7 @@ def enrich_ioc_task(self, ioc_id: str):
 
     session = SyncSessionLocal()
     try:
-        ioc = session.query(IOC).filter(IOC.id == UUID(ioc_id)).first()
+        ioc = session.query(IOC).filter(IOC.id == ioc_id).first()
         if not ioc:
             logger.error("ioc_not_found", ioc_id=ioc_id)
             return {"status": "error", "message": "IOC not found"}

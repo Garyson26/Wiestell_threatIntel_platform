@@ -4,7 +4,6 @@ import csv
 import io
 from datetime import datetime
 from typing import Optional, List
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import select, func, desc, asc, or_, and_
@@ -83,7 +82,7 @@ async def list_iocs(
 
 
 @router.get("/{ioc_id}", response_model=IOCDetailResponse)
-async def get_ioc(ioc_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_ioc(ioc_id: str, db: AsyncSession = Depends(get_db)):
     """Get detailed IOC information including enrichment data."""
     result = await db.execute(
         select(IOC)
@@ -260,7 +259,7 @@ async def bulk_lookup(request: IOCBulkRequest, db: AsyncSession = Depends(get_db
 
 
 @router.put("/{ioc_id}/tags", response_model=IOCResponse)
-async def update_tags(ioc_id: UUID, tag_update: IOCTagUpdate, db: AsyncSession = Depends(get_db)):
+async def update_tags(ioc_id: str, tag_update: IOCTagUpdate, db: AsyncSession = Depends(get_db)):
     """Update IOC tags."""
     result = await db.execute(select(IOC).where(IOC.id == ioc_id))
     ioc = result.scalar_one_or_none()
@@ -273,7 +272,7 @@ async def update_tags(ioc_id: UUID, tag_update: IOCTagUpdate, db: AsyncSession =
 
 
 @router.get("/{ioc_id}/enrichment")
-async def get_enrichment(ioc_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_enrichment(ioc_id: str, db: AsyncSession = Depends(get_db)):
     """Get enrichment data for an IOC."""
     result = await db.execute(
         select(Enrichment).where(Enrichment.ioc_id == ioc_id)
@@ -292,7 +291,7 @@ async def get_enrichment(ioc_id: UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{ioc_id}/enrich")
-async def trigger_enrichment(ioc_id: UUID, db: AsyncSession = Depends(get_db)):
+async def trigger_enrichment(ioc_id: str, db: AsyncSession = Depends(get_db)):
     """Trigger re-enrichment for an IOC."""
     from app.services.enrichment_engine import enrich_ioc
 
@@ -306,7 +305,7 @@ async def trigger_enrichment(ioc_id: UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{ioc_id}/relationships")
-async def get_relationships(ioc_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_relationships(ioc_id: str, db: AsyncSession = Depends(get_db)):
     """Get related IOCs."""
     result = await db.execute(
         select(IOCRelationship).where(
@@ -339,7 +338,7 @@ async def get_relationships(ioc_id: UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{ioc_id}/timeline")
-async def get_timeline(ioc_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_timeline(ioc_id: str, db: AsyncSession = Depends(get_db)):
     """Get IOC timeline showing history across sources."""
     result = await db.execute(
         select(IOCSource)

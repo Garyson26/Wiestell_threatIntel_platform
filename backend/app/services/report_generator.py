@@ -2,7 +2,6 @@
 
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
-from uuid import UUID
 
 from sqlalchemy import select, func, desc, Integer
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -104,7 +103,7 @@ async def generate_custom_report(
     title: str,
     date_from: Optional[datetime] = None,
     date_to: Optional[datetime] = None,
-    ioc_ids: Optional[List[UUID]] = None,
+    ioc_ids: Optional[List[str]] = None,  # Changed from UUID to str
     min_score: Optional[int] = None,
     feed_sources: Optional[List[str]] = None,
 ) -> Dict[str, Any]:

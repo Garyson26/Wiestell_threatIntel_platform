@@ -1,7 +1,7 @@
 """Database connection and session management."""
 
 import os
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy.pool import NullPool
@@ -26,11 +26,13 @@ if IS_SERVERLESS:
 else:
     sync_engine = create_engine(
         settings.DATABASE_URL,
-        pool_size=5,
-        max_overflow=0,
-        pool_pre_ping=True,
-        pool_recycle=300,
+        poolclass=NullPool,    # Fresh connection per request for remote DB
         echo=False,
+        connect_args={
+            "connect_timeout": 30,
+            "read_timeout": 60,
+            "write_timeout": 60,
+        }
     )
 SyncSessionLocal = sessionmaker(bind=sync_engine)
 
@@ -50,11 +52,11 @@ if IS_SERVERLESS:
 else:
     async_engine = create_async_engine(
         async_db_url,
-        pool_size=2,
-        max_overflow=1,
-        pool_pre_ping=True,
-        pool_recycle=300,
+        poolclass=NullPool,    # Fresh connection per request for remote DB
         echo=False,
+        connect_args={
+            "connect_timeout": 30,
+        }
     )
 
 AsyncSessionLocal = async_sessionmaker(
@@ -73,6 +75,7 @@ async def get_db() -> AsyncSession:
     async with AsyncSessionLocal() as session:
         try:
             yield session
+            await session.commit()
         except Exception as e:
             await session.rollback()
             raise

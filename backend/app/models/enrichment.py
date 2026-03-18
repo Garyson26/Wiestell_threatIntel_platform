@@ -1,7 +1,7 @@
 """Enrichment result database model."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, String, DateTime, ForeignKey, UniqueConstraint, JSON
 from sqlalchemy.orm import relationship
@@ -16,7 +16,7 @@ class Enrichment(Base):
     ioc_id = Column(String(36), ForeignKey("iocs.id", ondelete="CASCADE"), nullable=False)
     source = Column(String(50), nullable=False)  # whois, dns, geoip, shodan, reputation
     data = Column(JSON, nullable=False)
-    enriched_at = Column(DateTime, default=datetime.utcnow)
+    enriched_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     expires_at = Column(DateTime)
 
     # Relationships

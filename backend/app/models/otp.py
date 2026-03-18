@@ -1,7 +1,7 @@
 """OTP database model."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, String, DateTime, ForeignKey
 
@@ -15,7 +15,7 @@ class OTP(Base):
     user_id = Column(String(36), ForeignKey("users.id"), nullable=True)  # Nullable for signup OTPs
     email = Column(String(255), nullable=False, index=True)
     otp = Column(String(10), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     expires_at = Column(DateTime, nullable=False)
     verified = Column(String(10), default="pending")  # pending, verified, expired
     

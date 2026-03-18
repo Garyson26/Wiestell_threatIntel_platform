@@ -2,7 +2,6 @@
 
 from datetime import datetime
 from typing import Optional, List
-from uuid import UUID
 from pydantic import BaseModel, Field
 
 
@@ -11,13 +10,13 @@ class ReportCreate(BaseModel):
     report_type: str = Field(default="custom", description="daily_brief, weekly_brief, custom, investigation")
     date_from: Optional[datetime] = None
     date_to: Optional[datetime] = None
-    ioc_ids: Optional[List[UUID]] = None
+    ioc_ids: Optional[List[str]] = None  # Changed from UUID to str
     feed_sources: Optional[List[str]] = None
     min_score: Optional[int] = None
 
 
 class ReportResponse(BaseModel):
-    id: UUID
+    id: str  # Changed from UUID to str to match Report model
     title: str
     report_type: str
     summary: Optional[str]
