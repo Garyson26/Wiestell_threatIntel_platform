@@ -87,6 +87,18 @@ export default function Home() {
               Admin Login
             </button> */}
             <button
+              onClick={() => router.push('/about')}
+              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+            >
+              About
+            </button>
+             <button
+              onClick={() => router.push('/contact')}
+              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+            >
+              Contact Us
+            </button>
+            <button
               onClick={() => router.push('/login')}
               className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
             >
