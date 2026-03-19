@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { Lock, KeyRound, ArrowLeft, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { resetPassword } from '@/lib/api';
 
-export default function ResetPasswordPage() {
+function ResetPasswordForm() {
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -222,5 +222,21 @@ export default function ResetPasswordPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-[80vh]">
+        <div className="sentinel-card w-full max-w-sm p-8">
+          <div className="flex items-center justify-center">
+            <div className="w-6 h-6 border-2 border-sentinel-accent border-t-transparent rounded-full animate-spin" />
+          </div>
+        </div>
+      </div>
+    }>
+      <ResetPasswordForm />
+    </Suspense>
   );
 }
