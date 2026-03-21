@@ -9,24 +9,24 @@ export const metadata: Metadata = {
 
 export default function AboutPage() {
   const intelligenceSources = [
-    { name: 'URLhaus', description: 'Malware distribution URLs' },
-    { name: 'ThreatFox', description: 'IOCs shared by the community' },
-    { name: 'MalwareBazaar', description: 'Malware sample intelligence' },
-    { name: 'Feodo Tracker', description: 'Botnet C2 infrastructure tracking' },
-    { name: 'AbuseIPDB', description: 'Crowdsourced IP reputation' },
-    { name: 'AlienVault OTX', description: 'Open threat intelligence exchange' },
-    { name: 'PhishTank', description: 'Phishing URL verification' },
-    { name: 'Emerging Threats', description: 'Proofpoint threat intelligence' },
-    { name: 'Blocklist.de', description: 'SSH, mail, and web attacks' },
-    { name: 'VirusTotal', description: 'Multi-engine malware scanning' },
+    { name: 'URLhaus', description: 'Malware distribution URLs and download sites' },
+    { name: 'ThreatFox', description: 'Indicators of compromise associated with malware families' },
+    { name: 'MalwareBazaar', description: 'Malware sample hashes and metadata' },
+    { name: 'Feodo Tracker', description: 'Botnet command-and-control server indicators' },
+    { name: 'AbuseIPDB', description: 'Crowdsourced IP abuse reports' },
+    { name: 'AlienVault OTX', description: 'Open threat exchange indicators and pulses' },
+    { name: 'PhishTank', description: 'Verified phishing URLs' },
+    { name: 'Emerging Threats', description: 'Community-maintained IP and domain blocklists' },
+    { name: 'Blocklist.de', description: 'Attack source IPs from honeypot networks' },
+    { name: 'VirusTotal', description: 'Multi-engine file, URL, and domain reputation' },
   ];
 
   const userGroups = [
-    { icon: Shield, title: 'SOC Analysts', description: 'Monitor and investigate security alerts' },
-    { icon: Search, title: 'Incident Responders', description: 'Rapid IOC analysis during breaches' },
-    { icon: Crosshair, title: 'Threat Hunters', description: 'Proactive threat discovery' },
-    { icon: Lock, title: 'Security Engineers', description: 'Infrastructure protection and monitoring' },
-    { icon: GraduationCap, title: 'Students & Researchers', description: 'Learn cybersecurity and threat analysis' },
+    { icon: Shield, title: 'SOC analysts', description: 'Triaging alerts who need a fast IOC reputation check' },
+    { icon: Search, title: 'Incident responders', description: 'Investigating suspicious IPs or domains' },
+    { icon: Crosshair, title: 'Threat hunters', description: 'Building adversary profiles' },
+    { icon: Lock, title: 'Security engineers', description: 'Building automated enrichment pipelines' },
+    { icon: GraduationCap, title: 'Students and researchers', description: 'Learning threat intelligence' },
   ];
 
   const expertise = [
@@ -91,13 +91,7 @@ export default function AboutPage() {
             </h2>
             <div className="space-y-4 text-sentinel-text-secondary font-mono text-sm leading-relaxed">
               <p>
-                <strong className="text-sentinel-accent">Wiestell</strong> is a free, open-source threat intelligence platform designed for SOC teams, security researchers, and incident responders. It consolidates data from the world's most trusted open-source threat feeds into a single investigation point.
-              </p>
-              <p>
-                Instead of checking multiple sites manually, Wiestell allows you to look up <strong className="text-sentinel-text-primary">IP addresses</strong>, <strong className="text-sentinel-text-primary">domains</strong>, <strong className="text-sentinel-text-primary">URLs</strong>, and <strong className="text-sentinel-text-primary">file hashes</strong> in one place and get enriched, correlated results instantly.
-              </p>
-              <p className="text-sentinel-accent font-semibold">
-                One platform. One search. All feeds.
+                <strong className="text-sentinel-accent">Wiestell</strong> is a free, open-source threat intelligence platform designed for security analysts, SOC teams, incident responders, and cybersecurity researchers. It aggregates and correlates data from the world's most trusted open-source threat intelligence feeds, giving defenders a single place to investigate indicators of compromise (IOCs) quickly and without cost.
               </p>
             </div>
           </section>
@@ -109,18 +103,10 @@ export default function AboutPage() {
             </h2>
             <div className="space-y-4 text-sentinel-text-secondary font-mono text-sm leading-relaxed">
               <p>
-                Threat intelligence is often locked behind expensive subscriptions, making it inaccessible to smaller teams, independent researchers, and students. We believe security should be democratized.
+                Threat intelligence has historically been locked behind expensive enterprise subscriptions. While excellent open-source feeds exist — URLhaus, ThreatFox, AbuseIPDB, AlienVault OTX, and others — accessing them individually is slow and fragmented. Wiestell was built to solve that: <strong className="text-sentinel-accent">one platform, one search, all feeds</strong>.
               </p>
-              <blockquote className="border-l-4 border-sentinel-accent pl-6 py-4 my-6 bg-sentinel-bg-tertiary/30 rounded-r">
-                <p className="text-sentinel-text-primary font-mono text-base italic mb-3 leading-relaxed">
-                  "Threat intelligence shouldn't be a privilege. Every defender deserves access to the same quality of threat data. That's why Wiestell exists."
-                </p>
-                <footer className="text-sentinel-text-muted text-xs font-mono not-italic">
-                  — <cite className="font-semibold text-sentinel-accent">Gary(son) Pereira</cite>, Founder, Wiestell
-                </footer>
-              </blockquote>
               <p>
-                Wiestell was built to level the playing field. Whether you're running a global SOC or learning cybersecurity from your dorm room, you deserve the same intelligence-grade tools.
+                Our goal is to make actionable threat intelligence accessible to every defender, regardless of budget — from a solo analyst at an NGO to a mature SOC team.
               </p>
             </div>
           </section>
@@ -131,7 +117,7 @@ export default function AboutPage() {
               What Wiestell Checks
             </h2>
             <p className="text-sentinel-text-secondary font-mono text-sm mb-6">
-              Every lookup correlates data across these trusted intelligence sources:
+              For any IP address, domain, URL, or file hash you submit, Wiestell queries and correlates data from the following open-source intelligence sources:
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {intelligenceSources.map((source, index) => (
@@ -156,7 +142,7 @@ export default function AboutPage() {
           {/* Who Uses Wiestell */}
           <section className="sentinel-card p-8 md:p-10">
             <h2 className="text-2xl md:text-3xl font-display font-bold text-sentinel-text-primary mb-6">
-              Who Uses Wiestell
+              Who Uses Wiestell?
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {userGroups.map((group, index) => {
@@ -188,7 +174,7 @@ export default function AboutPage() {
                 Meet the Founder
               </h2>
               <a
-                href="https://www.linkedin.com/in/garysonpereira"
+                href="https://www.linkedin.com/in/garyson-pereira-a34019b8"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sentinel-accent hover:text-sentinel-accent/80 transition-colors"
@@ -208,7 +194,7 @@ export default function AboutPage() {
                     Gary(son) is a cybersecurity leader with <strong className="text-sentinel-accent">11 years of experience</strong> spanning professional practice and advanced academic research. He holds an <strong className="text-sentinel-text-primary">M.Sc. in Computer Forensics and Cyber Security from the University of Greenwich, London</strong>, and currently serves as <strong className="text-sentinel-text-primary">Lead Security Engineer in the fintech sector at Oakbrook Finance</strong>.
                   </p>
                   <p>
-                    Garyson built Wiestell out of the conviction that high-quality threat intelligence should be freely available to every defender—not just organisations with enterprise budgets. Drawing on his day-to-day work leading threat intelligence programmes, SOC workflows, and security automation, he designed Wiestell to aggregate the best open-source feeds into a single, fast, and accessible platform.
+                    Garyson built Wiestell out of the conviction that high-quality threat intelligence should be freely available to every defender — not just organisations with enterprise budgets. Drawing on his day-to-day work leading threat intelligence programmes, SOC workflows, and security automation, he designed Wiestell to aggregate the best open-source feeds into a single, fast, and accessible platform.
                   </p>
                 </div>
               </div>
@@ -243,6 +229,29 @@ export default function AboutPage() {
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Open Source */}
+          <section className="sentinel-card p-8 md:p-10">
+            <h2 className="text-2xl md:text-3xl font-display font-bold text-sentinel-text-primary mb-6">
+              Open Source
+            </h2>
+            <div className="space-y-4 text-sentinel-text-secondary font-mono text-sm leading-relaxed">
+              <p>
+                Wiestell is <strong className="text-sentinel-accent">open source</strong>. We believe in transparency and community-driven security. Contributions, bug reports, and feature suggestions are welcome.
+              </p>
+              <div className="flex gap-3 mt-6">
+                <a
+                  href="https://github.com/wiestell"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded border border-sentinel-border text-sentinel-text-secondary hover:text-sentinel-accent hover:border-sentinel-accent transition-colors text-sm font-mono"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  View on GitHub
+                </a>
               </div>
             </div>
           </section>
