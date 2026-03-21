@@ -119,7 +119,7 @@ export default function Home() {
       <main className="flex-1 container mx-auto px-6 py-12">
         {/* Hero Section */}
         <div className="text-center mb-12 animate-fade-in">
-          <h1 className="text-4xl md:text-5xl font-bold font-display text-sentinel-text-primary mb-4 leading-tight">
+          <h1 className="text-4xl md:text-4xl font-bold font-display text-sentinel-text-primary mb-4 leading-tight">
             Free Threat Intelligence Platform — IP, Domain & Hash IOC Lookup
           </h1>
           <p className="text-sentinel-text-muted font-mono text-sm max-w-3xl mx-auto leading-relaxed">
