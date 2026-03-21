@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  output: 'standalone', // Required for Docker deployment
+  // output: 'standalone', // Removed - incompatible with Cloudflare Pages
   async redirects() {
     return [
       {
