@@ -65,15 +65,9 @@ export const metadata: Metadata = {
     creator: '@wiestell',
   },
   icons: {
-    icon: [
-      { url: '/images/favicon.ico', sizes: 'any' },
-      { url: '/images/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
-      { url: '/images/favicon-192x192.png', sizes: '192x192', type: 'image/png' },
-    ],
+    icon: '/images/favicon.ico',
     shortcut: '/images/favicon.ico',
-    apple: '/images/apple-touch-icon.png',
   },
-  manifest: '/site.webmanifest',
   alternates: {
     canonical: 'https://wiestell.com',
   },
