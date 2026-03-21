@@ -9,6 +9,7 @@ from app.models.attack_technique import AttackTechnique
 from app.models.report import Report
 from app.models.user import User
 from app.models.otp import OTP
+from app.models.contact import Contact
 
 __all__ = [
     "IOC",
@@ -20,4 +21,5 @@ __all__ = [
     "Report",
     "User",
     "OTP",
+    "Contact",
 ]

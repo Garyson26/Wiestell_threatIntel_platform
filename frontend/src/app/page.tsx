@@ -177,45 +177,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Features Section */}
-        <div className="max-w-5xl mx-auto mt-16 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="sentinel-card p-6 text-center animate-fade-in hover:border-sentinel-accent/30 transition-colors">
-            <div className="w-12 h-12 rounded-lg bg-sentinel-accent/10 border border-sentinel-accent/30 flex items-center justify-center mx-auto mb-4">
-              <Zap className="w-6 h-6 text-sentinel-accent" />
-            </div>
-            <h3 className="text-sm font-display font-semibold text-sentinel-text-primary mb-2">
-              Real-time Analysis
-            </h3>
-            <p className="text-xs font-mono text-sentinel-text-muted">
-              Instant IOC detection powered by multiple live intelligence feeds.
-            </p>
-          </div>
-
-          <div className="sentinel-card p-6 text-center animate-fade-in hover:border-sentinel-accent/30 transition-colors" style={{ animationDelay: '100ms' }}>
-            <div className="w-12 h-12 rounded-lg bg-sentinel-accent/10 border border-sentinel-accent/30 flex items-center justify-center mx-auto mb-4">
-              <Database className="w-6 h-6 text-sentinel-accent" />
-            </div>
-            <h3 className="text-sm font-display font-semibold text-sentinel-text-primary mb-2">
-              Enrichment Engine
-            </h3>
-            <p className="text-xs font-mono text-sentinel-text-muted">
-              Comprehensive enrichment including geolocation, WHOIS records, and ASN data.
-            </p>
-          </div>
-
-          <div className="sentinel-card p-6 text-center animate-fade-in hover:border-sentinel-accent/30 transition-colors" style={{ animationDelay: '200ms' }}>
-            <div className="w-12 h-12 rounded-lg bg-sentinel-accent/10 border border-sentinel-accent/30 flex items-center justify-center mx-auto mb-4">
-              <TrendingUp className="w-6 h-6 text-sentinel-accent" />
-            </div>
-            <h3 className="text-sm font-display font-semibold text-sentinel-text-primary mb-2">
-              Threat Scoring
-            </h3>
-            <p className="text-xs font-mono text-sentinel-text-muted">
-              AI-powered risk correlation across all data sources for a single actionable verdict.
-            </p>
-          </div>
-        </div>
-
         {/* About Wiestell Section */}
         <section className="max-w-4xl mx-auto mt-20 mb-16">
           <article className="prose prose-invert max-w-none">
@@ -226,29 +187,59 @@ export default function Home() {
               
               <div className="space-y-6 text-sentinel-text-secondary font-mono text-sm leading-relaxed">
                 <p>
-                  <strong className="text-sentinel-accent font-semibold">Wiestell</strong> is a free, open-source platform designed for security analysts and SOC teams to look up IP addresses, domains, and file hashes. Our comprehensive Threat Intelligence Platform (TIP) enables rapid analysis of Indicators of Compromise (IOCs), helping organizations identify, investigate, and respond to cyber threats effectively. Whether you're investigating a potential breach, conducting threat hunting activities, or performing routine security assessments, Wiestell provides the intelligence you need to make informed decisions quickly.
+                  <strong className="text-sentinel-accent font-semibold">Wiestell</strong> is a free, open-source threat intelligence platform that aggregates data from the most trusted open-source feeds on the internet. Security analysts, SOC teams, and threat researchers can instantly look up any IP address, domain name, URL, or file hash to check its reputation, malware associations, and threat history.
                 </p>
 
                 <blockquote className="border-l-4 border-sentinel-accent pl-6 py-4 my-8 bg-sentinel-bg-tertiary/30 rounded-r">
                   <p className="text-sentinel-text-primary font-mono text-base italic mb-3 leading-relaxed">
-                    "Threat intelligence shouldn't be a privilege. Every defender... deserves access to the same quality of threat data. That's why Wiestell exists."
+                    "Threat intelligence shouldn't be a privilege. Every defender — whether in a mature
+enterprise SOC or working solo — deserves access to the same quality of threat data.
+That's why Wiestell exists."
                   </p>
                   <footer className="text-sentinel-text-muted text-xs font-mono not-italic">
                     — <cite className="font-semibold text-sentinel-accent">Gary(son) Pereira</cite>, Founder, Wiestell
                   </footer>
                 </blockquote>
 
-                <p>
-                  Built with security operations in mind, Wiestell supports analysis of multiple IOC types including <strong className="text-sentinel-text-primary">IP addresses</strong>, <strong className="text-sentinel-text-primary">domain names</strong>, <strong className="text-sentinel-text-primary">file hashes (MD5, SHA1, SHA256)</strong>, and <strong className="text-sentinel-text-primary">URLs</strong>. The platform is powered by a curated collection of <strong className="text-sentinel-text-primary">open-source threat intelligence feeds</strong> from trusted sources including AlienVault OTX, AbuseIPDB, URLhaus, MalwareBazaar, PhishTank, and ThreatFox.
-                </p>
+                {/* Feature Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-8">
+                  <div className="bg-sentinel-bg-tertiary/20 border border-sentinel-border rounded p-5 hover:border-sentinel-accent/30 transition-colors">
+                    <div className="w-10 h-10 rounded bg-sentinel-accent/10 border border-sentinel-accent/30 flex items-center justify-center mb-3">
+                      <Zap className="w-5 h-5 text-sentinel-accent" />
+                    </div>
+                    <h3 className="text-sm font-display font-semibold text-sentinel-text-primary mb-2">
+                      Real-time Analysis
+                    </h3>
+                    <p className="text-xs font-mono text-sentinel-text-secondary leading-relaxed">
+                      Instant IOC detection powered by multiple live intelligence feeds updated continuously by the security community.
+                    </p>
+                  </div>
 
-                <p>
-                  Our enrichment engine automatically correlates data across multiple feeds, performs geolocation lookups, conducts WHOIS queries, and assesses reputation scores to provide comprehensive context for every IOC analyzed. Security teams can leverage our AI-driven threat scoring system to prioritize investigations, while developers and researchers can integrate threat intelligence into their workflows. The platform features automated feed ingestion, real-time enrichment, correlation analysis, and detailed reporting capabilities—all available at no cost.
-                </p>
+                  <div className="bg-sentinel-bg-tertiary/20 border border-sentinel-border rounded p-5 hover:border-sentinel-accent/30 transition-colors">
+                    <div className="w-10 h-10 rounded bg-sentinel-accent/10 border border-sentinel-accent/30 flex items-center justify-center mb-3">
+                      <Database className="w-5 h-5 text-sentinel-accent" />
+                    </div>
+                    <h3 className="text-sm font-display font-semibold text-sentinel-text-primary mb-2">
+                      Enrichment Engine
+                    </h3>
+                    <p className="text-xs font-mono text-sentinel-text-secondary leading-relaxed">
+                      Comprehensive enrichment including geolocation, WHOIS records, ASN data, and historical reputation scoring.
+                    </p>
+                  </div>
 
-                <p className="text-sentinel-text-muted text-xs pt-4">
-                  Start analyzing threats today with Wiestell's free threat intelligence platform and join a community of security professionals dedicated to making the internet safer for everyone.
-                </p>
+                  <div className="bg-sentinel-bg-tertiary/20 border border-sentinel-border rounded p-5 hover:border-sentinel-accent/30 transition-colors">
+                    <div className="w-10 h-10 rounded bg-sentinel-accent/10 border border-sentinel-accent/30 flex items-center justify-center mb-3">
+                      <TrendingUp className="w-5 h-5 text-sentinel-accent" />
+                    </div>
+                    <h3 className="text-sm font-display font-semibold text-sentinel-text-primary mb-2">
+                      Threat Scoring
+                    </h3>
+                    <p className="text-xs font-mono text-sentinel-text-secondary leading-relaxed">
+                      AI-powered risk correlation across all data sources. Get a single actionable verdict on any indicator of compromise.
+                    </p>
+                  </div>
+                </div>
+
               </div>
             </div>
           </article>
