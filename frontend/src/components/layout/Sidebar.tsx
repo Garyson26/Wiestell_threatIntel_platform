@@ -21,6 +21,7 @@ import {
   BarChart3,
   Upload,
   Eye,
+  Mail,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth';
@@ -32,6 +33,7 @@ const adminNavItems = [
   { href: '/attack-map', label: 'ATT&CK Map', icon: Grid3X3, roles: ['admin'] },
   { href: '/hunting', label: 'Threat Hunting', icon: Crosshair, roles: ['admin'] },
   { href: '/ai-assistant', label: 'AI Assistant', icon: Sparkles, roles: ['admin'] },
+  { href: '/contacts', label: 'Contact Messages', icon: Mail, roles: ['admin'] },
   { href: '/reports', label: 'Reports', icon: FileText, roles: ['admin'] },
   { href: '/settings', label: 'Settings', icon: Settings, roles: ['admin'] },
 ];
