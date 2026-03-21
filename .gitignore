@@ -35,3 +35,5 @@ redis_data/
 # Logs
 *.log
 celerybeat-schedule
+
+.package-lock.json
