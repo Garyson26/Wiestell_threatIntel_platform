@@ -12,6 +12,9 @@ const threatSources: ThreatSource[] = [
   { name: 'AbuseIPDB', url: 'https://www.abuseipdb.com' },
   { name: 'VirusTotal', url: 'https://www.virustotal.com' },
   { name: 'AlienVault OTX', url: 'https://otx.alienvault.com' },
+  { name: 'MalwareBazaar', url: 'https://bazaar.abuse.ch' },
+  { name: 'Feodo Tracker', url: 'https://feodotracker.abuse.ch' },
+  { name: 'PhishTank', url: 'https://www.phishtank.com' },
 ];
 
 export function PoweredBy() {
