@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   verification: {
     google: 'your-google-verification-code-here',
   },
-  title: 'Wiestell — Free Open Source Threat Intelligence Platform | IOC Lookup',
+  title: 'Wiestell | Free Open Source Threat Intelligence Platform | IOC Lookup',
   description: 'Free open-source threat intelligence platform aggregating IOC data from URLhaus, ThreatFox, AlienVault OTX, AbuseIPDB, and more. Analyze IPs, domains, file hashes & URLs with comprehensive threat feeds.',
   keywords: [
     'open source threat intelligence',
@@ -46,7 +46,7 @@ export const metadata: Metadata = {
     locale: 'en_US',
     url: 'https://wiestell.com',
     siteName: 'Wiestell',
-    title: 'Wiestell — Free Open Source Threat Intelligence Platform | IOC Lookup',
+    title: 'Wiestell | Free Open Source Threat Intelligence Platform | IOC Lookup',
     description: 'Free open-source threat intelligence platform aggregating IOC data from URLhaus, ThreatFox, AlienVault OTX, AbuseIPDB, and more. Analyze IPs, domains, file hashes & URLs with comprehensive threat feeds.',
     images: [
       {
@@ -59,7 +59,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Wiestell — Free Open Source Threat Intelligence Platform | IOC Lookup',
+    title: 'Wiestell | Free Open Source Threat Intelligence Platform | IOC Lookup',
     description: 'Free open-source threat intelligence platform aggregating IOC data from URLhaus, ThreatFox, AlienVault OTX, AbuseIPDB, and more.',
     images: ['/og-image.png'],
     creator: '@wiestell',
@@ -116,7 +116,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </head>
-      <body className="scanline-overlay">
+      <body>
         <AuthProvider>
           {children}
         </AuthProvider>
