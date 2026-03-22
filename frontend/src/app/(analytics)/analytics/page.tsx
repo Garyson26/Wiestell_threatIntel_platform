@@ -256,22 +256,6 @@ export default function AnalyticsDashboard() {
           </div>
         )}
       </div>
-
-      {/* Access Info */}
-      <div className="sentinel-card p-6 bg-sentinel-bg-tertiary border-sentinel-border-hover">
-        <div className="flex items-start gap-3">
-          <Shield className="w-5 h-5 text-sentinel-accent mt-1 flex-shrink-0" />
-          <div>
-            <h3 className="font-semibold text-sentinel-text-primary mb-1">
-              Role-Based Access
-            </h3>
-            <p className="text-sm text-sentinel-text-secondary">
-              You are logged in as <span className="font-mono text-sentinel-accent">{user?.role}</span>. 
-              Admin-only features are restricted to users with admin privileges.
-            </p>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
