@@ -3,12 +3,14 @@
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { Upload, Link2, Search, FileText, ArrowRight, Zap, Database, TrendingUp } from 'lucide-react';
+import { Upload, Link2, Search, FileText, ArrowRight, Zap, Database, TrendingUp, LogOut } from 'lucide-react';
 import { SoftwareApplicationSchema } from '@/components/shared/JsonLd';
 import { PoweredBy } from '@/components/shared/PoweredBy';
+import { useAuth } from '@/lib/auth';
 
 export default function Home() {
   const router = useRouter();
+  const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<'file' | 'url' | 'search'>('search');
   const [dragActive, setDragActive] = useState(false);
   const [urlInput, setUrlInput] = useState('');
@@ -80,12 +82,6 @@ export default function Home() {
             />
           </div>
           <div className="flex gap-3">
-            {/* <button
-              onClick={() => router.push('/admin')}
-              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
-            >
-              Admin Login
-            </button> */}
             <button
               onClick={() => router.push('/about')}
               className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
@@ -98,19 +94,38 @@ export default function Home() {
             >
               Contact Us
             </button>
-            <button
-              onClick={() => router.push('/login')}
-              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
-            >
-              Login
-            </button>
-            {/* <button
-              onClick={() => router.push('/dashboard')}
-              className="px-4 py-2 rounded bg-sentinel-accent/10 border border-sentinel-accent/30 text-sentinel-accent text-sm font-mono font-semibold hover:bg-sentinel-accent/20 transition-colors flex items-center gap-2"
-            >
-              Dashboard
-              <ArrowRight className="w-4 h-4" />
-            </button> */}
+            {user ? (
+              <>
+                <button
+                  onClick={() => {
+                    const dashboardPath = user.role === 'admin' ? '/dashboard' : '/analytics';
+                    router.push(dashboardPath);
+                  }}
+                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                >
+                  Dashboard
+                </button>
+                <button
+                  onClick={() => {
+                    logout();
+                    router.push('/');
+                  }}
+                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors flex items-center gap-1"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Logout
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => router.push('/login')}
+                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                >
+                  Login
+                </button>
+              </>
+            )}
           </div>
         </div>
       </header>
