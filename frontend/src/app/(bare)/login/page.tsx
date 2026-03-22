@@ -1,11 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import Image from 'next/image';
-import { LogIn, KeyRound, ArrowLeft, BarChart3 } from 'lucide-react';
+import { LogIn, KeyRound, ArrowLeft, BarChart3, LogOut } from 'lucide-react';
 import { loginUser, verifyOtp } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import OTPInput from '@/components/OTPInput';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -16,7 +18,16 @@ export default function LoginPage() {
   const [otpStep, setOtpStep] = useState(false);
   const [otpMessage, setOtpMessage] = useState('');
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, user, token, logout } = useAuth();
+
+  // Redirect if user is already logged in
+  useEffect(() => {
+    if (user && token) {
+      // Redirect based on user role
+      const redirectPath = user.role === 'admin' ? '/dashboard' : '/analytics';
+      router.push(redirectPath);
+    }
+  }, [user, token, router]);
 
   async function handleCredentialsSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -66,8 +77,72 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-[80vh]">
-      <div className="sentinel-card w-full max-w-sm p-8 animate-fade-in">
+    <div className="min-h-screen bg-sentinel-bg-primary">
+      {/* Header */}
+      <header className="border-b border-sentinel-border bg-sentinel-bg-secondary/50 backdrop-blur-sm">
+        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+          <Link href="/" className="flex items-center">
+            <Image
+              src="/images/Wiestell-Logo.png"
+              alt="Wiestell Logo"
+              width={140}
+              height={47}
+              className="object-contain"
+              priority
+            />
+          </Link>
+          <div className="flex gap-3">
+            <Link
+              href="/about"
+              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+            >
+              About
+            </Link>
+            <Link
+              href="/contact"
+              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+            >
+              Contact Us
+            </Link>
+            {user ? (
+              <>
+                <button
+                  onClick={() => {
+                    const dashboardPath = user.role === 'admin' ? '/dashboard' : '/analytics';
+                    router.push(dashboardPath);
+                  }}
+                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                >
+                  Dashboard
+                </button>
+                <button
+                  onClick={() => {
+                    logout();
+                    router.push('/');
+                  }}
+                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors flex items-center gap-1"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Logout
+                </button>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="px-4 py-2 text-sm font-mono text-sentinel-accent hover:text-sentinel-accent transition-colors font-semibold"
+                >
+                  Login
+                </Link>
+              </>
+            )}
+          </div>
+        </div>
+      </header>
+      
+      {/* Main Content */}
+      <div className="flex items-center justify-center min-h-[calc(100vh-73px)] py-12">
+        <div className="sentinel-card w-full max-w-sm p-8 animate-fade-in">
         {/* Logo */}
         <div className="flex items-center justify-center mb-8">
           <Image
@@ -144,15 +219,12 @@ export default function LoginPage() {
         ) : (
           <form onSubmit={handleOtpSubmit} className="space-y-4">
             <div>
-              <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Enter OTP</label>
-              <input
-                type="text"
+              <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-3 text-center">Enter OTP</label>
+              <OTPInput
+                length={6}
                 value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                placeholder="Enter 6-digit OTP"
-                maxLength={6}
+                onChange={setOtp}
                 autoFocus
-                className="w-full px-3 py-2.5 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40 transition-colors text-center text-xl tracking-widest"
               />
             </div>
             <button
@@ -190,15 +262,8 @@ export default function LoginPage() {
             CREATE ACCOUNT
           </button>
         </div>
-
-        <button
-          onClick={() => router.push('/')}
-          className="w-full mt-4 flex items-center justify-center gap-2 text-xs font-mono text-sentinel-text-muted hover:text-sentinel-accent transition-colors"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          Back to Home
-        </button>
       </div>
+    </div>
     </div>
   );
 }

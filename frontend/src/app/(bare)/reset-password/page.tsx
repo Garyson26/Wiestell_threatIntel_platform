@@ -2,9 +2,12 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import Image from 'next/image';
-import { Lock, KeyRound, ArrowLeft, CheckCircle2, Eye, EyeOff } from 'lucide-react';
+import { Lock, KeyRound, ArrowLeft, CheckCircle2, Eye, EyeOff, LogOut } from 'lucide-react';
 import { resetPassword } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import OTPInput from '@/components/OTPInput';
 
 function ResetPasswordForm() {
   const [email, setEmail] = useState('');
@@ -18,6 +21,7 @@ function ResetPasswordForm() {
   const [success, setSuccess] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user, logout } = useAuth();
 
   useEffect(() => {
     // Get email from query params
@@ -77,29 +81,55 @@ function ResetPasswordForm() {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-[80vh]">
-      <div className="sentinel-card w-full max-w-sm p-8 animate-fade-in">
-        {/* Logo */}
-        <div className="flex items-center justify-center mb-8">
-          <Image
-            src="/images/Wiestell-Logo.png"
-            alt="Wiestell Logo"
-            width={180}
-            height={60}
-            className="object-contain"
-            priority
-          />
+    <div className="min-h-screen bg-sentinel-bg-primary">
+      {/* Header */}
+      <header className="border-b border-sentinel-border bg-sentinel-bg-secondary/50 backdrop-blur-sm">
+        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+          <Link href="/" className="flex items-center">
+            <Image
+              src="/images/Wiestell-Logo.png"
+              alt="Wiestell Logo"
+              width={140}
+              height={47}
+              className="object-contain"
+              priority
+            />
+          </Link>
+          <div className="flex gap-3">
+            <Link
+              href="/about"
+              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+            >
+              About
+            </Link>
+            <Link
+              href="/contact"
+              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+            >
+              Contact Us
+            </Link>
+            <Link
+              href="/login"
+              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+            >
+              Login
+            </Link>
+          </div>
         </div>
+      </header>
 
-        {/* Header */}
-        <div className="text-center mb-6">
-          <h2 className="text-sm font-display font-semibold text-sentinel-text-primary mb-2">
-            Reset Password
-          </h2>
-          <p className="text-xs font-mono text-sentinel-text-muted">
-            Enter the OTP sent to your email and your new password
-          </p>
-        </div>
+      {/* Main Content */}
+      <div className="flex items-center justify-center min-h-[calc(100vh-73px)] py-12">
+        <div className="sentinel-card w-full max-w-sm p-8 animate-fade-in">
+          {/* Header */}
+          <div className="text-center mb-6">
+            <h2 className="text-sm font-display font-semibold text-sentinel-text-primary mb-2">
+              Reset Password
+            </h2>
+            <p className="text-xs font-mono text-sentinel-text-muted">
+              Enter the OTP sent to your email and your new password
+            </p>
+          </div>
 
         {error && (
           <div className="mb-4 p-2.5 rounded bg-red-50 border border-red-200">
@@ -137,17 +167,14 @@ function ResetPasswordForm() {
 
             {/* OTP */}
             <div>
-              <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">
+              <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-3 text-center">
                 OTP Code
               </label>
-              <input
-                type="text"
+              <OTPInput
+                length={6}
                 value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                placeholder="Enter 6-digit OTP"
-                maxLength={6}
+                onChange={setOtp}
                 autoFocus
-                className="w-full px-3 py-2.5 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40 transition-colors text-center text-xl tracking-widest"
               />
             </div>
 
@@ -222,16 +249,53 @@ function ResetPasswordForm() {
         </div>
       </div>
     </div>
+    </div>
   );
 }
 
 export default function ResetPasswordPage() {
   return (
     <Suspense fallback={
-      <div className="flex items-center justify-center min-h-[80vh]">
-        <div className="sentinel-card w-full max-w-sm p-8">
-          <div className="flex items-center justify-center">
-            <div className="w-6 h-6 border-2 border-sentinel-accent border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen bg-sentinel-bg-primary">
+        <header className="border-b border-sentinel-border bg-sentinel-bg-secondary/50 backdrop-blur-sm">
+          <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+            <Link href="/" className="flex items-center">
+              <Image
+                src="/images/Wiestell-Logo.png"
+                alt="Wiestell Logo"
+                width={140}
+                height={47}
+                className="object-contain"
+                priority
+              />
+            </Link>
+            <div className="flex gap-3">
+              <Link
+                href="/about"
+                className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+              >
+                About
+              </Link>
+              <Link
+                href="/contact"
+                className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+              >
+                Contact Us
+              </Link>
+              <Link
+                href="/login"
+                className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+              >
+                Login
+              </Link>
+            </div>
+          </div>
+        </header>
+        <div className="flex items-center justify-center min-h-[calc(100vh-73px)]">
+          <div className="sentinel-card w-full max-w-sm p-8">
+            <div className="flex items-center justify-center">
+              <div className="w-6 h-6 border-2 border-sentinel-accent border-t-transparent rounded-full animate-spin" />
+            </div>
           </div>
         </div>
       </div>

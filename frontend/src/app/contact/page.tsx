@@ -3,7 +3,10 @@
 import { useState } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowLeft, Bug, Database, Lightbulb, AlertTriangle, Mail, User, MessageSquare, Shield, CheckCircle } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import Image from 'next/image';
+import { ArrowLeft, Bug, Database, Lightbulb, AlertTriangle, Mail, User, MessageSquare, Shield, CheckCircle, LogOut } from 'lucide-react';
+import { useAuth } from '@/lib/auth';
 
 // Note: Metadata export is commented out because this is a client component
 // To use metadata, you'd need to create a separate layout.tsx or make this a server component
@@ -64,6 +67,9 @@ const reasonCards: ReasonCard[] = [
 ];
 
 export default function ContactPage() {
+  const router = useRouter();
+  const { user, logout } = useAuth();
+  
   const [formData, setFormData] = useState<FormData>({
     name: '',
     email: '',
@@ -178,14 +184,63 @@ export default function ContactPage() {
     return (
       <div className="min-h-screen bg-sentinel-bg-primary">
         <header className="border-b border-sentinel-border bg-sentinel-bg-secondary/50 backdrop-blur-sm">
-          <div className="container mx-auto px-6 py-4">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Back to Home
+          <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+            <Link href="/" className="flex items-center">
+              <Image
+                src="/images/Wiestell-Logo.png"
+                alt="Wiestell Logo"
+                width={140}
+                height={47}
+                className="object-contain"
+                priority
+              />
             </Link>
+            <div className="flex gap-3">
+              <Link
+                href="/about"
+                className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+              >
+                About
+              </Link>
+              <Link
+                href="/contact"
+                className="px-4 py-2 text-sm font-mono text-sentinel-accent hover:text-sentinel-accent transition-colors font-semibold"
+              >
+                Contact Us
+              </Link>
+              {user ? (
+                <>
+                  <button
+                    onClick={() => {
+                      const dashboardPath = user.role === 'admin' ? '/dashboard' : '/analytics';
+                      router.push(dashboardPath);
+                    }}
+                    className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                  >
+                    Dashboard
+                  </button>
+                  <button
+                    onClick={() => {
+                      logout();
+                      router.push('/');
+                    }}
+                    className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors flex items-center gap-1"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Logout
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link
+                    href="/login"
+                    className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                  >
+                    Login
+                  </Link>
+                </>
+              )}
+            </div>
           </div>
         </header>
 
@@ -226,14 +281,63 @@ export default function ContactPage() {
     <div className="min-h-screen bg-sentinel-bg-primary">
       {/* Header */}
       <header className="border-b border-sentinel-border bg-sentinel-bg-secondary/50 backdrop-blur-sm">
-        <div className="container mx-auto px-6 py-4">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Home
+        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+          <Link href="/" className="flex items-center">
+            <Image
+              src="/images/Wiestell-Logo.png"
+              alt="Wiestell Logo"
+              width={140}
+              height={47}
+              className="object-contain"
+              priority
+            />
           </Link>
+          <div className="flex gap-3">
+            <Link
+              href="/about"
+              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+            >
+              About
+            </Link>
+            <Link
+              href="/contact"
+              className="px-4 py-2 text-sm font-mono text-sentinel-accent hover:text-sentinel-accent transition-colors font-semibold"
+            >
+              Contact Us
+            </Link>
+            {user ? (
+              <>
+                <button
+                  onClick={() => {
+                    const dashboardPath = user.role === 'admin' ? '/dashboard' : '/analytics';
+                    router.push(dashboardPath);
+                  }}
+                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                >
+                  Dashboard
+                </button>
+                <button
+                  onClick={() => {
+                    logout();
+                    router.push('/');
+                  }}
+                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors flex items-center gap-1"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Logout
+                </button>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                >
+                  Login
+                </Link>
+              </>
+            )}
+          </div>
         </div>
       </header>
 

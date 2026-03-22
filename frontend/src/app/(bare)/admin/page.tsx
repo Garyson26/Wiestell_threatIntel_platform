@@ -1,11 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import Image from 'next/image';
-import { LogIn, KeyRound, ArrowLeft, Shield } from 'lucide-react';
+import { LogIn, KeyRound, ArrowLeft, Shield, LogOut } from 'lucide-react';
 import { loginUser, verifyOtp } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import OTPInput from '@/components/OTPInput';
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState('');
@@ -16,7 +18,16 @@ export default function AdminLoginPage() {
   const [otpStep, setOtpStep] = useState(false);
   const [otpMessage, setOtpMessage] = useState('');
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, user, token, logout } = useAuth();
+
+  // Redirect if user is already logged in
+  useEffect(() => {
+    if (user && token) {
+      // Redirect based on user role
+      const redirectPath = user.role === 'admin' ? '/dashboard' : '/analytics';
+      router.push(redirectPath);
+    }
+  }, [user, token, router]);
 
   async function handleCredentialsSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -66,27 +77,85 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-[80vh]">
-      <div className="sentinel-card w-full max-w-sm p-8 animate-fade-in">
-        {/* Logo */}
-        <div className="flex items-center justify-center mb-8">
-          <Image
-            src="/images/Wiestell-Logo.png"
-            alt="Wiestell Logo"
-            width={180}
-            height={60}
-            className="object-contain"
-            priority
-          />
+    <div className="min-h-screen bg-sentinel-bg-primary">
+      {/* Header */}
+      <header className="border-b border-sentinel-border bg-sentinel-bg-secondary/50 backdrop-blur-sm">
+        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+          <Link href="/" className="flex items-center">
+            <Image
+              src="/images/Wiestell-Logo.png"
+              alt="Wiestell Logo"
+              width={140}
+              height={47}
+              className="object-contain"
+              priority
+            />
+          </Link>
+          <div className="flex gap-3">
+            <Link
+              href="/about"
+              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+            >
+              About
+            </Link>
+            <Link
+              href="/contact"
+              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+            >
+              Contact Us
+            </Link>
+            {user ? (
+              <>
+                <button
+                  onClick={() => {
+                    const dashboardPath = user.role === 'admin' ? '/dashboard' : '/analytics';
+                    router.push(dashboardPath);
+                  }}
+                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                >
+                  Dashboard
+                </button>
+                <button
+                  onClick={() => {
+                    logout();
+                    router.push('/');
+                  }}
+                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors flex items-center gap-1"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Logout
+                </button>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                >
+                  Login
+                </Link>
+                <Link
+                  href="/admin"
+                  className="px-4 py-2 text-sm font-mono text-sentinel-accent hover:text-sentinel-accent transition-colors font-semibold"
+                >
+                  Admin
+                </Link>
+              </>
+            )}
+          </div>
         </div>
+      </header>
 
-        {/* Admin Badge */}
-        <div className="flex items-center justify-center gap-2 mb-6">
-          <Shield className="w-4 h-4 text-sentinel-accent" />
-          <h2 className="text-sm font-display font-semibold text-sentinel-text-primary">
-            {otpStep ? 'Enter OTP' : 'Admin Sign In'}
-          </h2>
-        </div>
+      {/* Main Content */}
+      <div className="flex items-center justify-center min-h-[calc(100vh-73px)] py-12">
+        <div className="sentinel-card w-full max-w-sm p-8 animate-fade-in">
+          {/* Admin Badge */}
+          <div className="flex items-center justify-center gap-2 mb-6">
+            <Shield className="w-4 h-4 text-sentinel-accent" />
+            <h2 className="text-sm font-display font-semibold text-sentinel-text-primary">
+              {otpStep ? 'Enter OTP' : 'Admin Sign In'}
+            </h2>
+          </div>
 
         {error && (
           <div className="mb-4 p-2.5 rounded bg-red-50 border border-red-200">
@@ -169,14 +238,6 @@ export default function AdminLoginPage() {
           </form>
         )}
 
-        <button
-          onClick={() => router.push('/')}
-          className="w-full mt-4 flex items-center justify-center gap-2 text-xs font-mono text-sentinel-text-muted hover:text-sentinel-accent transition-colors"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          Back to Home
-        </button>
-
         <p className="text-center text-[10px] font-mono text-sentinel-text-muted mt-5">
           Not an admin?{' '}
           <button
@@ -187,6 +248,7 @@ export default function AdminLoginPage() {
           </button>
         </p>
       </div>
+    </div>
     </div>
   );
 }

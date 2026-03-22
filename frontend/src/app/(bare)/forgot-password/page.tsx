@@ -2,9 +2,11 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import Image from 'next/image';
-import { Mail, ArrowLeft, Send, CheckCircle2 } from 'lucide-react';
+import { Mail, ArrowLeft, Send, CheckCircle2, LogOut } from 'lucide-react';
 import { forgotPassword } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -13,6 +15,7 @@ export default function ForgotPasswordPage() {
   const [success, setSuccess] = useState(false);
   const [message, setMessage] = useState('');
   const router = useRouter();
+  const { user, logout } = useAuth();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -38,29 +41,81 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="flex items-center justify-center min-h-[80vh]">
-      <div className="sentinel-card w-full max-w-sm p-8 animate-fade-in">
-        {/* Logo */}
-        <div className="flex items-center justify-center mb-8">
-          <Image
-            src="/images/Wiestell-Logo.png"
-            alt="Wiestell Logo"
-            width={180}
-            height={60}
-            className="object-contain"
-            priority
-          />
+    <div className="min-h-screen bg-sentinel-bg-primary">
+      {/* Header */}
+      <header className="border-b border-sentinel-border bg-sentinel-bg-secondary/50 backdrop-blur-sm">
+        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+          <Link href="/" className="flex items-center">
+            <Image
+              src="/images/Wiestell-Logo.png"
+              alt="Wiestell Logo"
+              width={140}
+              height={47}
+              className="object-contain"
+              priority
+            />
+          </Link>
+          <div className="flex gap-3">
+            <Link
+              href="/about"
+              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+            >
+              About
+            </Link>
+            <Link
+              href="/contact"
+              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+            >
+              Contact Us
+            </Link>
+            {user ? (
+              <>
+                <button
+                  onClick={() => {
+                    const dashboardPath = user.role === 'admin' ? '/dashboard' : '/analytics';
+                    router.push(dashboardPath);
+                  }}
+                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                >
+                  Dashboard
+                </button>
+                <button
+                  onClick={() => {
+                    logout();
+                    router.push('/');
+                  }}
+                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors flex items-center gap-1"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Logout
+                </button>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                >
+                  Login
+                </Link>
+              </>
+            )}
+          </div>
         </div>
+      </header>
 
-        {/* Header */}
-        <div className="text-center mb-6">
-          <h2 className="text-sm font-display font-semibold text-sentinel-text-primary mb-2">
-            Forgot Password?
-          </h2>
-          <p className="text-xs font-mono text-sentinel-text-muted">
-            Enter your email to receive a password reset OTP
-          </p>
-        </div>
+      {/* Main Content */}
+      <div className="flex items-center justify-center min-h-[calc(100vh-73px)] py-12">
+        <div className="sentinel-card w-full max-w-sm p-8 animate-fade-in">
+          {/* Header */}
+          <div className="text-center mb-6">
+            <h2 className="text-sm font-display font-semibold text-sentinel-text-primary mb-2">
+              Forgot Password?
+            </h2>
+            <p className="text-xs font-mono text-sentinel-text-muted">
+              Enter your email to receive a password reset OTP
+            </p>
+          </div>
 
         {error && (
           <div className="mb-4 p-2.5 rounded bg-red-50 border border-red-200">
@@ -120,6 +175,7 @@ export default function ForgotPasswordPage() {
           </button>
         </div>
       </div>
+    </div>
     </div>
   );
 }
