@@ -122,9 +122,6 @@ export default function Home() {
           <h1 className="text-4xl md:text-4xl font-bold font-display text-sentinel-text-primary mb-4 leading-tight">
             Free Threat Intelligence Platform — IP, Domain & Hash IOC Lookup
           </h1>
-          <p className="text-sentinel-text-muted font-mono text-sm max-w-3xl mx-auto leading-relaxed">
-            Powered by URLhaus, ThreatFox, MalwareBazaar, AbuseIPDB, VirusTotal, AlienVault OTX, Feodo Tracker, PhishTank and more — completely free.
-          </p>
         </div>
 
         {/* Main Card */}
@@ -148,7 +145,7 @@ export default function Home() {
           </div>
 
           {/* Tab Content */}
-          <div className="min-h-[300px]">
+          <div className="">
             {/* Search Tab */}
             {activeTab === 'search' && (
               <form onSubmit={handleSearchSubmit} className="space-y-4">
@@ -181,10 +178,7 @@ export default function Home() {
         <section className="max-w-4xl mx-auto mt-20 mb-16">
           <article className="prose prose-invert max-w-none">
             <div className="sentinel-card p-8 md:p-10">
-              <h2 className="text-2xl md:text-3xl font-display font-bold text-sentinel-text-primary mb-6">
-                About Wiestell
-              </h2>
-              
+                         
               <div className="space-y-6 text-sentinel-text-secondary font-mono text-sm leading-relaxed">
                 <p>
                   <strong className="text-sentinel-accent font-semibold">Wiestell</strong> is a free, open-source threat intelligence platform that aggregates data from the most trusted open-source feeds on the internet. Security analysts, SOC teams, and threat researchers can instantly look up any IP address, domain name, URL, or file hash to check its reputation, malware associations, and threat history.
@@ -253,7 +247,7 @@ That's why Wiestell exists."
       <footer className="border-t border-sentinel-border bg-sentinel-bg-secondary/50 py-6">
         <div className="container mx-auto px-6 text-center">
           <p className="text-xs font-mono text-sentinel-text-muted">
-            © 2026 Wiestell Threat Intelligence Platform. Open Source.
+            © 2026 Wiestell Open Source Threat Intelligence Platform.
           </p>
         </div>
       </footer>

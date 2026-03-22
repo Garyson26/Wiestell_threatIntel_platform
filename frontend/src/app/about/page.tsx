@@ -242,17 +242,6 @@ export default function AboutPage() {
               <p>
                 Wiestell is <strong className="text-sentinel-accent">open source</strong>. We believe in transparency and community-driven security. Contributions, bug reports, and feature suggestions are welcome.
               </p>
-              <div className="flex gap-3 mt-6">
-                <a
-                  href="https://github.com/wiestell"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded border border-sentinel-border text-sentinel-text-secondary hover:text-sentinel-accent hover:border-sentinel-accent transition-colors text-sm font-mono"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  View on GitHub
-                </a>
-              </div>
             </div>
           </section>
 
