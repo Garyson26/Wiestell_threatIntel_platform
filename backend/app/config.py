@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     FEED_SYNC_INTERVAL: int = 3600
     PORT: int = 8000
-    CORS_ORIGINS: str = "*"
+    CORS_ORIGINS: str = "https://wiestell.com,https://www.wiestell.com"
 
     # GeoIP
     GEOIP_DB_PATH: str = "/app/data/GeoLite2-City.mmdb"

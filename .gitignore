@@ -37,3 +37,4 @@ redis_data/
 celerybeat-schedule
 
 .package-lock.json
+.md

@@ -17,6 +17,32 @@
   Cache-Control: public, max-age=31536000, immutable
 
 /*
+  # Strict Transport Security (HSTS) - 1 year minimum for preload eligibility
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  
+  # Content Security Policy - PHASE 1: REPORT-ONLY MODE (monitor for 7 days before enforcing)
+  # Monitor violations at /api/csp-report - switch to Content-Security-Policy after clean period
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' https:; connect-src 'self' https:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /api/csp-report
+  
+  # Prevent MIME type sniffing
+  X-Content-Type-Options: nosniff
+  
+  # Frame protection - DENY to prevent any iframe embedding
   X-Frame-Options: DENY
+  
+  # XSS Protection - Legacy browser coverage (redundant with CSP but kept for older browsers)
+  X-XSS-Protection: 1; mode=block
+  
+  # Referrer Policy - Prevents IOC search terms from leaking in referrer logs
   Referrer-Policy: strict-origin-when-cross-origin
-  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  
+  # Permissions Policy - Disable all unnecessary browser APIs
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=(), payment=(), usb=(), bluetooth=(), magnetometer=(), gyroscope=(), accelerometer=(), ambient-light-sensor=(), autoplay=(), encrypted-media=(), picture-in-picture=()
+  
+  # Cross-Origin Policies
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+  Cross-Origin-Resource-Policy: cross-origin
+  
+  # Remove server/platform fingerprinting
+  X-Powered-By: 
+  Server:
