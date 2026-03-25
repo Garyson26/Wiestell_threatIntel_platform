@@ -192,11 +192,11 @@ export default function SettingsPage() {
                 <div className="space-y-3">
                   <div className="p-3 rounded bg-sentinel-bg-primary border border-sentinel-border">
                     <p className="text-[10px] font-mono text-sentinel-text-muted">Connection</p>
-                    <p className="text-xs font-mono text-sentinel-text-secondary mt-0.5">postgresql://sentinel:***@db:5432/sentinel</p>
+                    <p className="text-xs font-mono text-sentinel-text-secondary mt-0.5">******</p>
                   </div>
                   <div className="p-3 rounded bg-sentinel-bg-primary border border-sentinel-border">
                     <p className="text-[10px] font-mono text-sentinel-text-muted">Redis</p>
-                    <p className="text-xs font-mono text-sentinel-text-secondary mt-0.5">redis://redis:6379/0</p>
+                    <p className="text-xs font-mono text-sentinel-text-secondary mt-0.5">******</p>
                   </div>
                 </div>
               </>
