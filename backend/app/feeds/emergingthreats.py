@@ -4,34 +4,61 @@ from typing import Any, List, Dict
 
 from app.feeds.base import BaseFeed
 
+# Emerging Threats publishes several complementary blocklists
+_ET_FEEDS = [
+    {
+        "url": "https://rules.emergingthreats.net/blockrules/compromised-ips.txt",
+        "tags": ["emerging-threats", "compromised"],
+        "threat_score": 60,
+    },
+    {
+        "url": "https://rules.emergingthreats.net/fwrules/emerging-Block-IPs.txt",
+        "tags": ["emerging-threats", "block"],
+        "threat_score": 65,
+    },
+]
+
 
 class EmergingThreatsFeed(BaseFeed):
     name = "Emerging Threats"
     slug = "emerging-threats"
     feed_type = "csv"
     url = "https://rules.emergingthreats.net/blockrules/compromised-ips.txt"
-    description = "Emerging Threats compromised IP blocklist"
+    description = "Emerging Threats compromised IP and block IP lists"
     requires_api_key = False
     default_sync_frequency = 3600
 
     async def fetch(self) -> Any:
-        response = await self._fetch_url(self.url)
-        return response.text
+        results = []
+        for feed_def in _ET_FEEDS:
+            try:
+                response = await self._fetch_url(feed_def["url"])
+                results.append({
+                    "text": response.text,
+                    "tags": feed_def["tags"],
+                    "threat_score": feed_def["threat_score"],
+                })
+            except Exception:
+                # If one list fails, continue with others
+                pass
+        return results
 
     async def parse(self, raw_data: Any) -> List[Dict[str, Any]]:
         iocs = []
-        for line in raw_data.strip().split("\n"):
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-
-            iocs.append(self._make_ioc(
-                ioc_type="ip",
-                value=line,
-                tags=["emerging-threats", "compromised"],
-                threat_score=60,
-                confidence=65,
-                metadata={"source": "emerging-threats"},
-            ))
-
+        for feed_result in raw_data:
+            text = feed_result["text"]
+            tags = feed_result["tags"]
+            threat_score = feed_result["threat_score"]
+            for line in text.strip().split("\n"):
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                iocs.append(self._make_ioc(
+                    ioc_type="ip",
+                    value=line,
+                    tags=tags,
+                    threat_score=threat_score,
+                    confidence=65,
+                    metadata={"source": "emerging-threats"},
+                ))
         return iocs
