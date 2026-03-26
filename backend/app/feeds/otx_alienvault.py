@@ -1,7 +1,7 @@
 """AlienVault OTX feed connector — requires free API key."""
 
 from typing import Any, List, Dict, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from app.feeds.base import BaseFeed
 
@@ -20,12 +20,27 @@ class OTXAlienVaultFeed(BaseFeed):
         if not self.api_key:
             return {"results": []}
 
-        response = await self._fetch_url(
-            self.url,
-            headers={"X-OTX-API-KEY": self.api_key},
-            params={"limit": 50, "modified_since": ""},
-        )
-        return response.json()
+        # Only fetch pulses modified in the last 7 days to keep syncs fast
+        modified_since = (
+            datetime.now(timezone.utc) - timedelta(days=7)
+        ).strftime("%Y-%m-%dT%H:%M:%S.%f")
+
+        all_pulses = []
+        next_url: Optional[str] = self.url
+
+        while next_url:
+            response = await self._fetch_url(
+                next_url,
+                headers={"X-OTX-API-KEY": self.api_key},
+                params={"limit": 100, "modified_since": modified_since} if next_url == self.url else {},
+            )
+            data = response.json()
+            all_pulses.extend(data.get("results", []))
+
+            # OTX paginates via a "next" URL in the response
+            next_url = data.get("next")
+
+        return {"results": all_pulses}
 
     async def parse(self, raw_data: Any) -> List[Dict[str, Any]]:
         iocs = []
