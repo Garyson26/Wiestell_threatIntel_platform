@@ -98,6 +98,7 @@ export default function SettingsPage() {
                     { name: 'VT_API_KEY', label: 'VirusTotal' },
                     { name: 'SHODAN_API_KEY', label: 'Shodan' },
                     { name: 'PHISHTANK_API_KEY', label: 'PhishTank' },
+                    { name: 'THREATFOX_API_KEY', label: 'ThreatFox' },
                   ].map((key) => (
                     <div key={key.name} className="flex items-center justify-between p-3 rounded bg-sentinel-bg-primary border border-sentinel-border">
                       <div>

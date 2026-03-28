@@ -2,8 +2,9 @@
 
 from typing import Any, List, Dict
 from datetime import datetime, timezone
-
+import structlog
 from app.feeds.base import BaseFeed
+logger = structlog.get_logger()
 
 
 class ThreatFoxFeed(BaseFeed):
@@ -12,12 +13,21 @@ class ThreatFoxFeed(BaseFeed):
     feed_type = "api"
     url = "https://threatfox-api.abuse.ch/api/v1/"
     description = "ThreatFox shares IOCs associated with malware"
-    requires_api_key = False
+    requires_api_key = True
+    api_key_env = "THREATFOX_API_KEY"
     default_sync_frequency = 1800
 
     async def fetch(self) -> Any:
+        if not self.api_key:
+            raise ValueError(
+                "ThreatFox requires an API key. "
+                "Register for free at https://abuse.ch/ and set THREATFOX_API_KEY."
+            )
+        masked = self.api_key[:4] + "****" if len(self.api_key) > 4 else "****"
+        logger.info("threatfox_fetch_start", api_key=masked)
         response = await self.client.post(
             self.url,
+            headers={"Auth-Key": self.api_key},
             json={"query": "get_iocs", "days": 1},
         )
         response.raise_for_status()

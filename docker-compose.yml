@@ -24,6 +24,7 @@ services:
       - VT_API_KEY=${VT_API_KEY:-}
       - SHODAN_API_KEY=${SHODAN_API_KEY:-}
       - PHISHTANK_API_KEY=${PHISHTANK_API_KEY:-}
+      - THREATFOX_API_KEY=${THREATFOX_API_KEY:-}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
       - ENVIRONMENT=${ENVIRONMENT:-development}
@@ -56,6 +57,7 @@ services:
       - ABUSEIPDB_API_KEY=${ABUSEIPDB_API_KEY:-}
       - VT_API_KEY=${VT_API_KEY:-}
       - SHODAN_API_KEY=${SHODAN_API_KEY:-}
+      - THREATFOX_API_KEY=${THREATFOX_API_KEY:-}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
       - EMAIL_SERVICE=${EMAIL_SERVICE:-smtp}

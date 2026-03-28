@@ -24,6 +24,7 @@ FEEDS = [
         "description": "ThreatFox shares IOCs associated with malware",
         "feed_type": "api",
         "url": "https://threatfox-api.abuse.ch/api/v1/",
+        "api_key_env": "THREATFOX_API_KEY",
         "is_enabled": True,
         "sync_frequency": 1800,
     },
