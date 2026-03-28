@@ -167,11 +167,16 @@ async def _ingest_chunk(
         )
         already_linked = {row[0] for row in existing_sources}
 
-        new_sources = [
-            IOCSource(ioc_id=ioc_id, feed_id=feed.id)
-            for ioc_id in ioc_ids
-            if ioc_id not in already_linked
-        ]
+        # Deduplicate ioc_ids within this chunk — same URL can appear multiple
+        # times in a feed (e.g. URLhaus), which would cause two IOCSource inserts
+        # for the same (ioc_id, feed_id) and violate the unique constraint.
+        seen: set = set()
+        new_sources = []
+        for ioc_id in ioc_ids:
+            if ioc_id not in already_linked and ioc_id not in seen:
+                new_sources.append(IOCSource(ioc_id=ioc_id, feed_id=feed.id))
+                seen.add(ioc_id)
+
         if new_sources:
             session.add_all(new_sources)
 
