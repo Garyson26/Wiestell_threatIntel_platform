@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     VT_API_KEY: Optional[str] = None
     SHODAN_API_KEY: Optional[str] = None
     PHISHTANK_API_KEY: Optional[str] = None
+    MALWAREBAZAAR_API_KEY: Optional[str] = None
 
     # AI
     GROQ_API_KEY: str = ""

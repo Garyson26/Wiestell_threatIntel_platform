@@ -36,9 +36,9 @@ class FeedResponse(FeedBase):
     is_enabled: bool
     last_sync_at: Optional[datetime]
     last_sync_status: Optional[str]
-    ioc_count: int
-    config: dict
-    created_at: datetime
+    ioc_count: Optional[int] = 0
+    config: Optional[dict] = None
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

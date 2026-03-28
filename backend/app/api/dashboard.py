@@ -212,7 +212,7 @@ async def get_feed_health(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(FeedSource).order_by(FeedSource.name))
     feeds = result.scalars().all()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()  # naive UTC — matches MySQL DateTime columns
     return [
         {
             "id": str(f.id),
