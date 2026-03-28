@@ -37,7 +37,7 @@ class VirusTotalFeed(BaseFeed):
                 headers={"x-apikey": self.api_key},
                 params={"cursor": ""},
             )
-            if response.status_code == 403:
+            if response.status_code in (403, 404):
                 logger.warning(
                     "virustotal_feed_unavailable",
                     reason="premium_required",
