@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models.ioc import IOC
 from app.models.enrichment import Enrichment
+from app.models.feed import FeedSource
 from app.models.ioc_source import IOCSource
 from app.models.ioc_relationship import IOCRelationship
 from app.schemas.ioc import (
@@ -24,6 +25,105 @@ from app.utils.ioc_validator import detect_ioc_type, validate_ioc, normalize_ioc
 from app.utils.stix_converter import export_stix_json
 
 router = APIRouter()
+
+
+@router.get("/lookup", response_model=IOCDetailResponse)
+async def lookup_ioc(
+    value: str = Query(..., description="IOC value to look up (e.g. IP, domain, hash, URL)"),
+    ioc_type: Optional[str] = Query(None, description="IOC type override (ip, domain, hash, url, email, cve)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Look up an IOC by value. If it doesn't exist, auto-create and enrich it.
+
+    Returns full IOC detail including enrichment data (GeoIP, WHOIS, DNS, reputation).
+    """
+    from app.services.enrichment_engine import enrich_ioc
+
+    value = value.strip()
+
+    # Auto-detect type if not provided
+    detected_type = ioc_type or detect_ioc_type(value)
+    if not detected_type:
+        raise HTTPException(status_code=400, detail="Unable to determine IOC type. Provide ioc_type explicitly.")
+
+    normalized = normalize_ioc(value, detected_type)
+
+    # Try to find existing IOC
+    result = await db.execute(
+        select(IOC)
+        .options(selectinload(IOC.enrichments), selectinload(IOC.sources).selectinload(IOCSource.feed))
+        .where(IOC.type == detected_type, IOC.value == normalized)
+    )
+    ioc = result.scalar_one_or_none()
+
+    if ioc is None:
+        # Auto-create on miss
+        score = calculate_threat_score({"type": detected_type, "value": normalized, "tags": [], "mitre_techniques": []})
+        ioc = IOC(
+            type=detected_type,
+            value=normalized,
+            threat_score=score,
+            confidence=50,
+            tags=[],
+            metadata_={},
+            mitre_techniques=[],
+        )
+        db.add(ioc)
+        await db.flush()
+
+    # Run enrichment (uses cache if already enriched recently)
+    await enrich_ioc(db, ioc)
+    await db.commit()
+
+    # Reload with enrichments
+    result = await db.execute(
+        select(IOC)
+        .options(selectinload(IOC.enrichments), selectinload(IOC.sources).selectinload(IOCSource.feed))
+        .where(IOC.id == ioc.id)
+    )
+    ioc = result.scalar_one()
+
+    # Get relationships
+    rels_result = await db.execute(
+        select(IOCRelationship).where(
+            or_(IOCRelationship.source_ioc_id == ioc.id, IOCRelationship.target_ioc_id == ioc.id)
+        )
+    )
+    relationships = rels_result.scalars().all()
+
+    enrichments = [
+        {"source": e.source, "data": e.data, "enriched_at": e.enriched_at.isoformat()}
+        for e in ioc.enrichments
+    ]
+    sources = [
+        {
+            "feed_name": s.feed.name if s.feed else "Unknown",
+            "feed_slug": s.feed.slug if s.feed else "unknown",
+            "ingested_at": s.ingested_at.isoformat() if s.ingested_at else None,
+        }
+        for s in ioc.sources
+    ]
+    rel_data = []
+    for r in relationships:
+        is_source = str(r.source_ioc_id) == str(ioc.id)
+        related_id = r.target_ioc_id if is_source else r.source_ioc_id
+        related_result = await db.execute(select(IOC).where(IOC.id == related_id))
+        related_ioc = related_result.scalar_one_or_none()
+        if related_ioc:
+            rel_data.append({
+                "id": str(related_ioc.id),
+                "type": related_ioc.type,
+                "value": related_ioc.value,
+                "threat_score": related_ioc.threat_score,
+                "relationship_type": r.relationship_type,
+                "direction": "outgoing" if is_source else "incoming",
+            })
+
+    ioc_data = IOCResponse.model_validate(ioc).model_dump()
+    ioc_data["enrichments"] = enrichments
+    ioc_data["sources"] = sources
+    ioc_data["relationships"] = rel_data
+    return IOCDetailResponse.model_validate(ioc_data)
 
 
 @router.get("", response_model=PaginatedIOCResponse)
@@ -53,8 +153,9 @@ async def list_iocs(
         query = query.where(IOC.threat_score <= max_score)
         count_query = count_query.where(IOC.threat_score <= max_score)
     if tag:
-        query = query.where(IOC.tags.any(tag))
-        count_query = count_query.where(IOC.tags.any(tag))
+        tag_filter = func.json_contains(IOC.tags, func.json_quote(tag)) == 1
+        query = query.where(tag_filter)
+        count_query = count_query.where(tag_filter)
     if q:
         query = query.where(IOC.value.ilike(f"%{q}%"))
         count_query = count_query.where(IOC.value.ilike(f"%{q}%"))
@@ -192,7 +293,13 @@ async def create_ioc(ioc_data: IOCCreate, db: AsyncSession = Depends(get_db)):
 
 @router.post("/search", response_model=PaginatedIOCResponse)
 async def search_iocs(search: IOCSearchRequest, db: AsyncSession = Depends(get_db)):
-    """Advanced IOC search with multiple filters."""
+    """Advanced IOC search with multiple filters.
+
+    If the query exactly matches a valid IOC value and no results are found in the DB,
+    the IOC is auto-created and enriched before being returned.
+    """
+    from app.services.enrichment_engine import enrich_ioc
+
     query = select(IOC)
     count_query = select(func.count(IOC.id))
 
@@ -209,11 +316,19 @@ async def search_iocs(search: IOCSearchRequest, db: AsyncSession = Depends(get_d
         query = query.where(IOC.threat_score <= search.max_score)
         count_query = count_query.where(IOC.threat_score <= search.max_score)
     if search.tags:
-        query = query.where(IOC.tags.overlap(search.tags))
-        count_query = count_query.where(IOC.tags.overlap(search.tags))
+        tag_conditions = or_(*[
+            func.json_contains(IOC.tags, func.json_quote(t)) == 1
+            for t in search.tags
+        ])
+        query = query.where(tag_conditions)
+        count_query = count_query.where(tag_conditions)
     if search.mitre_technique:
-        query = query.where(IOC.mitre_techniques.any(search.mitre_technique))
-        count_query = count_query.where(IOC.mitre_techniques.any(search.mitre_technique))
+        mitre_filter = func.json_contains(IOC.mitre_techniques, func.json_quote(search.mitre_technique)) == 1
+        query = query.where(mitre_filter)
+        count_query = count_query.where(mitre_filter)
+    if search.feed_source:
+        query = query.join(IOCSource, IOCSource.ioc_id == IOC.id).join(FeedSource, FeedSource.id == IOCSource.feed_id).where(FeedSource.slug == search.feed_source)
+        count_query = count_query.join(IOCSource, IOCSource.ioc_id == IOC.id).join(FeedSource, FeedSource.id == IOCSource.feed_id).where(FeedSource.slug == search.feed_source)
     if search.date_from:
         query = query.where(IOC.last_seen >= search.date_from)
         count_query = count_query.where(IOC.last_seen >= search.date_from)
@@ -233,6 +348,48 @@ async def search_iocs(search: IOCSearchRequest, db: AsyncSession = Depends(get_d
 
     result = await db.execute(query)
     iocs = result.scalars().all()
+
+    # Auto-lookup: if no results and query is an exact valid IOC, create + enrich it
+    if total == 0 and search.query and search.page == 1:
+        raw = search.query.strip()
+        detected_type = search.ioc_type or detect_ioc_type(raw)
+        if detected_type and validate_ioc(detected_type, raw):
+            normalized = normalize_ioc(raw, detected_type)
+            # Check if it already exists (edge case from concurrent requests)
+            existing_result = await db.execute(
+                select(IOC).where(IOC.type == detected_type, IOC.value == normalized)
+            )
+            ioc = existing_result.scalar_one_or_none()
+            if ioc is None:
+                score = calculate_threat_score({
+                    "type": detected_type,
+                    "value": normalized,
+                    "tags": [],
+                    "mitre_techniques": [],
+                })
+                ioc = IOC(
+                    type=detected_type,
+                    value=normalized,
+                    threat_score=score,
+                    confidence=50,
+                    tags=[],
+                    metadata_={},
+                    mitre_techniques=[],
+                )
+                db.add(ioc)
+                await db.flush()
+            # Run enrichment in background (non-blocking for response speed)
+            try:
+                await enrich_ioc(db, ioc)
+                await db.commit()
+            except Exception:
+                await db.rollback()
+            # Reload fresh after enrichment
+            fresh = await db.execute(select(IOC).where(IOC.id == ioc.id))
+            ioc = fresh.scalar_one_or_none()
+            if ioc:
+                iocs = [ioc]
+                total = 1
 
     return PaginatedIOCResponse(
         items=[IOCResponse.model_validate(ioc) for ioc in iocs],
