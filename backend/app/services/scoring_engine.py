@@ -49,7 +49,7 @@ def _base_reputation_score(ioc_data: Dict[str, Any]) -> float:
         if scores:
             return sum(scores.values()) / len(scores)
     
-    existing_score = ioc_data.get("threat_score", 0)
+    existing_score = ioc_data.get("threat_score") or 0
     if existing_score > 0:
         return float(existing_score)
     

@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     SHODAN_API_KEY: Optional[str] = None
     PHISHTANK_API_KEY: Optional[str] = None
     MALWAREBAZAAR_API_KEY: Optional[str] = None
+    THREATFOX_API_KEY: Optional[str] = None
 
     # AI
     GROQ_API_KEY: str = ""

@@ -19,6 +19,7 @@ from sqlalchemy import select
 from app.database import AsyncSessionLocal
 from app.models.feed import FeedSource
 from app.services.feed_ingestion import ingest_iocs
+from app.config import settings
 
 logger = structlog.get_logger()
 
@@ -71,7 +72,8 @@ async def run_feed_sync(feed_id: str, feed_slug: str, connector_path: str) -> No
             logger.error("run_feed_sync_not_found", feed_id=feed_id)
             return
         if feed.api_key_env:
-            api_key = os.environ.get(feed.api_key_env)
+            # os.environ first (Docker/system env), then fall back to .env via settings
+            api_key = os.environ.get(feed.api_key_env) or getattr(settings, feed.api_key_env, None)
 
     connector = connector_class(api_key=api_key)
 
@@ -102,6 +104,15 @@ async def run_feed_sync(feed_id: str, feed_slug: str, connector_path: str) -> No
         except Exception as exc:
             await session.rollback()
             logger.error("run_feed_sync_ingest_error", feed=feed_slug, error=str(exc))
+            async with AsyncSessionLocal() as fail_session:
+                fail_result = await fail_session.execute(
+                    select(FeedSource).where(FeedSource.id == feed_id)
+                )
+                fail_feed = fail_result.scalar_one_or_none()
+                if fail_feed:
+                    fail_feed.last_sync_at = datetime.utcnow()
+                    fail_feed.last_sync_status = "failed"
+                    await fail_session.commit()
 
 
 # ── Scheduler loop ────────────────────────────────────────────────────────────

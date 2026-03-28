@@ -49,6 +49,9 @@ def _normalize_batch(raw_iocs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         normalized = dict(raw)
         normalized["value"] = normalize_ioc(value, ioc_type)
         out.append(normalized)
+    dropped = len(raw_iocs) - len(out)
+    if dropped > 0:
+        logger.warning("ioc_validation_dropped", dropped=dropped, total=len(raw_iocs))
     return out
 
 
@@ -71,7 +74,11 @@ async def ingest_iocs(
         count += await _ingest_chunk(session, feed, chunk)
 
     feed.last_sync_at = _now()
-    feed.last_sync_status = "success"
+    if count == 0:
+        feed.last_sync_status = "no_data"
+        logger.warning("feed_ingestion_no_data", feed=feed.name, raw_total=len(raw_iocs))
+    else:
+        feed.last_sync_status = "success"
     feed.ioc_count = count
 
     await session.flush()
