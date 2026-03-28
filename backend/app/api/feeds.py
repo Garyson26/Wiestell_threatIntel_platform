@@ -23,6 +23,7 @@ FEED_CONNECTORS = {
     "urlhaus-feed": "app.feeds.urlhaus.URLhausFeed",
     "threatfox": "app.feeds.threatfox.ThreatFoxFeed",
     "malwarebazaar": "app.feeds.malwarebazaar.MalwareBazaarFeed",
+    "malwarebazaar-feed": "app.feeds.malwarebazaar.MalwareBazaarFeed",
     "blocklist-de": "app.feeds.blocklist_de.BlocklistDeFeed",
     "emerging-threats": "app.feeds.emergingthreats.EmergingThreatsFeed",
     "emerging-threats-feed": "app.feeds.emergingthreats.EmergingThreatsFeed",
