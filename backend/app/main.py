@@ -1,5 +1,6 @@
 """SENTINEL Threat Intelligence Platform — FastAPI Application Entry Point."""
 
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -9,6 +10,7 @@ import structlog
 
 from app.config import settings
 from app.api import api_router
+from app.services.feed_scheduler import feed_scheduler_loop
 
 logger = structlog.get_logger()
 
@@ -16,11 +18,20 @@ logger = structlog.get_logger()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup and shutdown events."""
-    logger.info(
-        "sentinel_starting",
-        environment=settings.ENVIRONMENT,
-    )
+    logger.info("sentinel_starting", environment=settings.ENVIRONMENT)
+
+    # Start the periodic feed scheduler
+    scheduler_task = asyncio.create_task(feed_scheduler_loop())
+    logger.info("feed_scheduler_registered")
+
     yield
+
+    # Gracefully cancel the scheduler on shutdown
+    scheduler_task.cancel()
+    try:
+        await scheduler_task
+    except asyncio.CancelledError:
+        pass
     logger.info("sentinel_shutting_down")
 
 
