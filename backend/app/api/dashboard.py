@@ -274,6 +274,8 @@ def _get_feed_health(feed: FeedSource, now: datetime) -> str:
         return "never_synced"
     if feed.last_sync_status == "failed":
         return "offline"
+    if feed.last_sync_status == "no_data":
+        return "degraded"
 
     age = now - feed.last_sync_at
     if age > timedelta(hours=24):
