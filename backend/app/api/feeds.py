@@ -1,12 +1,39 @@
 """Feed management API endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
+import importlib
+import os
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
+import structlog
+from app.database import AsyncSessionLocal, get_db
 from app.models.feed import FeedSource
 from app.schemas.feed import FeedCreate, FeedUpdate, FeedResponse
+from app.services.feed_ingestion import ingest_iocs
+
+logger = structlog.get_logger()
+
+# Registry mapping feed slug -> connector class path
+# Includes aliases for slugs that may differ between DB records and canonical names
+FEED_CONNECTORS = {
+    "urlhaus": "app.feeds.urlhaus.URLhausFeed",
+    "urlhaus-feed": "app.feeds.urlhaus.URLhausFeed",
+    "threatfox": "app.feeds.threatfox.ThreatFoxFeed",
+    "malwarebazaar": "app.feeds.malwarebazaar.MalwareBazaarFeed",
+    "blocklist-de": "app.feeds.blocklist_de.BlocklistDeFeed",
+    "emerging-threats": "app.feeds.emergingthreats.EmergingThreatsFeed",
+    "emerging-threats-feed": "app.feeds.emergingthreats.EmergingThreatsFeed",
+    "feodo-tracker": "app.feeds.feodo_tracker.FeodoTrackerFeed",
+    "feodo-tracker-feed": "app.feeds.feodo_tracker.FeodoTrackerFeed",
+    "otx-alienvault": "app.feeds.otx_alienvault.OTXAlienVaultFeed",
+    "abuseipdb": "app.feeds.abuseipdb.AbuseIPDBFeed",
+    "phishtank": "app.feeds.phishtank.PhishTankFeed",
+    "virustotal": "app.feeds.virustotal.VirusTotalFeed",
+    "mitre-attack": "app.feeds.mitre_attack.MitreAttackFeed",
+}
 
 router = APIRouter()
 
@@ -71,21 +98,76 @@ async def delete_feed(feed_id: str, db: AsyncSession = Depends(get_db)):
     return {"status": "deleted", "feed_id": str(feed_id)}
 
 
-@router.post("/{feed_id}/sync")
-async def trigger_sync(feed_id: str, db: AsyncSession = Depends(get_db)):
-    """Trigger manual feed sync."""
+@router.post("/{feed_id}/sync", status_code=202)
+async def trigger_sync(feed_id: str, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+    """Queue a feed sync. Returns 202 immediately; ingestion runs in the background."""
     result = await db.execute(select(FeedSource).where(FeedSource.id == feed_id))
     feed = result.scalar_one_or_none()
     if not feed:
         raise HTTPException(status_code=404, detail="Feed not found")
 
-    # In production, this would dispatch a Celery task
+    connector_path = FEED_CONNECTORS.get(feed.slug)
+    if not connector_path:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No connector registered for feed slug '{feed.slug}'",
+        )
+
+    background_tasks.add_task(_run_feed_sync, feed_id=feed_id, feed_slug=feed.slug, connector_path=connector_path)
+
     return {
-        "status": "sync_queued",
+        "status": "sync_started",
         "feed_id": str(feed_id),
         "feed_name": feed.name,
-        "message": f"Sync for {feed.name} has been queued",
+        "message": f"Sync for {feed.name} is running in the background.",
     }
+
+
+async def _run_feed_sync(feed_id: str, feed_slug: str, connector_path: str) -> None:
+    """Background task: fetch IOCs from the connector and ingest into the DB."""
+    module_path, class_name = connector_path.rsplit(".", 1)
+    import importlib as _imp
+    module = _imp.import_module(module_path)
+    connector_class = getattr(module, class_name)
+
+    api_key = None
+    # Resolve API key from environment if the feed requires one
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(FeedSource).where(FeedSource.id == feed_id))
+        feed = result.scalar_one_or_none()
+        if not feed:
+            logger.error("background_sync_feed_not_found", feed_id=feed_id)
+            return
+        if feed.api_key_env:
+            api_key = os.environ.get(feed.api_key_env)
+
+    connector = connector_class(api_key=api_key)
+
+    try:
+        iocs = await connector.run()
+    except Exception as e:
+        logger.error("background_sync_fetch_error", feed=feed_slug, error=str(e))
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(FeedSource).where(FeedSource.id == feed_id))
+            feed = result.scalar_one_or_none()
+            if feed:
+                feed.last_sync_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                feed.last_sync_status = "failed"
+                await session.commit()
+        return
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(FeedSource).where(FeedSource.id == feed_id))
+        feed = result.scalar_one_or_none()
+        if not feed:
+            return
+        try:
+            count = await ingest_iocs(session, feed, iocs)
+            await session.commit()
+            logger.info("background_sync_complete", feed=feed_slug, iocs_ingested=count)
+        except Exception as e:
+            await session.rollback()
+            logger.error("background_sync_ingest_error", feed=feed_slug, error=str(e))
 
 
 @router.get("/{feed_id}/logs")

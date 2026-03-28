@@ -40,9 +40,14 @@ def detect_ioc_type(value: str) -> Optional[str]:
     if PATTERNS["url"].match(value):
         return "url"
 
-    # Check IP addresses
+    # Check IP addresses (plain or CIDR)
     try:
-        addr = ipaddress.ip_address(value)
+        ipaddress.ip_address(value)
+        return "ip"
+    except ValueError:
+        pass
+    try:
+        ipaddress.ip_network(value, strict=False)
         return "ip"
     except ValueError:
         pass
@@ -59,7 +64,13 @@ def validate_ioc(ioc_type: str, value: str) -> bool:
 
     if ioc_type == "ip":
         try:
+            # Accept plain IPs and CIDR network notation (e.g. 1.2.3.0/24)
             ipaddress.ip_address(value)
+            return True
+        except ValueError:
+            pass
+        try:
+            ipaddress.ip_network(value, strict=False)
             return True
         except ValueError:
             return False

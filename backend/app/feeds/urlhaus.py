@@ -2,7 +2,8 @@
 
 import csv
 import io
-from typing import Any, List, Dict
+from datetime import datetime
+from typing import Any, List, Dict, Optional
 
 from app.feeds.base import BaseFeed
 
@@ -21,6 +22,9 @@ class URLhausFeed(BaseFeed):
         return response.text
 
     async def parse(self, raw_data: Any) -> List[Dict[str, Any]]:
+        """Parse URLhaus CSV.
+        Columns: id, dateadded, url, url_status, last_online, threat, tags, urlhaus_link, reporter
+        """
         iocs = []
         reader = csv.reader(io.StringIO(raw_data))
 
@@ -31,10 +35,12 @@ class URLhausFeed(BaseFeed):
                 continue
 
             try:
-                url = row[2].strip().strip('"')
+                dateadded  = row[1].strip().strip('"')
+                url        = row[2].strip().strip('"')
                 url_status = row[3].strip().strip('"')
-                threat = row[5].strip().strip('"')
-                tags_str = row[6].strip().strip('"')
+                last_online = row[4].strip().strip('"')
+                threat     = row[5].strip().strip('"')
+                tags_str   = row[6].strip().strip('"')
 
                 if not url or not url.startswith("http"):
                     continue
@@ -51,12 +57,27 @@ class URLhausFeed(BaseFeed):
                 elif url_status == "offline":
                     score = 40
 
+                first_seen: Optional[datetime] = None
+                try:
+                    first_seen = datetime.strptime(dateadded, "%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    pass
+
+                last_seen: Optional[datetime] = None
+                if last_online:
+                    try:
+                        last_seen = datetime.strptime(last_online, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        pass
+
                 iocs.append(self._make_ioc(
                     ioc_type="url",
                     value=url,
                     tags=tags,
                     threat_score=score,
                     confidence=70,
+                    first_seen=first_seen,
+                    last_seen=last_seen,
                     metadata={"status": url_status, "threat": threat, "source": "urlhaus"},
                 ))
             except (IndexError, ValueError):
