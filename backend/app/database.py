@@ -78,6 +78,25 @@ else:
     )
 SyncSessionLocal = sessionmaker(bind=sync_engine)
 
+
+def _set_mysql_session_timeouts(dbapi_connection, connection_record):
+    """Raise MySQL session-level I/O timeouts on every new connection.
+
+    The default net_read_timeout / net_write_timeout on shared MySQL hosts is
+    often only 30-60 s.  Feed ingestion can hold a connection idle for several
+    seconds between the initial SELECT and the subsequent flush+commit while
+    Python computes threat scores.  Setting these to 300 s gives the session
+    plenty of headroom and prevents error 2013 'Lost connection during query'.
+    """
+    cursor = dbapi_connection.cursor()
+    cursor.execute(
+        "SET SESSION net_read_timeout=300, net_write_timeout=300, wait_timeout=300"
+    )
+    cursor.close()
+
+
+event.listen(sync_engine, "connect", _set_mysql_session_timeouts)
+
 # Async engine (for FastAPI endpoints) - optimized for serverless
 async_db_url = settings.DATABASE_ASYNC_URL or settings.DATABASE_URL.replace("mysql+pymysql://", "mysql+aiomysql://")
 
@@ -107,8 +126,12 @@ else:
         echo=False,
         connect_args={
             "connect_timeout": 30,
+            "read_timeout": 300,   # aiomysql socket-level read timeout (seconds)
+            "write_timeout": 300,  # aiomysql socket-level write timeout (seconds)
         }
     )
+
+event.listen(async_engine.sync_engine, "connect", _set_mysql_session_timeouts)
 
 AsyncSessionLocal = async_sessionmaker(
     bind=async_engine,
