@@ -752,7 +752,19 @@ function FeedDetailPanel({ feed, onDelete, deleting }: { feed: FeedSource; onDel
                     {formatNumber(log.iocs_ingested)} IOCs
                   </span>
                 </div>
-              ))}
+              ))}            </div>
+          )}
+
+          {/* Last Error */}
+          {feed.last_sync_status === 'failed' && feed.last_sync_error && (
+            <div className="mt-3 p-2.5 rounded bg-red-500/5 border border-red-500/20">
+              <p className="text-[9px] font-mono font-semibold text-red-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                <XCircle className="w-2.5 h-2.5" />
+                Last Error
+              </p>
+              <p className="text-[10px] font-mono text-red-300/80 break-all leading-relaxed">
+                {feed.last_sync_error}
+              </p>
             </div>
           )}
 

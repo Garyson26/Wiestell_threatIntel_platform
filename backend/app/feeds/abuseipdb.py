@@ -17,25 +17,57 @@ class AbuseIPDBFeed(BaseFeed):
     default_sync_frequency = 86400
 
     async def fetch(self) -> Any:
+        import structlog as _structlog
+        _log = _structlog.get_logger()
+
         if not self.api_key:
-            import structlog
-            structlog.get_logger().warning(
+            _log.warning(
                 "abuseipdb_feed_skipped",
                 reason="no_api_key",
                 hint="Set ABUSEIPDB_API_KEY environment variable.",
             )
             return {"data": []}
 
-        response = await self._fetch_url(
-            self.url,
-            headers={
-                "Key": self.api_key,
-                "Accept": "application/json",
-            },
-            # confidenceMinimum=75 gives broader coverage; max limit = 10000
-            params={"confidenceMinimum": 75, "limit": 10000},
-        )
-        return response.json()
+        import httpx as _httpx
+        try:
+            response = await self._fetch_url(
+                self.url,
+                headers={
+                    "Key": self.api_key,
+                    "Accept": "application/json",
+                },
+                # confidenceMinimum=75 gives broader coverage; free tier allows up to 10 000
+                params={"confidenceMinimum": 75, "limit": 10000},
+            )
+            return response.json()
+        except _httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            if status == 429:
+                _log.warning(
+                    "abuseipdb_rate_limited",
+                    hint="AbuseIPDB rate limit hit; will retry on next scheduled sync.",
+                )
+            elif status in (401, 403):
+                _log.warning(
+                    "abuseipdb_auth_error",
+                    status=status,
+                    hint="Check ABUSEIPDB_API_KEY is valid.",
+                )
+            elif status == 402:
+                _log.warning(
+                    "abuseipdb_plan_limit",
+                    status=status,
+                    hint="AbuseIPDB plan limit reached; upgrade or reduce limit parameter.",
+                )
+            elif status == 422:
+                _log.warning(
+                    "abuseipdb_invalid_params",
+                    status=status,
+                    body=exc.response.text[:200],
+                )
+            else:
+                _log.error("abuseipdb_http_error", status=status, error=str(exc))
+            return {"data": []}
 
     async def parse(self, raw_data: Any) -> List[Dict[str, Any]]:
         iocs = []

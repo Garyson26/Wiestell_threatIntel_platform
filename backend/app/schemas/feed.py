@@ -36,6 +36,7 @@ class FeedResponse(FeedBase):
     is_enabled: bool
     last_sync_at: Optional[datetime]
     last_sync_status: Optional[str]
+    last_sync_error: Optional[str] = None
     ioc_count: Optional[int] = 0
     config: Optional[dict] = None
     created_at: Optional[datetime] = None
