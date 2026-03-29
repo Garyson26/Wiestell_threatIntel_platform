@@ -1,12 +1,46 @@
 """Database connection and session management."""
 
 import os
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy.pool import NullPool
 
 from app.config import settings
+
+
+def _patch_aiomysql() -> None:
+    """Patch aiomysql.Connection.ensure_closed to handle already-closed TCP transports.
+
+    When the MySQL server closes an idle connection (wait_timeout) while a
+    transport reference is still held in the SQLAlchemy pool, aiomysql's
+    ensure_closed() tries to write COM_QUIT to the dead uvloop TCPTransport
+    and raises RuntimeError.  SQLAlchemy calls ensure_closed() from pool
+    cleanup paths (_close_connection, reset_on_return) that do NOT go through
+    the handle_error event, so the RuntimeError propagates all the way up to
+    the caller.  Since the transport is already gone there is nothing to send,
+    so silently swallowing the error is correct.
+    """
+    try:
+        import aiomysql
+
+        _orig_ensure_closed = aiomysql.Connection.ensure_closed
+
+        async def _safe_ensure_closed(self):
+            try:
+                await _orig_ensure_closed(self)
+            except RuntimeError as exc:
+                if "TCPTransport" in str(exc) or "handler is closed" in str(exc):
+                    pass  # transport already gone — nothing to close
+                else:
+                    raise
+
+        aiomysql.Connection.ensure_closed = _safe_ensure_closed
+    except ImportError:
+        pass  # aiomysql not installed (e.g. pure-sync environments)
+
+
+_patch_aiomysql()
 
 # Detect serverless environment
 IS_SERVERLESS = os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME")
@@ -24,9 +58,17 @@ if IS_SERVERLESS:
         }
     )
 else:
+    # Use a small pool so connections are reused across requests.
+    # pool_pre_ping replaces NullPool's "fresh connection" safety: it validates
+    # the connection before use and discards stale ones, without the cost of
+    # opening a new TCP connection every single time.
+    # pool_size + max_overflow kept low to stay well within shared-host limits.
     sync_engine = create_engine(
         settings.DATABASE_URL,
-        poolclass=NullPool,    # Fresh connection per request for remote DB
+        pool_size=3,
+        max_overflow=2,
+        pool_recycle=280,    # discard before typical shared-host wait_timeout (300s)
+        pool_pre_ping=True,  # validate connection health before use
         echo=False,
         connect_args={
             "connect_timeout": 30,
@@ -50,9 +92,18 @@ if IS_SERVERLESS:
         }
     )
 else:
+    # Reuse connections via a small pool instead of opening a new TCP connection
+    # on every AsyncSessionLocal() call (NullPool), which was exhausting the
+    # shared-host max_connections_per_hour quota (1226).
+    # pool_recycle=280 ensures connections are discarded before shared-host MySQL
+    # servers close idle connections (wait_timeout is often 300s on shared hosting).
     async_engine = create_async_engine(
         async_db_url,
-        poolclass=NullPool,    # Fresh connection per request for remote DB
+        pool_size=3,
+        max_overflow=2,
+        pool_recycle=280,    # discard before typical shared-host wait_timeout (300s)
+        pool_pre_ping=True,  # drop and replace stale connections transparently
+        pool_timeout=10,     # fail fast rather than wait forever for a free slot
         echo=False,
         connect_args={
             "connect_timeout": 30,
