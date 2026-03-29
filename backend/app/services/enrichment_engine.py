@@ -85,7 +85,7 @@ def _get_applicable_sources(ioc_type: str) -> List[str]:
         "ip": ["geoip", "whois", "dns", "reputation"],
         "domain": ["whois", "dns", "reputation"],
         "url": ["whois", "dns", "reputation"],
-        "hash": ["reputation"],
+        "hash": ["malwarebazaar", "reputation"],
         "email": ["whois", "reputation"],
         "cve": ["reputation"],
     }
@@ -122,6 +122,8 @@ async def _run_enricher(source: str, ioc: IOC) -> Optional[Dict]:
             return await _enrich_dns(ioc.value)
         elif source == "reputation":
             return await _enrich_reputation(ioc.value, ioc.type)
+        elif source == "malwarebazaar":
+            return await _enrich_malwarebazaar(ioc.value)
         else:
             return None
     except Exception as e:
@@ -199,6 +201,50 @@ async def _enrich_dns(value: str) -> Optional[Dict]:
         return {"error": f"DNS lookup failed: {str(e)}"}
 
 
+async def _enrich_malwarebazaar(value: str) -> Optional[Dict]:
+    """Query MalwareBazaar for hash intelligence (MD5, SHA1, or SHA256)."""
+    try:
+        import httpx
+        api_key = settings.MALWAREBAZAAR_API_KEY
+        headers = {"Auth-Key": api_key} if api_key else {}
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post(
+                "https://mb-api.abuse.ch/api/v1/",
+                data={"query": "get_info", "hash": value},
+                headers=headers,
+            )
+            response.raise_for_status()
+            data = response.json()
+
+        status = data.get("query_status", "")
+        if status != "ok" or not data.get("data"):
+            return {"found": False, "query_status": status}
+
+        entry = data["data"][0]
+        return {
+            "found": True,
+            "sha256": entry.get("sha256_hash"),
+            "sha1": entry.get("sha1_hash"),
+            "md5": entry.get("md5_hash"),
+            "file_name": entry.get("file_name"),
+            "file_type": entry.get("file_type"),
+            "file_type_mime": entry.get("file_type_mime"),
+            "file_size": entry.get("file_size"),
+            "signature": entry.get("signature"),
+            "tags": entry.get("tags") or [],
+            "reporter": entry.get("reporter"),
+            "origin_country": entry.get("origin_country"),
+            "first_seen": entry.get("first_seen"),
+            "last_seen": entry.get("last_seen"),
+            "delivery_method": entry.get("delivery_method"),
+            "intelligence": entry.get("intelligence"),
+            "vendor_intel": entry.get("vendor_intel"),
+        }
+    except Exception as e:
+        logger.warning("malwarebazaar_enrichment_failed", hash=value[:16], error=str(e))
+        return {"found": False, "error": str(e)}
+
+
 async def _enrich_reputation(value: str, ioc_type: str) -> Optional[Dict]:
     """Aggregate reputation check across available sources."""
     return {
@@ -217,5 +263,6 @@ def _get_ttl(source: str) -> int:
         "dns": settings.CACHE_TTL_DNS,
         "geoip": settings.CACHE_TTL_GEOIP,
         "reputation": settings.CACHE_TTL_REPUTATION,
+        "malwarebazaar": 43200,  # 12 hours — hash intel changes infrequently
     }
     return ttl_map.get(source, 3600)

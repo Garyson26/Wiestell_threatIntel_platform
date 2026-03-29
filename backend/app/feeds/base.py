@@ -6,9 +6,23 @@ from datetime import datetime, timezone
 
 import httpx
 import structlog
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 logger = structlog.get_logger()
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    """Return True only for transient failures worth retrying.
+
+    Non-transient HTTP errors (401, 402, 403, 422, …) should not be retried —
+    they will never succeed without a config change and burning retries just
+    delays the failure and wastes API quota.
+    Retryable: network/timeout errors, 429 Too Many Requests, 5xx server errors.
+    """
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in (429, 500, 502, 503, 504)
+    # Retry on connection-level errors (timeout, DNS, SSL, etc.)
+    return isinstance(exc, (httpx.TimeoutException, httpx.ConnectError, httpx.RemoteProtocolError))
 
 
 class BaseFeed(abc.ABC):
@@ -63,9 +77,14 @@ class BaseFeed(abc.ABC):
                 await self._client.aclose()
                 self._client = None
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=30))
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception(_is_retryable),
+        reraise=True,
+    )
     async def _fetch_url(self, url: str, **kwargs) -> httpx.Response:
-        """Fetch URL with retry logic."""
+        """Fetch URL with retry logic (retries only on transient errors)."""
         response = await self.client.get(url, **kwargs)
         response.raise_for_status()
         return response

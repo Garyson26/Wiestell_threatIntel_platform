@@ -18,8 +18,10 @@ import structlog
 
 logger = structlog.get_logger()
 
-# Process IOCs in chunks to avoid huge IN-clauses and memory spikes
-_BATCH_SIZE = 500
+# Process IOCs in chunks to avoid huge IN-clauses and memory spikes.
+# Kept small so each chunk's transaction releases row locks before the next
+# batch starts, preventing MySQL lock wait timeout (1205) on large feeds.
+_BATCH_SIZE = 100
 
 
 def _now() -> datetime:
@@ -62,27 +64,52 @@ async def ingest_iocs(
 ) -> int:
     """Ingest a batch of IOCs from a feed using bulk operations.
 
-    Processes IOCs in chunks to avoid query timeouts on large feeds.
+    Processes IOCs in chunks and commits after each chunk so that row-level
+    locks are released promptly. This prevents MySQL lock wait timeout (1205)
+    when a large feed (e.g. OTX) updates hundreds of existing IOC rows.
     Returns the total number of IOCs processed.
     """
     valid = _normalize_batch(raw_iocs)
     logger.info("feed_ingest_start", feed=feed.name, valid=len(valid), total=len(raw_iocs))
 
+    feed_id = feed.id
+    feed_name = feed.name
     count = 0
     for chunk_start in range(0, len(valid), _BATCH_SIZE):
         chunk = valid[chunk_start : chunk_start + _BATCH_SIZE]
+
+        # After the first commit the session expires all objects; re-fetch feed
+        # so _ingest_chunk receives a live instance with a valid .id.
+        if chunk_start > 0:
+            result = await session.execute(
+                select(FeedSource).where(FeedSource.id == feed_id)
+            )
+            feed = result.scalar_one_or_none()
+            if not feed:
+                break
+
         count += await _ingest_chunk(session, feed, chunk)
 
-    feed.last_sync_at = _now()
-    if count == 0:
-        feed.last_sync_status = "no_data"
-        logger.warning("feed_ingestion_no_data", feed=feed.name, raw_total=len(raw_iocs))
-    else:
-        feed.last_sync_status = "success"
-    feed.ioc_count = count
+        # Commit after every chunk to release InnoDB row locks immediately,
+        # preventing lock wait timeouts on subsequent concurrent transactions.
+        await session.commit()
 
-    await session.flush()
-    logger.info("feed_ingestion_complete", feed=feed.name, iocs_ingested=count)
+    # Re-fetch feed after the last commit for the final status update.
+    result = await session.execute(
+        select(FeedSource).where(FeedSource.id == feed_id)
+    )
+    feed = result.scalar_one_or_none()
+    if feed:
+        feed.last_sync_at = _now()
+        if count == 0:
+            feed.last_sync_status = "no_data"
+            logger.warning("feed_ingestion_no_data", feed=feed_name, raw_total=len(raw_iocs))
+        else:
+            feed.last_sync_status = "success"
+        feed.ioc_count = count
+        await session.flush()
+
+    logger.info("feed_ingestion_complete", feed=feed_name, iocs_ingested=count)
     return count
 
 
@@ -189,7 +216,6 @@ async def _ingest_chunk(
 
         await session.flush()
 
-    return count
     return count
 
 

@@ -63,7 +63,7 @@ async def run_feed_sync(feed_id: str, feed_slug: str, connector_path: str) -> No
     module = importlib.import_module(module_path)
     connector_class = getattr(module, class_name)
 
-    # Resolve API key
+    # Resolve API key and release the connection before the (potentially slow) HTTP fetch.
     api_key: Optional[str] = None
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(FeedSource).where(FeedSource.id == feed_id))
@@ -72,12 +72,12 @@ async def run_feed_sync(feed_id: str, feed_slug: str, connector_path: str) -> No
             logger.error("run_feed_sync_not_found", feed_id=feed_id)
             return
         if feed.api_key_env:
-            # os.environ first (Docker/system env), then fall back to .env via settings
             api_key = os.environ.get(feed.api_key_env) or getattr(settings, feed.api_key_env, None)
+        # session closes here — connection returned to pool before HTTP fetch
 
     connector = connector_class(api_key=api_key)
 
-    # Fetch
+    # Fetch (no DB connection held during network I/O)
     try:
         iocs = await connector.run()
     except Exception as exc:
@@ -88,10 +88,11 @@ async def run_feed_sync(feed_id: str, feed_slug: str, connector_path: str) -> No
             if feed:
                 feed.last_sync_at = datetime.utcnow()
                 feed.last_sync_status = "failed"
+                feed.last_sync_error = str(exc)
                 await session.commit()
         return
 
-    # Ingest
+    # Ingest — single session for the entire write phase
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(FeedSource).where(FeedSource.id == feed_id))
         feed = result.scalar_one_or_none()
@@ -99,6 +100,7 @@ async def run_feed_sync(feed_id: str, feed_slug: str, connector_path: str) -> No
             return
         try:
             count = await ingest_iocs(session, feed, iocs)
+            feed.last_sync_error = None
             await session.commit()
             logger.info("run_feed_sync_complete", feed=feed_slug, iocs_ingested=count)
         except Exception as exc:
@@ -112,6 +114,7 @@ async def run_feed_sync(feed_id: str, feed_slug: str, connector_path: str) -> No
                 if fail_feed:
                     fail_feed.last_sync_at = datetime.utcnow()
                     fail_feed.last_sync_status = "failed"
+                    fail_feed.last_sync_error = str(exc)
                     await fail_session.commit()
 
 
@@ -157,10 +160,19 @@ async def _tick() -> None:
 
 async def feed_scheduler_loop() -> None:
     """Main loop. Runs forever; cancelled cleanly on app shutdown."""
+    from app.database import async_engine
+
     logger.info("feed_scheduler_started", poll_interval=_POLL_INTERVAL)
     while True:
         try:
             await _tick()
         except Exception as exc:
-            logger.error("feed_scheduler_tick_error", error=str(exc))
+            error_str = str(exc)
+            logger.error("feed_scheduler_tick_error", error=error_str)
+            # If the error is a dead TCP transport (aiomysql connection closed by
+            # the server while sitting in the pool), dispose the entire pool so
+            # all stale connections are evicted. The next tick will open fresh ones.
+            if "TCPTransport" in error_str or "handler is closed" in error_str or "Lost connection" in error_str:
+                logger.warning("feed_scheduler_pool_reset", reason="stale_connections_detected")
+                await async_engine.dispose()
         await asyncio.sleep(_POLL_INTERVAL)
