@@ -126,8 +126,6 @@ else:
         echo=False,
         connect_args={
             "connect_timeout": 30,
-            "read_timeout": 300,   # aiomysql socket-level read timeout (seconds)
-            "write_timeout": 300,  # aiomysql socket-level write timeout (seconds)
         }
     )
 
