@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { User, UserPlus, Shield, Mail, Clock } from 'lucide-react';
-import { registerUser, getUsers } from '@/lib/api';
+import { adminCreateUser, getUsers } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { formatDate } from '@/lib/utils';
 import type { UserProfile } from '@/lib/types';
@@ -16,7 +16,7 @@ export default function ProfilePage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  const { login } = useAuth();
+  const { } = useAuth();
 
   const [form, setForm] = useState({
     email: '',
@@ -51,17 +51,16 @@ export default function ProfilePage() {
     }
     setRegistering(true);
     try {
-      const res = await registerUser({
+      const newUser = await adminCreateUser({
         username: form.email.split('@')[0],
         email: form.email,
         password: form.password,
         full_name: form.full_name || undefined,
         role: form.role,
       });
-      setSuccess(`Registration initiated for ${form.email}. An OTP has been sent to their email for verification.`);
+      setSuccess(`User "${newUser.username}" created successfully.`);
       setForm({ email: '', password: '', full_name: '', role: 'analyst' });
       setShowRegister(false);
-      // Reload users list - the new user will appear as inactive until OTP is verified
       await loadUsers();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed.');
@@ -149,7 +148,6 @@ export default function ProfilePage() {
                 >
                   <option value="analyst">Analyst</option>
                   <option value="admin">Admin</option>
-                  <option value="viewer">Viewer</option>
                 </select>
               </div>
             </div>
