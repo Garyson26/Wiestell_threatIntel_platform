@@ -1,6 +1,28 @@
 import { clsx, type ClassValue } from 'clsx';
-import { formatDistanceToNow, format } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
 import type { ScoreCategory } from './types';
+
+/** Resolved at runtime from the browser/OS — e.g. 'Asia/Kolkata', 'America/New_York'. */
+const USER_TZ: string =
+  typeof Intl !== 'undefined'
+    ? Intl.DateTimeFormat().resolvedOptions().timeZone
+    : 'UTC';
+
+/**
+ * Parse a datetime string safely.
+ * Strings WITHOUT a timezone designator (no Z, no +HH:MM) come from the
+ * backend as naive UTC values. We append 'Z' so the browser treats them
+ * as UTC instead of local time, which would shift the displayed time.
+ */
+function parseTs(ts: string): Date {
+  // Already has timezone info — parse as-is
+  if (/[Zz]$/.test(ts) || /[+\-]\d{2}:\d{2}$/.test(ts)) {
+    return new Date(ts);
+  }
+  // Naive datetime — assume UTC
+  return new Date(ts + 'Z');
+}
 
 export function cn(...inputs: ClassValue[]) {
   return clsx(inputs);
@@ -42,7 +64,7 @@ export function getIOCTypeIcon(type: string): string {
 export function formatTimestamp(ts: string | null | undefined): string {
   if (!ts) return 'N/A';
   try {
-    return formatDistanceToNow(new Date(ts), { addSuffix: true });
+    return formatDistanceToNow(parseTs(ts), { addSuffix: true });
   } catch {
     return 'N/A';
   }
@@ -51,7 +73,7 @@ export function formatTimestamp(ts: string | null | undefined): string {
 export function formatDate(ts: string | null | undefined): string {
   if (!ts) return 'N/A';
   try {
-    return format(new Date(ts), 'yyyy-MM-dd HH:mm');
+    return formatInTimeZone(parseTs(ts), USER_TZ, 'yyyy-MM-dd HH:mm');
   } catch {
     return 'N/A';
   }

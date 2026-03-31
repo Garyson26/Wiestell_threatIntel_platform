@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.ioc import IOC
 from app.models.feed import FeedSource
+from app.utils import to_ist_str
 
 router = APIRouter()
 
@@ -219,7 +220,7 @@ async def get_feed_health(db: AsyncSession = Depends(get_db)):
             "name": f.name,
             "slug": f.slug,
             "is_enabled": f.is_enabled,
-            "last_sync_at": f.last_sync_at.isoformat() if f.last_sync_at else None,
+            "last_sync_at": to_ist_str(f.last_sync_at),
             "last_sync_status": f.last_sync_status or "never_synced",
             "ioc_count": f.ioc_count,
             "health": _get_feed_health(f, now),

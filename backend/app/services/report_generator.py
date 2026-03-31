@@ -10,6 +10,7 @@ from app.models.ioc import IOC
 from app.models.feed import FeedSource
 from app.models.report import Report
 from app.services.scoring_engine import get_score_category
+from app.utils import to_ist_str
 
 
 async def generate_daily_brief(session: AsyncSession) -> Report:
@@ -77,7 +78,7 @@ async def generate_daily_brief(session: AsyncSession) -> Report:
             {
                 "name": f.name,
                 "status": f.last_sync_status or "unknown",
-                "last_sync": f.last_sync_at.isoformat() if f.last_sync_at else None,
+                "last_sync": to_ist_str(f.last_sync_at),
                 "ioc_count": f.ioc_count,
             }
             for f in active_feeds
