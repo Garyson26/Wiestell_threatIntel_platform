@@ -30,12 +30,10 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
     let message = `API error: ${res.status} ${res.statusText}`;
     try {
       const body = await res.json();
-      console.error('fetchAPI error body:', body);
       if (body.detail) message = body.detail;
     } catch {
       // use default message
     }
-    console.error('fetchAPI error:', message, 'for', endpoint);
     throw new Error(message);
   }
 
