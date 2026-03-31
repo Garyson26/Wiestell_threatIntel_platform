@@ -23,7 +23,8 @@ export default function Header() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchValue.trim()) {
-      router.push(`/ioc?q=${encodeURIComponent(searchValue.trim())}`);
+      const searchPath = user?.role === 'admin' ? '/ioc' : '/ioc-search';
+      router.push(`${searchPath}?q=${encodeURIComponent(searchValue.trim())}`);
     }
   };
 
