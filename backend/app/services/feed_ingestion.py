@@ -1,10 +1,12 @@
 """Feed ingestion service for fetching, parsing, and storing IOCs from feeds."""
 
+import asyncio
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Tuple
 
-from sqlalchemy import select, tuple_
+from sqlalchemy import select, tuple_, update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -13,17 +15,20 @@ from app.models.ioc import IOC
 from app.models.feed import FeedSource
 from app.models.ioc_source import IOCSource
 from app.services.scoring_engine import calculate_threat_score
+from app.utils.db_retry import is_retryable_lock_error
 from app.utils.ioc_validator import validate_ioc, normalize_ioc
 
 import structlog
 
 logger = structlog.get_logger()
 
-# Process IOCs in chunks to avoid huge IN-clauses, memory spikes, and
-# "Query too large" / "Lost connection" (error 2013) on MySQL.
-# 50 rows keeps each UPDATE executemany well within MySQL's max_allowed_packet
-# and releases InnoDB row locks promptly between chunks.
-_BATCH_SIZE = 50
+# Chunk size for bulk IOC processing. Smaller batches mean fewer rows touched
+# per transaction, which reduces InnoDB lock contention (ER_LOCK_WAIT_TIMEOUT
+# 1205) and limits the blast radius of a deadlock (ER_LOCK_DEADLOCK 1213).
+# 15 rows is a safe default: stays well within MySQL's max_allowed_packet,
+# keeps individual lock windows short, and leaves headroom for concurrent
+# Celery workers updating overlapping IOC sets.
+_BATCH_SIZE = 15
 
 
 def _now() -> datetime:
@@ -71,9 +76,11 @@ async def ingest_iocs(
 ) -> int:
     """Ingest a batch of IOCs from a feed using bulk operations.
 
-    Processes IOCs in chunks and commits after each chunk so that row-level
-    locks are released promptly. This prevents MySQL lock wait timeout (1205)
-    when a large feed (e.g. OTX) updates hundreds of existing IOC rows.
+    Processes IOCs in small chunks (_BATCH_SIZE rows) and commits after each
+    chunk to release InnoDB row locks promptly. Each chunk is wrapped in retry
+    logic: on ER_LOCK_WAIT_TIMEOUT (1205) or ER_LOCK_DEADLOCK (1213) the
+    chunk transaction is rolled back and retried with exponential back-off
+    (1 s → 2 s → 4 s) via _process_async_chunk_with_retry.
     Returns the total number of IOCs processed.
     """
     valid = _normalize_batch(raw_iocs)
@@ -82,26 +89,12 @@ async def ingest_iocs(
     feed_id = feed.id
     feed_name = feed.name
     count = 0
+
     for chunk_start in range(0, len(valid), _BATCH_SIZE):
         chunk = valid[chunk_start : chunk_start + _BATCH_SIZE]
+        count += await _process_async_chunk_with_retry(session, feed_id, chunk)
 
-        # After the first commit the session expires all objects; re-fetch feed
-        # so _ingest_chunk receives a live instance with a valid .id.
-        if chunk_start > 0:
-            result = await session.execute(
-                select(FeedSource).where(FeedSource.id == feed_id)
-            )
-            feed = result.scalar_one_or_none()
-            if not feed:
-                break
-
-        count += await _ingest_chunk(session, feed, chunk)
-
-        # Commit after every chunk to release InnoDB row locks immediately,
-        # preventing lock wait timeouts on subsequent concurrent transactions.
-        await session.commit()
-
-    # Re-fetch feed after the last commit for the final status update.
+    # Re-fetch feed after the last chunk commit for the final status update.
     result = await session.execute(
         select(FeedSource).where(FeedSource.id == feed_id)
     )
@@ -125,11 +118,20 @@ async def _ingest_chunk(
     feed: FeedSource,
     chunk: List[Dict[str, Any]],
 ) -> int:
-    """Process one chunk: bulk-lookup existing IOCs, update or insert, link sources."""
-    # Build (type, value) lookup key for all IOCs in this chunk
+    """Process one chunk: bulk-lookup existing IOCs, update or insert, link sources.
+
+    Existing-row mutations are accumulated as plain dicts and applied via a
+    single ``session.execute(sa_update(IOC), ...)`` executemany call.
+    This holds InnoDB row locks only for the duration of that one statement
+    instead of spreading them across the Python-side computation loop, which
+    is the primary cause of ER_LOCK_WAIT_TIMEOUT (1205) under concurrent
+    workers. New INSERTs still use individual savepoints to handle the
+    UNIQUE(type, value) race with other concurrent workers gracefully.
+    """
+    # Build (type, value) lookup key for all IOCs in this chunk.
     keys: List[Tuple[str, str]] = [(r["type"], r["value"]) for r in chunk]
 
-    # Single query to fetch all existing IOCs in this chunk
+    # Single SELECT — read phase is lock-free (no FOR UPDATE here).
     existing_rows = await session.execute(
         select(IOC).where(tuple_(IOC.type, IOC.value).in_(keys))
     )
@@ -139,6 +141,12 @@ async def _ingest_chunk(
 
     count = 0
     ioc_ids: List[str] = []
+    # Collect new field values WITHOUT mutating tracked ORM objects.
+    # Mutating attributes marks each object dirty and causes SQLAlchemy to
+    # emit N individual UPDATEs at flush time, holding row locks across the
+    # entire Python loop. Using a plain dict + executemany UPDATE instead
+    # sends one round-trip and releases locks immediately.
+    update_mappings: List[Dict[str, Any]] = []
 
     for raw in chunk:
         key = (raw["type"], raw["value"])
@@ -146,29 +154,36 @@ async def _ingest_chunk(
 
         try:
             if existing:
-                existing.sighting_count += 1
-                existing.last_seen = _now()
-                if raw.get("tags"):
-                    merged = set(existing.tags or [])
-                    merged.update(raw["tags"])
-                    existing.tags = list(merged)
-                if raw.get("mitre_techniques"):
-                    merged_tech = set(existing.mitre_techniques or [])
-                    merged_tech.update(raw["mitre_techniques"])
-                    existing.mitre_techniques = list(merged_tech)
-                existing.threat_score = calculate_threat_score(
+                new_sighting = existing.sighting_count + 1
+                merged_tags = list(
+                    set(existing.tags or []) | set(raw.get("tags") or [])
+                )
+                merged_tech = list(
+                    set(existing.mitre_techniques or [])
+                    | set(raw.get("mitre_techniques") or [])
+                )
+                new_score = calculate_threat_score(
                     {
                         "type": existing.type,
                         "value": existing.value,
                         "threat_score": existing.threat_score,
-                        "tags": existing.tags,
-                        "mitre_techniques": existing.mitre_techniques,
-                        "last_seen": existing.last_seen,
-                        "sighting_count": existing.sighting_count,
+                        "tags": merged_tags,
+                        "mitre_techniques": merged_tech,
+                        "last_seen": _now(),
+                        "sighting_count": new_sighting,
                         "metadata": existing.metadata_,
                     },
-                    source_count=max(existing.sighting_count, 1),
+                    source_count=max(new_sighting, 1),
                 )
+                update_mappings.append({
+                    "id": existing.id,
+                    "sighting_count": new_sighting,
+                    "last_seen": _now(),
+                    "tags": merged_tags,
+                    "mitre_techniques": merged_tech,
+                    "threat_score": new_score,
+                    "updated_at": _now(),
+                })
                 ioc_ids.append(existing.id)
             else:
                 score = raw.get("threat_score") or calculate_threat_score(raw, source_count=1)
@@ -193,6 +208,8 @@ async def _ingest_chunk(
                     existing_map[key] = new_ioc
                     ioc_ids.append(new_id)
                 except IntegrityError:
+                    # Another concurrent worker inserted this IOC between our
+                    # SELECT and INSERT — fetch the winner's row and use it.
                     logger.warning(
                         "ioc_duplicate_skipped",
                         type=raw["type"],
@@ -212,10 +229,18 @@ async def _ingest_chunk(
         except Exception as e:
             logger.error("ioc_chunk_error", error=str(e), value=raw.get("value", "")[:50])
 
-    # Flush updates to existing IOCs before inserting IOCSources
+    # Single executemany UPDATE — one DB round-trip, minimal lock window.
+    # synchronize_session="evaluate" (default) updates the in-memory identity
+    # map so the objects reflect their new values; this is a no-op if no
+    # objects were loaded into the current session for these rows.
+    if update_mappings:
+        await session.execute(sa_update(IOC), update_mappings)
+
+    # Flush pending new IOC inserts (already inside savepoints above, but
+    # flush here to ensure everything is visible before IOCSource linking).
     await session.flush()
 
-    # Bulk-check which (ioc_id, feed_id) source links already exist
+    # Bulk-check which (ioc_id, feed_id) source links already exist.
     if ioc_ids:
         existing_sources = await session.execute(
             select(IOCSource.ioc_id).where(
@@ -225,9 +250,9 @@ async def _ingest_chunk(
         )
         already_linked = {row[0] for row in existing_sources}
 
-        # Deduplicate ioc_ids within this chunk — same URL can appear multiple
-        # times in a feed (e.g. URLhaus), which would cause two IOCSource inserts
-        # for the same (ioc_id, feed_id) and violate the unique constraint.
+        # Deduplicate ioc_ids within this chunk — the same URL can appear
+        # multiple times in a feed (e.g. URLhaus), which would produce two
+        # IOCSource rows for the same (ioc_id, feed_id) unique constraint.
         seen: set = set()
         new_sources = []
         for ioc_id in ioc_ids:
@@ -243,12 +268,74 @@ async def _ingest_chunk(
     return count
 
 
+async def _process_async_chunk_with_retry(
+    session: AsyncSession,
+    feed_id: str,
+    chunk: List[Dict[str, Any]],
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+) -> int:
+    """Process one async chunk and commit; retry on InnoDB lock contention.
+
+    On ER_LOCK_WAIT_TIMEOUT (1205) or ER_LOCK_DEADLOCK (1213) the entire
+    chunk transaction is rolled back and re-executed after exponential
+    back-off: 1 s, 2 s, 4 s. Rolling back before the next attempt resets
+    the session to a clean state with no stale row locks.
+
+    The feed row is re-fetched at the start of every attempt because
+    ``rollback()`` expires all session-bound ORM objects — accessing an
+    expired object's attributes raises DetachedInstanceError.
+    """
+    last_exc: Optional[Exception] = None
+    for attempt in range(max_retries + 1):
+        try:
+            # Always re-fetch the feed; after a rollback the previously
+            # loaded instance is expired and unusable.
+            result = await session.execute(
+                select(FeedSource).where(FeedSource.id == feed_id)
+            )
+            feed = result.scalar_one_or_none()
+            if not feed:
+                return 0
+
+            count = await _ingest_chunk(session, feed, chunk)
+            # Commit immediately — this releases all InnoDB row locks and is
+            # the primary defence against ER_LOCK_WAIT_TIMEOUT (1205) when
+            # multiple workers update overlapping IOC sets concurrently.
+            await session.commit()
+            return count
+        except Exception as exc:
+            # Always roll back on any error so the next attempt (or the
+            # caller) starts from a clean transaction state.
+            await session.rollback()
+            if not is_retryable_lock_error(exc) or attempt == max_retries:
+                raise
+            last_exc = exc
+            delay = base_delay * (2 ** attempt)
+            logger.warning(
+                "async_chunk_lock_retry",
+                attempt=attempt + 1,
+                max_retries=max_retries,
+                delay_s=delay,
+                error=str(exc),
+            )
+            await asyncio.sleep(delay)
+    raise last_exc  # type: ignore[misc]  — unreachable, satisfies type-checkers
+
+
 def _ingest_chunk_sync(
     session: Session,
     feed: FeedSource,
     chunk: List[Dict[str, Any]],
 ) -> int:
-    """Process one chunk synchronously: bulk-lookup, update or insert, link sources."""
+    """Process one chunk synchronously using bulk_update_mappings for minimal lock duration.
+
+    Existing-row mutations are accumulated as plain dicts and applied via
+    ``session.bulk_update_mappings(IOC, ...)``, which emits a single
+    executemany UPDATE statement. This is far more efficient than per-row ORM
+    flushes and holds InnoDB row locks only for the duration of that one
+    statement instead of across the entire Python computation loop.
+    """
     keys: List[Tuple[str, str]] = []
     normalized: List[Dict[str, Any]] = []
     for raw in chunk:
@@ -268,6 +355,7 @@ def _ingest_chunk_sync(
     if not normalized:
         return 0
 
+    # Single SELECT to fetch all existing IOCs — read phase is lock-free.
     existing_map: Dict[Tuple[str, str], IOC] = {}
     if keys:
         existing_rows = session.query(IOC).filter(
@@ -277,35 +365,47 @@ def _ingest_chunk_sync(
 
     count = 0
     ioc_ids: List[str] = []
+    # Collect new field values WITHOUT mutating tracked ORM objects.
+    # Per-row attribute mutations mark each object dirty and cause SQLAlchemy
+    # to emit N individual UPDATEs at flush time. bulk_update_mappings emits
+    # a single executemany UPDATE instead, minimising lock contention.
+    update_mappings: List[Dict[str, Any]] = []
 
     for raw in normalized:
         key = (raw["type"], raw["value"])
         existing = existing_map.get(key)
         try:
             if existing:
-                existing.sighting_count += 1
-                existing.last_seen = _now()
-                if raw.get("tags"):
-                    merged = set(existing.tags or [])
-                    merged.update(raw["tags"])
-                    existing.tags = list(merged)
-                if raw.get("mitre_techniques"):
-                    merged_tech = set(existing.mitre_techniques or [])
-                    merged_tech.update(raw["mitre_techniques"])
-                    existing.mitre_techniques = list(merged_tech)
-                existing.threat_score = calculate_threat_score(
+                new_sighting = existing.sighting_count + 1
+                merged_tags = list(
+                    set(existing.tags or []) | set(raw.get("tags") or [])
+                )
+                merged_tech = list(
+                    set(existing.mitre_techniques or [])
+                    | set(raw.get("mitre_techniques") or [])
+                )
+                new_score = calculate_threat_score(
                     {
                         "type": existing.type,
                         "value": existing.value,
                         "threat_score": existing.threat_score,
-                        "tags": existing.tags,
-                        "mitre_techniques": existing.mitre_techniques or [],
-                        "last_seen": existing.last_seen,
-                        "sighting_count": existing.sighting_count,
+                        "tags": merged_tags,
+                        "mitre_techniques": merged_tech,
+                        "last_seen": _now(),
+                        "sighting_count": new_sighting,
                         "metadata": existing.metadata_,
                     },
-                    source_count=max(existing.sighting_count, 1),
+                    source_count=max(new_sighting, 1),
                 )
+                update_mappings.append({
+                    "id": existing.id,
+                    "sighting_count": new_sighting,
+                    "last_seen": _now(),
+                    "tags": merged_tags,
+                    "mitre_techniques": merged_tech,
+                    "threat_score": new_score,
+                    "updated_at": _now(),
+                })
                 ioc_ids.append(existing.id)
             else:
                 score = raw.get("threat_score") or calculate_threat_score(raw, source_count=1)
@@ -330,6 +430,7 @@ def _ingest_chunk_sync(
                     ioc_ids.append(new_ioc.id)
                 except IntegrityError:
                     sp.rollback()
+                    # Another concurrent worker beat us to this INSERT.
                     logger.warning(
                         "ioc_duplicate_skipped",
                         type=raw["type"],
@@ -345,10 +446,16 @@ def _ingest_chunk_sync(
         except Exception as e:
             logger.error("sync_chunk_ioc_error", error=str(e), value=raw.get("value", "")[:50])
 
-    # Bulk-flush pending UPDATE/INSERT rows before linking sources
+    # Single executemany UPDATE for all existing-IOC mutations — far fewer
+    # DB round-trips than per-row ORM flushes, and row locks are held only
+    # during this one statement rather than across the entire Python loop.
+    if update_mappings:
+        session.bulk_update_mappings(IOC, update_mappings)
+
+    # Flush any remaining pending objects (new IOCSource inserts added below).
     session.flush()
 
-    # Link IOCSources — skip already-linked pairs
+    # Link IOCSources — skip already-linked pairs.
     if ioc_ids:
         already_linked = {
             row[0]
@@ -367,6 +474,57 @@ def _ingest_chunk_sync(
     return count
 
 
+def _process_chunk_with_retry(
+    session: Session,
+    feed_id: str,
+    chunk: List[Dict[str, Any]],
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+) -> int:
+    """Process one sync chunk and commit; retry on InnoDB lock contention.
+
+    On ER_LOCK_WAIT_TIMEOUT (1205) or ER_LOCK_DEADLOCK (1213) the transaction
+    is rolled back and the chunk is re-processed after exponential back-off:
+    1 s, 2 s, 4 s. Rolling back before the next attempt resets the session
+    to a clean state with no outstanding row locks.
+
+    The feed row is re-fetched at the start of every attempt because
+    ``session.rollback()`` expires all session-bound ORM objects.
+    """
+    last_exc: Optional[Exception] = None
+    for attempt in range(max_retries + 1):
+        try:
+            # Always re-fetch the feed; after a rollback the previously
+            # loaded instance is expired and unusable.
+            feed = session.query(FeedSource).filter(
+                FeedSource.id == feed_id
+            ).first()
+            if not feed:
+                return 0
+            count = _ingest_chunk_sync(session, feed, chunk)
+            # Commit immediately — releases InnoDB row locks and is the
+            # primary defence against ER_LOCK_WAIT_TIMEOUT under concurrent
+            # Celery workers.
+            session.commit()
+            return count
+        except Exception as exc:
+            # Always roll back so the next attempt starts cleanly.
+            session.rollback()
+            if not is_retryable_lock_error(exc) or attempt == max_retries:
+                raise
+            last_exc = exc
+            delay = base_delay * (2 ** attempt)
+            logger.warning(
+                "chunk_lock_retry",
+                attempt=attempt + 1,
+                max_retries=max_retries,
+                delay_s=delay,
+                error=str(exc),
+            )
+            time.sleep(delay)
+    raise last_exc  # type: ignore[misc]  — unreachable, satisfies type-checkers
+
+
 def ingest_iocs_sync(
     session: Session,
     feed: FeedSource,
@@ -374,9 +532,11 @@ def ingest_iocs_sync(
 ) -> int:
     """Synchronous version for Celery tasks.
 
-    Processes IOCs in chunks of _BATCH_SIZE and commits after each chunk so
-    that the UPDATE executemany stays well under MySQL's max_allowed_packet
-    and InnoDB row locks are released promptly.
+    Processes IOCs in small chunks (_BATCH_SIZE rows) and commits after each
+    chunk to release InnoDB row locks promptly. Each chunk is wrapped in retry
+    logic: on ER_LOCK_WAIT_TIMEOUT (1205) or ER_LOCK_DEADLOCK (1213) the
+    chunk transaction is rolled back and retried with exponential back-off
+    (1 s → 2 s → 4 s) via _process_chunk_with_retry.
     """
     valid = _normalize_batch(raw_iocs)
     logger.info("sync_feed_ingest_start", feed=feed.name, valid=len(valid), total=len(raw_iocs))
@@ -387,20 +547,9 @@ def ingest_iocs_sync(
 
     for chunk_start in range(0, len(valid), _BATCH_SIZE):
         chunk = valid[chunk_start : chunk_start + _BATCH_SIZE]
+        count += _process_chunk_with_retry(session, feed_id, chunk)
 
-        # Re-fetch feed after commits so SQLAlchemy has a live instance
-        if chunk_start > 0:
-            feed = session.query(FeedSource).filter(FeedSource.id == feed_id).first()
-            if not feed:
-                break
-
-        count += _ingest_chunk_sync(session, feed, chunk)
-
-        # Commit after every chunk — releases InnoDB row locks and keeps
-        # the UPDATE executemany size bounded to _BATCH_SIZE rows.
-        session.commit()
-
-    # Final status update
+    # Final status update — re-fetch after the last chunk commit.
     feed = session.query(FeedSource).filter(FeedSource.id == feed_id).first()
     if feed:
         feed.last_sync_at = _now()
