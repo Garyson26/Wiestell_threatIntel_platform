@@ -204,15 +204,12 @@ export default function AdminLoginPage() {
         ) : (
           <form onSubmit={handleOtpSubmit} className="space-y-4">
             <div>
-              <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Enter OTP</label>
-              <input
-                type="text"
+              <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-3 text-center">Enter OTP</label>
+              <OTPInput
+                length={6}
                 value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                placeholder="Enter 6-digit OTP"
-                maxLength={6}
+                onChange={setOtp}
                 autoFocus
-                className="w-full px-3 py-2.5 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40 transition-colors text-center text-xl tracking-widest"
               />
             </div>
             <button
