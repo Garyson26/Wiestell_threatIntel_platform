@@ -67,6 +67,8 @@ def sync_feed(self, feed_slug: str, api_key: Optional[str] = None):
                 return {"status": "error", "message": "Feed not found in DB"}
 
             count = ingest_iocs_sync(session, feed, iocs)
+            # ingest_iocs_sync commits after each chunk internally;
+            # a final commit here ensures any trailing flush is persisted.
             session.commit()
 
             logger.info("sync_feed_complete", feed=feed_slug, count=count)
