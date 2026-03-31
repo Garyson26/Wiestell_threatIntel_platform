@@ -220,7 +220,8 @@ export default function HistoryPage() {
                 {filteredActivities.map((activity, idx) => (
                   <tr
                     key={activity.id}
-                    className="border-b border-sentinel-border/50 hover:bg-sentinel-bg-hover transition-colors animate-fade-in"
+                    onClick={() => activity.iocId && router.push(`/ioc-detail/${activity.iocId}`)}
+                    className={`border-b border-sentinel-border/50 hover:bg-sentinel-bg-hover transition-colors animate-fade-in ${activity.iocId ? 'cursor-pointer' : ''}`}
                     style={{ animationDelay: `${Math.min(idx, 10) * 30}ms` }}
                   >
                     <td className="px-4 py-2.5">
