@@ -204,7 +204,8 @@ export default function AnalyticsDashboard() {
                 {recentIOCs.map((activity, idx) => (
                   <tr
                     key={activity.id}
-                    className="border-b border-sentinel-border/50 hover:bg-sentinel-bg-hover transition-colors"
+                    onClick={() => activity.iocId && router.push(`/ioc-detail/${activity.iocId}`)}
+                    className={`border-b border-sentinel-border/50 hover:bg-sentinel-bg-hover transition-colors ${activity.iocId ? 'cursor-pointer' : ''}`}
                   >
                     <td className="px-4 py-2.5">
                       <span className={`px-2 py-0.5 text-[9px] font-mono rounded uppercase ${
