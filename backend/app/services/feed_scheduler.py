@@ -15,6 +15,7 @@ from typing import Optional
 
 import structlog
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 
 from app.database import AsyncSessionLocal
 from app.models.feed import FeedSource
@@ -22,6 +23,9 @@ from app.services.feed_ingestion import ingest_iocs
 from app.config import settings
 
 logger = structlog.get_logger()
+
+# Semaphore: at most 5 feed syncs run concurrently to avoid pool exhaustion
+_SYNC_SEMAPHORE = asyncio.Semaphore(5)
 
 # ── Registry ─────────────────────────────────────────────────────────────────
 # Canonical map from DB slug → dotted connector class path.
@@ -56,9 +60,17 @@ _running: set[str] = set()
 async def run_feed_sync(feed_id: str, feed_slug: str, connector_path: str) -> None:
     """Fetch IOCs from a connector and ingest them into the DB.
 
-    Resolves the API key from environment variables automatically.
-    Updates last_sync_at / last_sync_status on the feed row when done.
+    - Resolves the API key from environment variables automatically.
+    - Retries up to 3 times on transient MySQL OperationalError.
+    - Acquires a semaphore slot so at most 5 syncs run concurrently.
+    - Updates last_sync_at / last_sync_status on the feed row when done.
     """
+    async with _SYNC_SEMAPHORE:
+        await _run_feed_sync_inner(feed_id, feed_slug, connector_path)
+
+
+async def _run_feed_sync_inner(feed_id: str, feed_slug: str, connector_path: str) -> None:
+    """Internal implementation; called under the semaphore."""
     module_path, class_name = connector_path.rsplit(".", 1)
     module = importlib.import_module(module_path)
     connector_class = getattr(module, class_name)
@@ -92,30 +104,52 @@ async def run_feed_sync(feed_id: str, feed_slug: str, connector_path: str) -> No
                 await session.commit()
         return
 
-    # Ingest — single session for the entire write phase
+    # Ingest — fresh session per attempt; ingest_iocs commits in chunks internally
+    _MAX_RETRIES = 3
+    for attempt in range(1, _MAX_RETRIES + 1):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(FeedSource).where(FeedSource.id == feed_id))
+            feed = result.scalar_one_or_none()
+            if not feed:
+                return
+            try:
+                count = await ingest_iocs(session, feed, iocs)
+                feed.last_sync_error = None
+                await session.commit()
+                logger.info("run_feed_sync_complete", feed=feed_slug, iocs_ingested=count)
+                return  # success — exit retry loop
+            except OperationalError as exc:
+                await session.rollback()
+                if attempt < _MAX_RETRIES:
+                    wait = 2 ** attempt  # exponential backoff: 2s, 4s
+                    logger.warning(
+                        "run_feed_sync_retrying",
+                        feed=feed_slug,
+                        attempt=attempt,
+                        wait=wait,
+                        error=str(exc),
+                    )
+                    await asyncio.sleep(wait)
+                else:
+                    logger.error("run_feed_sync_ingest_error", feed=feed_slug, error=str(exc))
+                    await _mark_failed(feed_id, str(exc))
+            except Exception as exc:
+                await session.rollback()
+                logger.error("run_feed_sync_ingest_error", feed=feed_slug, error=str(exc))
+                await _mark_failed(feed_id, str(exc))
+                return
+
+
+async def _mark_failed(feed_id: str, error: str) -> None:
+    """Persist a 'failed' status on the feed row in a fresh session."""
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(FeedSource).where(FeedSource.id == feed_id))
         feed = result.scalar_one_or_none()
-        if not feed:
-            return
-        try:
-            count = await ingest_iocs(session, feed, iocs)
-            feed.last_sync_error = None
+        if feed:
+            feed.last_sync_at = datetime.utcnow()
+            feed.last_sync_status = "failed"
+            feed.last_sync_error = error
             await session.commit()
-            logger.info("run_feed_sync_complete", feed=feed_slug, iocs_ingested=count)
-        except Exception as exc:
-            await session.rollback()
-            logger.error("run_feed_sync_ingest_error", feed=feed_slug, error=str(exc))
-            async with AsyncSessionLocal() as fail_session:
-                fail_result = await fail_session.execute(
-                    select(FeedSource).where(FeedSource.id == feed_id)
-                )
-                fail_feed = fail_result.scalar_one_or_none()
-                if fail_feed:
-                    fail_feed.last_sync_at = datetime.utcnow()
-                    fail_feed.last_sync_status = "failed"
-                    fail_feed.last_sync_error = str(exc)
-                    await fail_session.commit()
 
 
 # ── Scheduler loop ────────────────────────────────────────────────────────────
