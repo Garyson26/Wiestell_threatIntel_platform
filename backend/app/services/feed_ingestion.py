@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Tuple
 
 from sqlalchemy import select, tuple_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -18,10 +19,11 @@ import structlog
 
 logger = structlog.get_logger()
 
-# Process IOCs in chunks to avoid huge IN-clauses and memory spikes.
-# Kept small so each chunk's transaction releases row locks before the next
-# batch starts, preventing MySQL lock wait timeout (1205) on large feeds.
-_BATCH_SIZE = 100
+# Process IOCs in chunks to avoid huge IN-clauses, memory spikes, and
+# "Query too large" / "Lost connection" (error 2013) on MySQL.
+# 50 rows keeps each UPDATE executemany well within MySQL's max_allowed_packet
+# and releases InnoDB row locks promptly between chunks.
+_BATCH_SIZE = 50
 
 
 def _now() -> datetime:
@@ -39,8 +41,9 @@ def _strip_tz(dt: Optional[datetime]) -> Optional[datetime]:
 
 
 def _normalize_batch(raw_iocs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Validate and normalize a list of raw IOC dicts. Returns only valid ones."""
+    """Validate, normalize, and deduplicate a list of raw IOC dicts."""
     out = []
+    seen_keys: set = set()
     for raw in raw_iocs:
         ioc_type = raw.get("type", "")
         value = (raw.get("value") or "").strip()
@@ -50,6 +53,10 @@ def _normalize_batch(raw_iocs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             continue
         normalized = dict(raw)
         normalized["value"] = normalize_ioc(value, ioc_type)
+        key = (ioc_type, normalized["value"])
+        if key in seen_keys:
+            continue  # deduplicate within-feed duplicate values
+        seen_keys.add(key)
         out.append(normalized)
     dropped = len(raw_iocs) - len(out)
     if dropped > 0:
@@ -179,16 +186,33 @@ async def _ingest_chunk(
                     metadata_=raw.get("metadata", {}),
                     mitre_techniques=raw.get("mitre_techniques", []),
                 )
-                session.add(new_ioc)
-                # Add to map so duplicate values in same chunk don't double-insert
-                existing_map[key] = new_ioc
-                ioc_ids.append(new_id)
+                try:
+                    async with session.begin_nested():
+                        session.add(new_ioc)
+                        await session.flush()
+                    existing_map[key] = new_ioc
+                    ioc_ids.append(new_id)
+                except IntegrityError:
+                    logger.warning(
+                        "ioc_duplicate_skipped",
+                        type=raw["type"],
+                        value=raw.get("value", ""),
+                    )
+                    res = await session.execute(
+                        select(IOC).where(
+                            IOC.type == raw["type"], IOC.value == raw["value"]
+                        )
+                    )
+                    refetched = res.scalar_one_or_none()
+                    if refetched:
+                        existing_map[key] = refetched
+                        ioc_ids.append(refetched.id)
 
             count += 1
         except Exception as e:
             logger.error("ioc_chunk_error", error=str(e), value=raw.get("value", "")[:50])
 
-    # Flush to get DB IDs for new IOCs before inserting IOCSources
+    # Flush updates to existing IOCs before inserting IOCSources
     await session.flush()
 
     # Bulk-check which (ioc_id, feed_id) source links already exist
@@ -219,38 +243,56 @@ async def _ingest_chunk(
     return count
 
 
-def ingest_iocs_sync(
+def _ingest_chunk_sync(
     session: Session,
     feed: FeedSource,
-    raw_iocs: List[Dict[str, Any]],
+    chunk: List[Dict[str, Any]],
 ) -> int:
-    """Synchronous version for Celery tasks."""
+    """Process one chunk synchronously: bulk-lookup, update or insert, link sources."""
+    keys: List[Tuple[str, str]] = []
+    normalized: List[Dict[str, Any]] = []
+    for raw in chunk:
+        ioc_type = raw.get("type", "")
+        value = (raw.get("value") or "").strip()
+        if not value or not ioc_type:
+            continue
+        if not validate_ioc(ioc_type, value):
+            continue
+        value = normalize_ioc(value, ioc_type)
+        norm = dict(raw)
+        norm["value"] = value
+        norm["type"] = ioc_type
+        normalized.append(norm)
+        keys.append((ioc_type, value))
+
+    if not normalized:
+        return 0
+
+    existing_map: Dict[Tuple[str, str], IOC] = {}
+    if keys:
+        existing_rows = session.query(IOC).filter(
+            tuple_(IOC.type, IOC.value).in_(keys)
+        ).all()
+        existing_map = {(ioc.type, ioc.value): ioc for ioc in existing_rows}
+
     count = 0
+    ioc_ids: List[str] = []
 
-    for raw in raw_iocs:
+    for raw in normalized:
+        key = (raw["type"], raw["value"])
+        existing = existing_map.get(key)
         try:
-            ioc_type = raw.get("type", "")
-            value = raw.get("value", "").strip()
-
-            if not value or not ioc_type:
-                continue
-            if not validate_ioc(ioc_type, value):
-                continue
-
-            value = normalize_ioc(value, ioc_type)
-
-            existing = session.query(IOC).filter(
-                IOC.type == ioc_type, IOC.value == value
-            ).first()
-
             if existing:
                 existing.sighting_count += 1
                 existing.last_seen = _now()
                 if raw.get("tags"):
-                    existing_tags = set(existing.tags or [])
-                    existing_tags.update(raw["tags"])
-                    existing.tags = list(existing_tags)
-                
+                    merged = set(existing.tags or [])
+                    merged.update(raw["tags"])
+                    existing.tags = list(merged)
+                if raw.get("mitre_techniques"):
+                    merged_tech = set(existing.mitre_techniques or [])
+                    merged_tech.update(raw["mitre_techniques"])
+                    existing.mitre_techniques = list(merged_tech)
                 existing.threat_score = calculate_threat_score(
                     {
                         "type": existing.type,
@@ -262,17 +304,14 @@ def ingest_iocs_sync(
                         "sighting_count": existing.sighting_count,
                         "metadata": existing.metadata_,
                     },
-                    source_count=2,
+                    source_count=max(existing.sighting_count, 1),
                 )
-                ioc_id = existing.id
+                ioc_ids.append(existing.id)
             else:
-                score = raw.get("threat_score")
-                if score is None:
-                    score = calculate_threat_score(raw, source_count=1)
-
+                score = raw.get("threat_score") or calculate_threat_score(raw, source_count=1)
                 new_ioc = IOC(
-                    type=ioc_type,
-                    value=value,
+                    type=raw["type"],
+                    value=raw["value"],
                     threat_score=score,
                     confidence=raw.get("confidence", 50),
                     first_seen=_strip_tz(raw.get("first_seen")) or _now(),
@@ -282,30 +321,92 @@ def ingest_iocs_sync(
                     metadata_=raw.get("metadata", {}),
                     mitre_techniques=raw.get("mitre_techniques", []),
                 )
-                session.add(new_ioc)
-                session.flush()
-                ioc_id = new_ioc.id
-
-            existing_source = session.query(IOCSource).filter(
-                IOCSource.ioc_id == ioc_id,
-                IOCSource.feed_id == feed.id,
-            ).first()
-            if existing_source is None:
-                ioc_source = IOCSource(
-                    ioc_id=ioc_id,
-                    feed_id=feed.id,
-                    raw_data=raw.get("raw_data"),
-                )
-                session.add(ioc_source)
-
+                sp = session.begin_nested()
+                try:
+                    session.add(new_ioc)
+                    session.flush()  # get the DB-assigned id
+                    sp.commit()
+                    existing_map[key] = new_ioc
+                    ioc_ids.append(new_ioc.id)
+                except IntegrityError:
+                    sp.rollback()
+                    logger.warning(
+                        "ioc_duplicate_skipped",
+                        type=raw["type"],
+                        value=raw.get("value", ""),
+                    )
+                    refetched = session.query(IOC).filter(
+                        IOC.type == raw["type"], IOC.value == raw["value"]
+                    ).first()
+                    if refetched:
+                        existing_map[key] = refetched
+                        ioc_ids.append(refetched.id)
             count += 1
         except Exception as e:
-            logger.error("sync_ingestion_error", error=str(e))
-            continue
+            logger.error("sync_chunk_ioc_error", error=str(e), value=raw.get("value", "")[:50])
 
-    feed.last_sync_at = _now()
-    feed.last_sync_status = "success"
-    feed.ioc_count = count
+    # Bulk-flush pending UPDATE/INSERT rows before linking sources
     session.flush()
 
+    # Link IOCSources — skip already-linked pairs
+    if ioc_ids:
+        already_linked = {
+            row[0]
+            for row in session.query(IOCSource.ioc_id).filter(
+                IOCSource.feed_id == feed.id,
+                IOCSource.ioc_id.in_(ioc_ids),
+            ).all()
+        }
+        seen: set = set()
+        for ioc_id in ioc_ids:
+            if ioc_id not in already_linked and ioc_id not in seen:
+                session.add(IOCSource(ioc_id=ioc_id, feed_id=feed.id))
+                seen.add(ioc_id)
+        session.flush()
+
+    return count
+
+
+def ingest_iocs_sync(
+    session: Session,
+    feed: FeedSource,
+    raw_iocs: List[Dict[str, Any]],
+) -> int:
+    """Synchronous version for Celery tasks.
+
+    Processes IOCs in chunks of _BATCH_SIZE and commits after each chunk so
+    that the UPDATE executemany stays well under MySQL's max_allowed_packet
+    and InnoDB row locks are released promptly.
+    """
+    valid = _normalize_batch(raw_iocs)
+    logger.info("sync_feed_ingest_start", feed=feed.name, valid=len(valid), total=len(raw_iocs))
+
+    feed_id = feed.id
+    feed_name = feed.name
+    count = 0
+
+    for chunk_start in range(0, len(valid), _BATCH_SIZE):
+        chunk = valid[chunk_start : chunk_start + _BATCH_SIZE]
+
+        # Re-fetch feed after commits so SQLAlchemy has a live instance
+        if chunk_start > 0:
+            feed = session.query(FeedSource).filter(FeedSource.id == feed_id).first()
+            if not feed:
+                break
+
+        count += _ingest_chunk_sync(session, feed, chunk)
+
+        # Commit after every chunk — releases InnoDB row locks and keeps
+        # the UPDATE executemany size bounded to _BATCH_SIZE rows.
+        session.commit()
+
+    # Final status update
+    feed = session.query(FeedSource).filter(FeedSource.id == feed_id).first()
+    if feed:
+        feed.last_sync_at = _now()
+        feed.last_sync_status = "success" if count > 0 else "no_data"
+        feed.ioc_count = count
+        session.flush()
+
+    logger.info("sync_feed_ingest_complete", feed=feed_name, iocs_ingested=count)
     return count

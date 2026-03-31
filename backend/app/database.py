@@ -111,18 +111,20 @@ if IS_SERVERLESS:
         }
     )
 else:
-    # Reuse connections via a small pool instead of opening a new TCP connection
-    # on every AsyncSessionLocal() call (NullPool), which was exhausting the
-    # shared-host max_connections_per_hour quota (1226).
-    # pool_recycle=280 ensures connections are discarded before shared-host MySQL
-    # servers close idle connections (wait_timeout is often 300s on shared hosting).
+    # Production pool — sized for high concurrency.
+    # pool_size=10 + max_overflow=20 allows up to 30 simultaneous connections
+    # without exhausting typical shared-host limits.
+    # pool_recycle=1800 ensures connections are replaced well before the MySQL
+    # server's wait_timeout closes them from the server side.
+    # pool_pre_ping validates connection health before use so stale connections
+    # are discarded transparently instead of raising OperationalError.
     async_engine = create_async_engine(
         async_db_url,
-        pool_size=3,
-        max_overflow=2,
-        pool_recycle=280,    # discard before typical shared-host wait_timeout (300s)
-        pool_pre_ping=True,  # drop and replace stale connections transparently
-        pool_timeout=10,     # fail fast rather than wait forever for a free slot
+        pool_size=10,
+        max_overflow=20,
+        pool_recycle=1800,
+        pool_pre_ping=True,
+        pool_timeout=30,
         echo=False,
         connect_args={
             "connect_timeout": 30,
