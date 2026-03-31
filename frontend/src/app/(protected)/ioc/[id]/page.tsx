@@ -2,11 +2,59 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, RefreshCw, Download, Globe, Link, Hash, ExternalLink, Mail, ShieldAlert, Tag, Sparkles, Loader2 } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Download, Globe, Link, Hash, ExternalLink, Mail, ShieldAlert, Tag, Sparkles, Loader2, Search } from 'lucide-react';
 import { getIOC, triggerEnrichment, analyzeIOCWithAI } from '@/lib/api';
 import ScoreBadge from '@/components/ioc/ScoreBadge';
 import { cn, formatDate, formatTimestamp, getScoreCategory, getScoreColor } from '@/lib/utils';
 import type { IOCDetail, AIAnalysis } from '@/lib/types';
+
+interface ExternalLink {
+  label: string;
+  url: string;
+  description: string;
+}
+
+function getExternalLinks(type: string, value: string): ExternalLink[] {
+  const encoded = encodeURIComponent(value);
+  const vtBase = 'https://www.virustotal.com/gui';
+
+  const vtUrl =
+    type === 'ip' ? `${vtBase}/ip-address/${value}` :
+    type === 'domain' ? `${vtBase}/domain/${value}` :
+    type === 'hash' ? `${vtBase}/file/${value}` :
+    `${vtBase}/search/${encoded}`;
+
+  const links: ExternalLink[] = [
+    { label: 'VirusTotal', url: vtUrl, description: 'Multi-engine threat intelligence scan' },
+  ];
+
+  if (type === 'ip') {
+    links.push(
+      { label: 'Shodan', url: `https://www.shodan.io/host/${value}`, description: 'Internet-facing device & service scan' },
+      { label: 'AbuseIPDB', url: `https://www.abuseipdb.com/check/${value}`, description: 'Community IP abuse reports' },
+    );
+  } else if (type === 'domain') {
+    links.push(
+      { label: 'Shodan', url: `https://www.shodan.io/search?query=hostname:${encoded}`, description: 'Hostname infrastructure lookup' },
+      { label: 'URLScan.io', url: `https://urlscan.io/search/#domain:${value}`, description: 'Domain scan history' },
+    );
+  } else if (type === 'hash') {
+    links.push(
+      { label: 'MalwareBazaar', url: `https://bazaar.abuse.ch/sample/${value}/`, description: 'Malware sample repository' },
+    );
+  } else if (type === 'url') {
+    links.push(
+      { label: 'URLScan.io', url: `https://urlscan.io/search/#page.url:${encoded}`, description: 'URL scan & screenshot history' },
+      { label: 'URLhaus', url: `https://urlhaus.abuse.ch/browse.php?search=${encoded}`, description: 'Malware distribution URL tracker' },
+    );
+  } else if (type === 'cve') {
+    links.push(
+      { label: 'NVD', url: `https://nvd.nist.gov/vuln/detail/${value}`, description: 'NIST National Vulnerability Database' },
+    );
+  }
+
+  return links;
+}
 
 const typeIcons: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
   ip: Globe,
@@ -172,7 +220,7 @@ export default function IOCDetailPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-sentinel-border">
-        {['enrichment', 'sources', 'relationships', 'raw', 'ai-analysis'].map((tab) => (
+        {['enrichment', 'sources', 'relationships', 'raw', 'ai-analysis', 'external-sources'].map((tab) => (
           <button
             key={tab}
             onClick={() => {
@@ -187,7 +235,8 @@ export default function IOCDetailPage() {
             )}
           >
             {tab === 'ai-analysis' && <Sparkles className="w-3 h-3" />}
-            {tab === 'ai-analysis' ? 'AI Analysis' : tab}
+            {tab === 'external-sources' && <Search className="w-3 h-3" />}
+            {tab === 'ai-analysis' ? 'AI Analysis' : tab === 'external-sources' ? 'External Sources' : tab}
           </button>
         ))}
       </div>
@@ -366,6 +415,34 @@ export default function IOCDetailPage() {
                 </button>
               </div>
             )}
+          </div>
+        )}
+        {activeTab === 'external-sources' && (
+          <div className="space-y-3">
+            <p className="text-[10px] font-mono text-sentinel-text-muted uppercase tracking-wider px-1">
+              Open {ioc.value} in external intelligence platforms
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {getExternalLinks(ioc.type, ioc.value).map((link) => (
+                <a
+                  key={link.label}
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="sentinel-card p-4 flex items-start justify-between gap-3 hover:border-sentinel-accent/40 transition-colors group"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-mono font-semibold text-sentinel-text-primary group-hover:text-sentinel-accent transition-colors">
+                      {link.label}
+                    </p>
+                    <p className="text-[10px] font-mono text-sentinel-text-muted mt-0.5 leading-relaxed">
+                      {link.description}
+                    </p>
+                  </div>
+                  <ExternalLink className="w-3.5 h-3.5 text-sentinel-text-muted group-hover:text-sentinel-accent transition-colors flex-shrink-0 mt-0.5" />
+                </a>
+              ))}
+            </div>
           </div>
         )}
       </div>
