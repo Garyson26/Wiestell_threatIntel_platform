@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models.feed import FeedSource
 from app.schemas.feed import FeedCreate, FeedUpdate, FeedResponse
 from app.services.feed_scheduler import FEED_CONNECTORS, run_feed_sync
+from app.utils import to_ist_str
 
 logger = structlog.get_logger()
 
@@ -113,7 +114,7 @@ async def get_sync_logs(feed_id: str, db: AsyncSession = Depends(get_db)):
         "feed_name": feed.name,
         "logs": [
             {
-                "timestamp": feed.last_sync_at.isoformat() if feed.last_sync_at else None,
+                "timestamp": to_ist_str(feed.last_sync_at),
                 "status": feed.last_sync_status or "never_synced",
                 "iocs_ingested": feed.ioc_count,
             }

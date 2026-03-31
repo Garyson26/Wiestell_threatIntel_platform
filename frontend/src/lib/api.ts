@@ -183,6 +183,11 @@ export const resetPassword = (data: { email: string; otp: string; new_password: 
   });
 export const getUsers = () => fetchAPI<{ items: import('./types').UserProfile[]; total: number }>('/api/v1/users');
 export const getUser = (id: string) => fetchAPI<import('./types').UserProfile>(`/api/v1/users/${id}`);
+export const adminCreateUser = (data: { username: string; email: string; password: string; full_name?: string; role?: string }) =>
+  fetchAPI<import('./types').UserProfile>('/api/v1/users', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 export const updateUser = (id: string, data: { full_name?: string; email?: string }) =>
   fetchAPI<import('./types').UserProfile>(`/api/v1/users/${id}`, {
     method: 'PUT',
