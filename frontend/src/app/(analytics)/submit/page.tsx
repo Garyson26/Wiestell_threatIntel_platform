@@ -290,7 +290,8 @@ export default function SubmitIOCPage() {
                 {results.map((ioc, i) => (
                   <tr
                     key={ioc.id}
-                    className="border-b border-sentinel-border/50 hover:bg-sentinel-bg-hover transition-colors animate-fade-in"
+                    onClick={() => router.push(`/ioc-detail/${ioc.id}`)}
+                    className="border-b border-sentinel-border/50 cursor-pointer hover:bg-sentinel-bg-hover transition-colors animate-fade-in"
                     style={{ animationDelay: `${i * 30}ms` }}
                   >
                     <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary max-w-md truncate">

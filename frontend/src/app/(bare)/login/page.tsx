@@ -145,6 +145,7 @@ export default function LoginPage() {
         <div className="sentinel-card w-full max-w-sm p-8 animate-fade-in">
         {/* Logo */}
         <div className="flex items-center justify-center mb-8">
+          <Link href="/" className="flex items-center">
           <Image
             src="/images/Wiestell-Logo.png"
             alt="Wiestell Logo"
@@ -153,6 +154,7 @@ export default function LoginPage() {
             className="object-contain"
             priority
           />
+          </Link>
         </div>
 
         {/* Analytics Badge */}

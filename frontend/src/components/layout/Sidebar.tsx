@@ -72,6 +72,7 @@ export default function Sidebar() {
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-5 border-b border-sentinel-border justify-center">
         {!collapsed ? (
+          <Link href="/" className="flex items-center">
           <Image
             src="/images/Wiestell-Logo.png"
             alt="Wiestell Logo"
@@ -79,6 +80,7 @@ export default function Sidebar() {
             height={50}
             className="object-contain"
           />
+          </Link>
         ) : (
           <div className="w-7 h-7 rounded bg-sentinel-accent/20 flex items-center justify-center">
             <span className="text-sentinel-accent font-bold text-sm">W</span>
