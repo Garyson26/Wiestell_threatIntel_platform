@@ -140,6 +140,12 @@ async def list_iocs(
     db: AsyncSession = Depends(get_db),
 ):
     """List IOCs with pagination, filtering, and sorting."""
+    from app.schemas.ioc import ALLOWED_SORT_FIELDS, ALLOWED_SORT_ORDERS
+    if sort_by not in ALLOWED_SORT_FIELDS:
+        sort_by = "last_seen"
+    if sort_order not in ALLOWED_SORT_ORDERS:
+        sort_order = "desc"
+
     query = select(IOC)
     count_query = select(func.count(IOC.id))
 

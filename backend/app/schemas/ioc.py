@@ -50,6 +50,10 @@ class IOCDetailResponse(IOCResponse):
     relationships: List[dict] = Field(default_factory=list)
 
 
+ALLOWED_SORT_FIELDS = {"value", "type", "threat_score", "confidence", "first_seen", "last_seen", "sighting_count", "created_at", "updated_at"}
+ALLOWED_SORT_ORDERS = {"asc", "desc"}
+
+
 class IOCSearchRequest(BaseModel):
     query: Optional[str] = None
     ioc_type: Optional[str] = None
@@ -64,6 +68,14 @@ class IOCSearchRequest(BaseModel):
     page_size: int = Field(default=50, ge=1, le=500)
     sort_by: str = Field(default="last_seen")
     sort_order: str = Field(default="desc")
+
+    @classmethod
+    def _validate_sort(cls, v: str, allowed: set, default: str) -> str:
+        return v if v in allowed else default
+
+    def model_post_init(self, __context: object) -> None:
+        self.sort_by = self._validate_sort(self.sort_by, ALLOWED_SORT_FIELDS, "last_seen")
+        self.sort_order = self._validate_sort(self.sort_order, ALLOWED_SORT_ORDERS, "desc")
 
 
 class IOCBulkRequest(BaseModel):
