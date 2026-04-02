@@ -18,7 +18,10 @@ class OTXAlienVaultFeed(BaseFeed):
 
     async def fetch(self) -> Any:
         if not self.api_key:
-            return {"results": []}
+            raise ValueError(
+                "OTX AlienVault requires a free API key. "
+                "Register at https://otx.alienvault.com and set OTX_API_KEY."
+            )
 
         # Only fetch pulses modified in the last 7 days to keep syncs fast
         modified_since = (
