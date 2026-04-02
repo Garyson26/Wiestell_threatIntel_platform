@@ -21,12 +21,10 @@ class AbuseIPDBFeed(BaseFeed):
         _log = _structlog.get_logger()
 
         if not self.api_key:
-            _log.warning(
-                "abuseipdb_feed_skipped",
-                reason="no_api_key",
-                hint="Set ABUSEIPDB_API_KEY environment variable.",
+            raise ValueError(
+                "AbuseIPDB requires an API key. "
+                "Register for free at https://www.abuseipdb.com/ and set ABUSEIPDB_API_KEY."
             )
-            return {"data": []}
 
         import httpx as _httpx
         try:
