@@ -62,16 +62,19 @@ class BaseFeed(abc.ABC):
         ...
 
     async def run(self) -> List[Dict[str, Any]]:
-        """Execute the full feed pipeline: fetch -> parse."""
+        """Execute the full feed pipeline: fetch -> parse.
+
+        Exceptions from fetch() or parse() are intentionally NOT caught here so
+        that they propagate to run_feed_sync, which records them as
+        last_sync_status='failed' / last_sync_error in the database.  Swallowing
+        exceptions here would produce a misleading 'no_data' status instead.
+        """
         try:
             logger.info("feed_fetch_start", feed=self.name)
             raw_data = await self.fetch()
             iocs = await self.parse(raw_data)
             logger.info("feed_fetch_complete", feed=self.name, ioc_count=len(iocs))
             return iocs
-        except Exception as e:
-            logger.error("feed_fetch_error", feed=self.name, error=str(e))
-            return []
         finally:
             if self._client:
                 await self._client.aclose()
