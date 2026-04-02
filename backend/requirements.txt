@@ -23,7 +23,7 @@ pydantic-settings==2.1.0
 
 # HTTP Client
 httpx==0.27.0
-aiohttp==3.9.3
+aiohttp==3.13.4
 
 # Enrichment
 python-whois==0.9.4
