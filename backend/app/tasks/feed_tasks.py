@@ -129,19 +129,24 @@ def sync_feed(self, feed_slug: str, api_key: Optional[str] = None):
         session.close()
 
 
+# Seconds between each feed dispatch to avoid running all feeds simultaneously
+FEED_STAGGER_INTERVAL = 30
+
+
 @celery_app.task(name="app.tasks.feed_tasks.sync_all_feeds")
 def sync_all_feeds():
-    """Sync all enabled feeds."""
+    """Sync all enabled feeds, staggered to avoid running all at once."""
     session = SyncSessionLocal()
     try:
         feeds = session.query(FeedSource).filter(FeedSource.is_enabled == True).all()
         results = []
-        for feed in feeds:
+        for index, feed in enumerate(feeds):
             api_key = None
             if feed.api_key_env:
                 api_key = os.environ.get(feed.api_key_env)
-            result = sync_feed.delay(feed.slug, api_key)
-            results.append({"feed": feed.slug, "task_id": str(result.id)})
+            countdown = index * FEED_STAGGER_INTERVAL
+            result = sync_feed.apply_async(args=[feed.slug, api_key], countdown=countdown)
+            results.append({"feed": feed.slug, "task_id": str(result.id), "starts_in_seconds": countdown})
         return results
     finally:
         session.close()
@@ -149,10 +154,11 @@ def sync_all_feeds():
 
 @celery_app.task(name="app.tasks.feed_tasks.sync_critical_feeds")
 def sync_critical_feeds():
-    """Sync high-priority feeds more frequently."""
+    """Sync high-priority feeds more frequently, staggered to avoid overlap."""
     critical_slugs = ["feodo-tracker", "urlhaus", "threatfox"]
     results = []
-    for slug in critical_slugs:
-        result = sync_feed.delay(slug)
-        results.append({"feed": slug, "task_id": str(result.id)})
+    for index, slug in enumerate(critical_slugs):
+        countdown = index * FEED_STAGGER_INTERVAL
+        result = sync_feed.apply_async(args=[slug], countdown=countdown)
+        results.append({"feed": slug, "task_id": str(result.id), "starts_in_seconds": countdown})
     return results
