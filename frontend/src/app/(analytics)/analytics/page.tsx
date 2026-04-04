@@ -1,13 +1,51 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { BarChart3, TrendingUp, Activity, Shield, Search, Upload, Database, Clock, Eye, FileUp } from 'lucide-react';
+import { Activity, Shield, Search, Upload, Database, Clock, Eye, FileUp, ExternalLink, Globe, Link, Hash, Mail, ShieldAlert } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { getUserStats, getRecentIOCs, getActivityTrend } from '@/lib/userActivity';
 import type { UserStats, UserActivity } from '@/lib/userActivity';
-import { formatTimestamp } from '@/lib/utils';
+import { formatTimestamp, cn } from '@/lib/utils';
 import ScoreBadge from '@/components/ioc/ScoreBadge';
+
+function getExternalLinks(type: string, value: string) {
+  const encoded = encodeURIComponent(value);
+  const vtBase = 'https://www.virustotal.com/gui';
+  const vtUrl =
+    type === 'ip'     ? `${vtBase}/ip-address/${value}` :
+    type === 'domain' ? `${vtBase}/domain/${value}` :
+    type === 'hash'   ? `${vtBase}/file/${value}` :
+                        `${vtBase}/search/${encoded}`;
+
+  const links = [{ label: 'VirusTotal', url: vtUrl, description: 'Multi-engine threat scan' }];
+
+  if (type === 'ip') {
+    links.push(
+      { label: 'Shodan',    url: `https://www.shodan.io/host/${value}`,              description: 'Device & service scan' },
+      { label: 'AbuseIPDB', url: `https://www.abuseipdb.com/check/${value}`,         description: 'Community abuse reports' },
+    );
+  } else if (type === 'domain') {
+    links.push(
+      { label: 'Shodan',     url: `https://www.shodan.io/search?query=hostname:${encoded}`, description: 'Hostname infrastructure' },
+      { label: 'URLScan.io', url: `https://urlscan.io/search/#domain:${value}`,              description: 'Domain scan history' },
+    );
+  } else if (type === 'hash') {
+    links.push({ label: 'MalwareBazaar', url: `https://bazaar.abuse.ch/sample/${value}/`, description: 'Malware sample repo' });
+  } else if (type === 'url') {
+    links.push(
+      { label: 'URLScan.io', url: `https://urlscan.io/search/#page.url:${encoded}`,          description: 'URL scan history' },
+      { label: 'URLhaus',    url: `https://urlhaus.abuse.ch/browse.php?search=${encoded}`,   description: 'Malware URL tracker' },
+    );
+  } else if (type === 'cve') {
+    links.push({ label: 'NVD', url: `https://nvd.nist.gov/vuln/detail/${value}`, description: 'NIST Vulnerability DB' });
+  }
+  return links;
+}
+
+const typeIcons: Record<string, React.ComponentType<{ className?: string }>> = {
+  ip: Globe, domain: Link, hash: Hash, url: ExternalLink, email: Mail, cve: ShieldAlert,
+};
 
 export default function AnalyticsDashboard() {
   const { user } = useAuth();
@@ -15,15 +53,19 @@ export default function AnalyticsDashboard() {
   const [stats, setStats] = useState<UserStats | null>(null);
   const [recentIOCs, setRecentIOCs] = useState<UserActivity[]>([]);
   const [activityTrend, setActivityTrend] = useState<Array<{ date: string; count: number }>>([]);
+  const [activeTab, setActiveTab] = useState<'overview' | 'external-sources'>('overview');
 
   useEffect(() => {
     if (user?.id) {
       const userStats = getUserStats(user.id);
       setStats(userStats);
-      setRecentIOCs(getRecentIOCs(user.id, 10));
+      setRecentIOCs(getRecentIOCs(user.id, 20));
       setActivityTrend(getActivityTrend(user.id, 7));
     }
   }, [user]);
+
+  // IOCs that have a value + type (usable for external lookups)
+  const lookupIOCs = recentIOCs.filter(a => a.iocValue && a.iocType);
 
   return (
     <div className="space-y-6">
@@ -39,7 +81,103 @@ export default function AnalyticsDashboard() {
         </div>
       </div>
 
-      {/* Quick Actions */}
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-sentinel-border">
+        {(['overview', 'external-sources'] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={cn(
+              'px-4 py-2 text-xs font-mono uppercase tracking-wider transition-colors border-b-2 -mb-px flex items-center gap-1.5',
+              activeTab === tab
+                ? 'text-sentinel-accent border-sentinel-accent'
+                : 'text-sentinel-text-muted border-transparent hover:text-sentinel-text-secondary'
+            )}
+          >
+            {tab === 'external-sources' && <ExternalLink className="w-3 h-3" />}
+            {tab === 'overview' ? 'Overview' : 'External Sources'}
+          </button>
+        ))}
+      </div>
+
+      {/* === External Sources Tab === */}
+      {activeTab === 'external-sources' && (
+        <div className="space-y-4">
+          {lookupIOCs.length === 0 ? (
+            <div className="sentinel-card p-10 text-center">
+              <Database className="w-12 h-12 text-sentinel-text-muted mx-auto mb-3 opacity-40" />
+              <p className="text-sm font-mono text-sentinel-text-muted">No IOC activity yet</p>
+              <p className="text-xs font-mono text-sentinel-text-muted mt-1">
+                Search or submit IOCs to see external lookup links here
+              </p>
+            </div>
+          ) : (
+            lookupIOCs.map((activity, idx) => {
+              const Icon = typeIcons[activity.iocType!] || Globe;
+              const links = getExternalLinks(activity.iocType!, activity.iocValue!);
+              return (
+                <div
+                  key={activity.id}
+                  className="sentinel-card overflow-hidden animate-fade-in"
+                  style={{ animationDelay: `${idx * 40}ms` }}
+                >
+                  {/* IOC identity row */}
+                  <div className="px-5 py-3 border-b border-sentinel-border flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Icon className="w-4 h-4 text-sentinel-text-muted flex-shrink-0" />
+                      <span className="font-mono text-xs text-sentinel-text-primary truncate">
+                        {activity.iocValue}
+                      </span>
+                      <span className="px-1.5 py-0.5 text-[9px] font-mono uppercase rounded bg-sentinel-bg-primary border border-sentinel-border text-sentinel-text-muted flex-shrink-0">
+                        {activity.iocType}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {activity.threatScore !== undefined && (
+                        <ScoreBadge score={activity.threatScore} size="sm" />
+                      )}
+                      {activity.iocId && (
+                        <button
+                          onClick={() => router.push(`/ioc-detail/${activity.iocId}`)}
+                          className="px-2 py-1 rounded text-[10px] font-mono border border-sentinel-border text-sentinel-text-muted hover:text-sentinel-accent hover:border-sentinel-accent/30 transition-colors"
+                        >
+                          Detail
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Platform links */}
+                  <div className="p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                    {links.map((link) => (
+                      <a
+                        key={link.label}
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between gap-2 px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border hover:border-sentinel-accent/40 hover:bg-sentinel-bg-hover transition-colors group"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-mono font-semibold text-sentinel-text-primary group-hover:text-sentinel-accent transition-colors">
+                            {link.label}
+                          </p>
+                          <p className="text-[9px] font-mono text-sentinel-text-muted truncate mt-0.5">
+                            {link.description}
+                          </p>
+                        </div>
+                        <ExternalLink className="w-3 h-3 text-sentinel-text-muted group-hover:text-sentinel-accent transition-colors flex-shrink-0" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
+      {/* === Overview Tab === */}
+      {activeTab === 'overview' && <>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <button
           onClick={() => router.push('/ioc-search')}
@@ -257,6 +395,7 @@ export default function AnalyticsDashboard() {
           </div>
         )}
       </div>
+      </>}
     </div>
   );
 }
