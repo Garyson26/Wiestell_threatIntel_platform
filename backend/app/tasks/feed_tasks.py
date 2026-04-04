@@ -157,8 +157,16 @@ def sync_critical_feeds():
     """Sync high-priority feeds more frequently, staggered to avoid overlap."""
     critical_slugs = ["feodo-tracker", "urlhaus", "threatfox"]
     results = []
-    for index, slug in enumerate(critical_slugs):
-        countdown = index * FEED_STAGGER_INTERVAL
-        result = sync_feed.apply_async(args=[slug], countdown=countdown)
-        results.append({"feed": slug, "task_id": str(result.id), "starts_in_seconds": countdown})
+    session = SyncSessionLocal()
+    try:
+        for index, slug in enumerate(critical_slugs):
+            api_key = None
+            feed = session.query(FeedSource).filter(FeedSource.slug == slug).first()
+            if feed and feed.api_key_env:
+                api_key = os.environ.get(feed.api_key_env)
+            countdown = index * FEED_STAGGER_INTERVAL
+            result = sync_feed.apply_async(args=[slug, api_key], countdown=countdown)
+            results.append({"feed": slug, "task_id": str(result.id), "starts_in_seconds": countdown})
+    finally:
+        session.close()
     return results
