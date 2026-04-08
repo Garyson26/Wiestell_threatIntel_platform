@@ -8,12 +8,12 @@ module.exports = {
       {
         userAgent: '*',
         allow: '/',
-        disallow: ['/api/', '/admin'],
+        disallow: ['/api/', '/plateform-pilot'],
       },
     ],
   },
   // Optional: Add any paths you want to exclude
-  exclude: ['/api/*', '/admin/*'],
+  exclude: ['/api/*', '/plateform-pilot/*'],
   // Optional: Generate index sitemaps
   generateIndexSitemap: false,
   // Optional: Change the priority or frequency

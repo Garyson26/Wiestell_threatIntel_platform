@@ -23,7 +23,7 @@ export default function RoleBasedRoute({
     if (!loading && !user) {
       // Redirect to appropriate login based on required roles
       const loginPath = allowedRoles.includes('admin') && allowedRoles.length === 1 
-        ? '/admin' 
+        ? '/plateform-pilot' 
         : '/login';
       router.push(loginPath);
     }
