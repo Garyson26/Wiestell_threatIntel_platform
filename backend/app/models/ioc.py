@@ -16,7 +16,7 @@ class IOC(Base):
     __tablename__ = "iocs"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    type = Column(String(20), nullable=False, index=True)  # ip, domain, hash, url, email, cve
+    type = Column(String(20), nullable=False, index=True)  # ip, domain, hash, url, email, cve, ssl_cert
     value = Column(Text, nullable=False)
     threat_score = Column(Integer, default=0)  # 0-100
     confidence = Column(Integer, default=0)     # 0-100
