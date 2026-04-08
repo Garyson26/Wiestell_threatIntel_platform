@@ -74,7 +74,12 @@ export default function ProfilePage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-display font-bold text-sentinel-text-primary">User Management</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-lg font-display font-bold text-sentinel-text-primary">User Management</h1>
+              <span className="px-2.5 py-0.5 rounded-full bg-sentinel-accent/10 border border-sentinel-accent/30 text-[10px] font-mono font-semibold text-sentinel-accent">
+                {users.length} {users.length === 1 ? 'USER' : 'USERS'}
+              </span>
+            </div>
             <p className="text-xs font-mono text-sentinel-text-muted mt-0.5">
               Register new users and manage profiles
             </p>
