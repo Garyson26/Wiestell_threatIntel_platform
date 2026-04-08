@@ -76,7 +76,7 @@ export default function AnalyticsDashboard() {
             Analytics Dashboard
           </h1>
           <p className="text-sentinel-text-secondary">
-            Welcome back, <span className="text-sentinel-accent">{user?.username}</span> ({user?.role})
+            Welcome back, <span className="text-sentinel-accent">{user?.username}</span>
           </p>
         </div>
       </div>
