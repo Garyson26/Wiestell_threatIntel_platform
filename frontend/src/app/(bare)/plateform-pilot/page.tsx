@@ -135,7 +135,7 @@ export default function AdminLoginPage() {
                   Login
                 </Link>
                 <Link
-                  href="/admin"
+                  href="/plateform-pilot"
                   className="px-4 py-2 text-sm font-mono text-sentinel-accent hover:text-sentinel-accent transition-colors font-semibold"
                 >
                   Admin
