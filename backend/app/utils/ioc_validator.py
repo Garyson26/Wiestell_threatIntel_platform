@@ -94,6 +94,10 @@ def validate_ioc(ioc_type: str, value: str) -> bool:
     if ioc_type == "cve":
         return bool(PATTERNS["cve"].match(value))
 
+    if ioc_type == "ssl_cert":
+        # SSL certificate fingerprints are SHA1 hashes (40 hex chars)
+        return bool(PATTERNS["sha1"].match(value))
+
     return False
 
 
@@ -128,5 +132,10 @@ def normalize_ioc(value: str, ioc_type: str) -> str:
             pass
     elif ioc_type == "cve":
         value = value.upper()
+    elif ioc_type == "ssl_cert":
+        # SSL cert fingerprints are lowercase hex (SHA1)
+        value = value.lower()
+
+    return value
 
     return value
