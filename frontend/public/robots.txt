@@ -2,7 +2,7 @@
 User-agent: *
 Allow: /
 Disallow: /api/
-Disallow: /admin
+Disallow: /plateform-pilot
 
 # Host
 Host: https://wiestell.com

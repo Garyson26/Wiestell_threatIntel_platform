@@ -247,7 +247,7 @@ export default function AboutPage() {
                 </h3>
                 <div className="space-y-4 text-sm font-mono text-sentinel-text-secondary leading-relaxed">
                   <p>
-                    Gary(son) is a cybersecurity leader with <strong className="text-sentinel-accent">11 years of experience</strong> spanning professional practice and advanced academic research. He holds an <strong className="text-sentinel-text-primary">M.Sc. in Computer Forensics and Cyber Security from the University of Greenwich, London</strong>, and currently serves as <strong className="text-sentinel-text-primary">Lead Security Engineer in the fintech sector at Oakbrook Finance</strong>.
+                    Gary(son) is a cybersecurity leader with <strong className="text-sentinel-accent">11 years of experience</strong> spanning professional practice and advanced academic research. He holds an <strong className="text-sentinel-text-primary">M.Sc. in Computer Forensics and Cyber Security from the University of Greenwich, London</strong>.
                   </p>
                   <p>
                     Garyson built Wiestell out of the conviction that high-quality threat intelligence should be freely available to every defender — not just organisations with enterprise budgets. Drawing on his day-to-day work leading threat intelligence programmes, SOC workflows, and security automation, he designed Wiestell to aggregate the best open-source feeds into a single, fast, and accessible platform.
