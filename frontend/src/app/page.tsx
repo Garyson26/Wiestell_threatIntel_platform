@@ -59,7 +59,7 @@ export default function Home() {
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchInput.trim()) {
-      router.push(`/ioc?search=${encodeURIComponent(searchInput)}`);
+      router.push(`/ioc-search?q=${encodeURIComponent(searchInput)}`);
     }
   };
 
