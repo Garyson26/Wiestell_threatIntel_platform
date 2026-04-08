@@ -12,6 +12,7 @@ STIX_IOC_TYPE_MAP = {
     "url": "url",
     "hash": "file",
     "email": "email-addr",
+    "ssl_cert": "x509-certificate",
 }
 
 
@@ -37,6 +38,9 @@ def ioc_to_stix_indicator(ioc: Dict[str, Any]) -> Dict[str, Any]:
         pattern = f"[file:hashes.'{hash_type}' = '{value}']"
     elif ioc["type"] == "email":
         pattern = f"[email-addr:value = '{value}']"
+    elif ioc["type"] == "ssl_cert":
+        # SSL certificate SHA1 fingerprint
+        pattern = f"[x509-certificate:hashes.'SHA-1' = '{value}']"
     else:
         pattern = f"[artifact:payload_bin = '{value}']"
 
