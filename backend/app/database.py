@@ -72,8 +72,8 @@ else:
         echo=False,
         connect_args={
             "connect_timeout": 30,
-            "read_timeout": 60,
-            "write_timeout": 60,
+            "read_timeout": 300,   # increased for large feed ingestions (e.g., ThreatFox)
+            "write_timeout": 300,  # increased for large feed ingestions (e.g., ThreatFox)
         }
     )
 SyncSessionLocal = sessionmaker(bind=sync_engine)

@@ -112,7 +112,9 @@ def sync_feed(self, feed_slug: str, api_key: Optional[str] = None):
             logger.error("feed_not_found", slug=feed_slug)
             return {"status": "error", "message": "Feed not found in DB"}
 
-        count = ingest_iocs_sync(session, feed, iocs)
+        # ThreatFox has ~57k IOCs; use larger batch size to complete within timeout
+        batch_size = 500 if feed_slug == "threatfox" else 15
+        count = ingest_iocs_sync(session, feed, iocs, batch_size=batch_size)
         # ingest_iocs_sync commits after each chunk internally;
         # a final commit here ensures any trailing flush is persisted.
         session.commit()

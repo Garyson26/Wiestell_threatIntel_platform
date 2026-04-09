@@ -106,6 +106,9 @@ async def _run_feed_sync_inner(feed_id: str, feed_slug: str, connector_path: str
 
     # Ingest — fresh session per attempt; ingest_iocs commits in chunks internally
     _MAX_RETRIES = 3
+    # ThreatFox has ~57k IOCs; use larger batch size to complete within timeout
+    batch_size = 500 if feed_slug == "threatfox" else 15
+    
     for attempt in range(1, _MAX_RETRIES + 1):
         async with AsyncSessionLocal() as session:
             result = await session.execute(select(FeedSource).where(FeedSource.id == feed_id))
@@ -113,8 +116,9 @@ async def _run_feed_sync_inner(feed_id: str, feed_slug: str, connector_path: str
             if not feed:
                 return
             try:
-                count = await ingest_iocs(session, feed, iocs)
-                feed.last_sync_error = None
+                count = await ingest_iocs(session, feed, iocs, batch_size=batch_size)
+                # ingest_iocs already sets last_sync_status, last_sync_at, and ioc_count
+                feed.last_sync_error = None  # Clear any previous error
                 await session.commit()
                 logger.info("run_feed_sync_complete", feed=feed_slug, iocs_ingested=count)
                 return  # success — exit retry loop
