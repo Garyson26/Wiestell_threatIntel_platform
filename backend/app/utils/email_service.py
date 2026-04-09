@@ -203,3 +203,194 @@ def send_notification_email(to_email: str, subject: str, message: str) -> bool:
     except Exception as e:
         print(f"✗ Failed to send notification email to {to_email}: {str(e)}")
         return False
+
+
+def send_error_alert_email(
+    error_type: str,
+    error_message: str,
+    endpoint: str,
+    method: str,
+    traceback_info: str,
+    request_data: Optional[dict] = None
+) -> bool:
+    """
+    Send error alert email to admin.
+    
+    Args:
+        error_type: Type of error (e.g., "500 Internal Server Error")
+        error_message: Error message
+        endpoint: API endpoint where error occurred
+        method: HTTP method (GET, POST, etc.)
+        traceback_info: Traceback information
+        request_data: Optional request data for debugging
+        
+    Returns:
+        True if email sent successfully, False otherwise
+    """
+    if not settings.ENABLE_ERROR_EMAILS:
+        return False
+        
+    try:
+        from datetime import datetime
+        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        
+        # Create message
+        message = MIMEMultipart("alternative")
+        message["Subject"] = f"🚨 Wiestell API Error: {error_type}"
+        message["From"] = settings.EMAIL_USER
+        message["To"] = settings.ADMIN_EMAIL
+
+        # Create plain text version
+        text_content = f"""
+🚨 ERROR ALERT - Wiestell Threat Intelligence Platform
+
+Timestamp: {timestamp}
+Error Type: {error_type}
+Endpoint: {method} {endpoint}
+
+Error Message:
+{error_message}
+
+Traceback:
+{traceback_info}
+
+Request Data:
+{request_data if request_data else "N/A"}
+
+---
+This is an automated alert from Wiestell API monitoring.
+"""
+
+        # Create HTML version
+        html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{
+            font-family: 'Courier New', monospace;
+            background-color: #0a0e1a;
+            color: #e5e7eb;
+            padding: 20px;
+        }}
+        .container {{
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #151b2e;
+            border: 2px solid #ef4444;
+            border-radius: 8px;
+            padding: 30px;
+        }}
+        .header {{
+            text-align: center;
+            color: #ef4444;
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }}
+        .error-box {{
+            background-color: #1a2332;
+            border-left: 4px solid #ef4444;
+            padding: 15px;
+            margin: 15px 0;
+        }}
+        .info-row {{
+            margin: 10px 0;
+            padding: 8px;
+            background-color: #0f1419;
+            border-radius: 4px;
+        }}
+        .label {{
+            color: #00d9ff;
+            font-weight: bold;
+            display: inline-block;
+            width: 150px;
+        }}
+        .value {{
+            color: #e5e7eb;
+        }}
+        .traceback {{
+            background-color: #0f1419;
+            border: 1px solid #374151;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+            overflow-x: auto;
+            font-size: 12px;
+            color: #fbbf24;
+        }}
+        .footer {{
+            text-align: center;
+            color: #6b7280;
+            font-size: 11px;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #374151;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">🚨 API ERROR ALERT</div>
+        
+        <div class="info-row">
+            <span class="label">Timestamp:</span>
+            <span class="value">{timestamp}</span>
+        </div>
+        
+        <div class="info-row">
+            <span class="label">Error Type:</span>
+            <span class="value">{error_type}</span>
+        </div>
+        
+        <div class="info-row">
+            <span class="label">Endpoint:</span>
+            <span class="value">{method} {endpoint}</span>
+        </div>
+        
+        <div class="error-box">
+            <strong style="color: #ef4444;">Error Message:</strong><br>
+            <p style="margin: 10px 0; color: #fbbf24;">{error_message}</p>
+        </div>
+        
+        <div class="traceback">
+            <strong>Traceback:</strong><br>
+            <pre style="margin: 10px 0; white-space: pre-wrap;">{traceback_info}</pre>
+        </div>
+        
+        {f'<div class="info-row"><span class="label">Request Data:</span><br><pre style="margin: 10px 0; color: #9ca3af;">{request_data}</pre></div>' if request_data else ''}
+        
+        <div class="footer">
+            Wiestell Threat Intelligence Platform - Automated Error Monitoring<br>
+            This is an automated alert. Check server logs for more details.
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+        # Attach both versions
+        part1 = MIMEText(text_content, "plain")
+        part2 = MIMEText(html_content, "html")
+        message.attach(part1)
+        message.attach(part2)
+
+        # Send email
+        if settings.SMTP_SECURE and settings.SMTP_PORT == 465:
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, context=context) as server:
+                server.login(settings.EMAIL_USER, settings.EMAIL_PASSWORD)
+                server.sendmail(settings.EMAIL_USER, settings.ADMIN_EMAIL, message.as_string())
+        else:
+            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
+                server.starttls()
+                server.login(settings.EMAIL_USER, settings.EMAIL_PASSWORD)
+                server.sendmail(settings.EMAIL_USER, settings.ADMIN_EMAIL, message.as_string())
+
+        print(f"✓ Error alert email sent to {settings.ADMIN_EMAIL}")
+        return True
+
+    except Exception as e:
+        # Don't let email failures cause additional errors
+        print(f"✗ Failed to send error alert email: {str(e)}")
+        return False

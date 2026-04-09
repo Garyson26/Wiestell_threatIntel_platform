@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     SMTP_HOST: str = "smtp.hostinger.com"
     SMTP_PORT: int = 465
     SMTP_SECURE: bool = True
+    ADMIN_EMAIL: str = "viraj.470@gmail.com"  # Email for error notifications
+    ENABLE_ERROR_EMAILS: bool = True  # Toggle error email notifications
 
     class Config:
         env_file = "/home/cloudpeak/Desktop/Viraj/Wiestell_threatIntel_platform/backend/.env"
