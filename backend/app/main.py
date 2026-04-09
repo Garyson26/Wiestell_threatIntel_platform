@@ -21,20 +21,14 @@ logger = structlog.get_logger()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup and shutdown events."""
-    logger.info("sentinel_starting", environment=settings.ENVIRONMENT)
-
-    # Start the periodic feed scheduler
-    scheduler_task = asyncio.create_task(feed_scheduler_loop())
-    logger.info("feed_scheduler_registered")
-
+    logger.info("sentinel_starting", environment=settings.ENVIRONMENT, platform="vercel-serverless")
+    
+    # Background scheduler disabled for Vercel serverless
+    # Use Vercel Cron instead: /api/v1/feeds/sync-all (configured in vercel.json)
+    logger.info("feed_scheduler_mode", mode="vercel_cron", endpoint="/api/v1/feeds/sync-all")
+    
     yield
-
-    # Gracefully cancel the scheduler on shutdown
-    scheduler_task.cancel()
-    try:
-        await scheduler_task
-    except asyncio.CancelledError:
-        pass
+    
     logger.info("sentinel_shutting_down")
 
 
@@ -130,4 +124,71 @@ async def health_check():
         "status": "healthy",
         "service": "sentinel-api",
         "version": "1.0.0",
+    }
+
+
+@app.get("/api/v1/cron-status")
+async def cron_status():
+    """
+    Check feed sync status and cron configuration.
+    
+    Use this endpoint to verify:
+    - Which feeds are enabled
+    - When feeds were last synced
+    - Which feeds are overdue for sync
+    - Vercel Cron configuration status
+    """
+    from datetime import datetime
+    from app.database import AsyncSessionLocal
+    from app.models.feed import FeedSource
+    from sqlalchemy import select
+    
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(FeedSource).order_by(FeedSource.is_enabled.desc(), FeedSource.name)
+        )
+        feeds = result.scalars().all()
+        
+        now = datetime.utcnow()
+        feed_status = []
+        
+        for feed in feeds:
+            freq = feed.sync_frequency or 3600
+            last = feed.last_sync_at
+            overdue = last is None or (now - last).total_seconds() >= freq
+            
+            seconds_since = int((now - last).total_seconds()) if last else None
+            next_sync_in = max(0, freq - seconds_since) if seconds_since is not None else 0
+            
+            feed_status.append({
+                "name": feed.name,
+                "slug": feed.slug,
+                "enabled": feed.is_enabled,
+                "last_sync": last.strftime("%Y-%m-%d %H:%M:%S UTC") if last else "never",
+                "seconds_since_last_sync": seconds_since,
+                "sync_frequency": freq,
+                "next_sync_in_seconds": next_sync_in,
+                "overdue": overdue,
+                "last_status": feed.last_sync_status,
+                "last_error": feed.last_sync_error,
+                "ioc_count": feed.ioc_count,
+            })
+    
+    enabled_count = sum(1 for f in feed_status if f["enabled"])
+    overdue_count = sum(1 for f in feed_status if f["enabled"] and f["overdue"])
+    
+    return {
+        "status": "ok",
+        "timestamp": now.strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "platform": "vercel-serverless",
+        "scheduler_mode": "vercel_cron",
+        "cron_enabled": True,
+        "cron_schedule": "0 * * * * (every hour)",
+        "cron_endpoint": "/api/v1/feeds/sync-all",
+        "background_scheduler": "disabled (serverless incompatible)",
+        "total_feeds": len(feeds),
+        "enabled_feeds": enabled_count,
+        "overdue_feeds": overdue_count,
+        "feeds": feed_status,
+        "note": "Feeds sync automatically every hour via Vercel Cron. Manual sync: POST /api/v1/feeds/sync-all",
     }
