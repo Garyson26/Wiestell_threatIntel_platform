@@ -101,6 +101,96 @@ async def trigger_sync(feed_id: str, background_tasks: BackgroundTasks, db: Asyn
     }
 
 
+@router.post("/sync-all", status_code=202)
+async def sync_all_feeds(db: AsyncSession = Depends(get_db)):
+    """
+    Sync all overdue feeds. Designed for Vercel Cron jobs.
+    
+    This endpoint triggers synchronous feed syncs for all enabled feeds
+    that are overdue based on their sync_frequency.
+    
+    ⚠️ Note: On Vercel, this runs synchronously within the 60s timeout limit.
+    For production with many feeds, consider batching or using a queue.
+    
+    Usage with Vercel Cron:
+    - vercel.json: {"path": "/api/v1/feeds/sync-all", "schedule": "0 * * * *"}
+    - Runs every hour automatically
+    """
+    from datetime import datetime
+
+    result = await db.execute(
+        select(FeedSource).where(FeedSource.is_enabled == True)  # noqa: E712
+    )
+    feeds = result.scalars().all()
+    
+    now = datetime.utcnow()
+    synced_results = []
+    skipped_count = 0
+    
+    for feed in feeds:
+        # Check if feed is overdue for sync
+        freq = feed.sync_frequency or 3600  # default 1 hour
+        last = feed.last_sync_at
+        overdue = last is None or (now - last).total_seconds() >= freq
+        
+        if not overdue:
+            skipped_count += 1
+            continue
+            
+        connector_path = FEED_CONNECTORS.get(feed.slug)
+        if not connector_path:
+            logger.warning("cron_sync_no_connector", slug=feed.slug)
+            synced_results.append({
+                "feed_id": str(feed.id),
+                "name": feed.name,
+                "slug": feed.slug,
+                "status": "error",
+                "message": "No connector registered"
+            })
+            continue
+        
+        # Sync synchronously (blocking) - required for Vercel serverless
+        try:
+            await run_feed_sync(
+                feed_id=str(feed.id),
+                feed_slug=feed.slug,
+                connector_path=connector_path
+            )
+            
+            synced_results.append({
+                "feed_id": str(feed.id),
+                "name": feed.name,
+                "slug": feed.slug,
+                "status": "success",
+                "last_sync": to_ist_str(feed.last_sync_at) if feed.last_sync_at else "never",
+            })
+            
+            logger.info("cron_sync_success", feed=feed.slug, frequency=freq)
+            
+        except Exception as e:
+            logger.error("cron_sync_failed", feed=feed.slug, error=str(e))
+            synced_results.append({
+                "feed_id": str(feed.id),
+                "name": feed.name,
+                "slug": feed.slug,
+                "status": "failed",
+                "error": str(e)
+            })
+    
+    synced_count = len([r for r in synced_results if r.get("status") == "success"])
+    failed_count = len([r for r in synced_results if r.get("status") == "failed"])
+    
+    return {
+        "status": "completed",
+        "synced_count": synced_count,
+        "failed_count": failed_count,
+        "skipped_count": skipped_count,
+        "total_feeds": len(feeds),
+        "results": synced_results,
+        "message": f"Synced {synced_count} feed(s), {failed_count} failed, {skipped_count} skipped.",
+    }
+
+
 @router.get("/{feed_id}/logs")
 async def get_sync_logs(feed_id: str, db: AsyncSession = Depends(get_db)):
     """Get recent sync logs for a feed."""
