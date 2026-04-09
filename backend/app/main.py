@@ -1,6 +1,7 @@
 """SENTINEL Threat Intelligence Platform — FastAPI Application Entry Point."""
 
 import asyncio
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -20,18 +21,28 @@ async def lifespan(app: FastAPI):
     """Application startup and shutdown events."""
     logger.info("sentinel_starting", environment=settings.ENVIRONMENT)
 
-    # Start the periodic feed scheduler
-    scheduler_task = asyncio.create_task(feed_scheduler_loop())
-    logger.info("feed_scheduler_registered")
+    # On Vercel (serverless), background tasks don't persist between invocations.
+    # Use Vercel Cron Jobs instead (configured in vercel.json).
+    # Only start the scheduler for long-running deployments (Railway, Docker, etc.)
+    is_serverless = os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME")
+    
+    scheduler_task = None
+    if not is_serverless:
+        # Start the periodic feed scheduler for persistent deployments
+        scheduler_task = asyncio.create_task(feed_scheduler_loop())
+        logger.info("feed_scheduler_registered")
+    else:
+        logger.info("serverless_detected", message="Feed scheduler disabled. Use Vercel Cron or manual sync.")
 
     yield
 
     # Gracefully cancel the scheduler on shutdown
-    scheduler_task.cancel()
-    try:
-        await scheduler_task
-    except asyncio.CancelledError:
-        pass
+    if scheduler_task:
+        scheduler_task.cancel()
+        try:
+            await scheduler_task
+        except asyncio.CancelledError:
+            pass
     logger.info("sentinel_shutting_down")
 
 
