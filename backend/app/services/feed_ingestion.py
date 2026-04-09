@@ -22,13 +22,13 @@ import structlog
 
 logger = structlog.get_logger()
 
-# Chunk size for bulk IOC processing. Smaller batches mean fewer rows touched
-# per transaction, which reduces InnoDB lock contention (ER_LOCK_WAIT_TIMEOUT
-# 1205) and limits the blast radius of a deadlock (ER_LOCK_DEADLOCK 1213).
-# 15 rows is a safe default: stays well within MySQL's max_allowed_packet,
-# keeps individual lock windows short, and leaves headroom for concurrent
-# Celery workers updating overlapping IOC sets.
-_BATCH_SIZE = 15
+# Default chunk size for bulk IOC processing. Smaller batches mean fewer rows
+# touched per transaction, which reduces InnoDB lock contention. High-volume
+# feeds like ThreatFox (~57k IOCs) can override this with a larger batch_size.
+_DEFAULT_BATCH_SIZE = 15
+
+# High-volume feeds require larger batches to complete within timeout limits
+_HIGH_VOLUME_BATCH_SIZE = 500
 
 
 def _now() -> datetime:
@@ -73,26 +73,44 @@ async def ingest_iocs(
     session: AsyncSession,
     feed: FeedSource,
     raw_iocs: List[Dict[str, Any]],
+    batch_size: Optional[int] = None,
 ) -> int:
     """Ingest a batch of IOCs from a feed using bulk operations.
 
-    Processes IOCs in small chunks (_BATCH_SIZE rows) and commits after each
+    Processes IOCs in small chunks (batch_size rows) and commits after each
     chunk to release InnoDB row locks promptly. Each chunk is wrapped in retry
     logic: on ER_LOCK_WAIT_TIMEOUT (1205) or ER_LOCK_DEADLOCK (1213) the
     chunk transaction is rolled back and retried with exponential back-off
     (1 s → 2 s → 4 s) via _process_async_chunk_with_retry.
     Returns the total number of IOCs processed.
+    
+    Args:
+        session: Database session
+        feed: FeedSource model
+        raw_iocs: List of raw IOC dictionaries
+        batch_size: Number of IOCs per commit (defaults to 15, use 500 for high-volume feeds)
     """
+    if batch_size is None:
+        batch_size = _DEFAULT_BATCH_SIZE
+    
     valid = _normalize_batch(raw_iocs)
-    logger.info("feed_ingest_start", feed=feed.name, valid=len(valid), total=len(raw_iocs))
+    total_batches = (len(valid) + batch_size - 1) // batch_size  # ceiling division
+    logger.info("feed_ingest_start", feed=feed.name, valid=len(valid), total=len(raw_iocs), batch_size=batch_size, total_batches=total_batches)
 
     feed_id = feed.id
     feed_name = feed.name
     count = 0
+    batch_num = 0
 
-    for chunk_start in range(0, len(valid), _BATCH_SIZE):
-        chunk = valid[chunk_start : chunk_start + _BATCH_SIZE]
-        count += await _process_async_chunk_with_retry(session, feed_id, chunk)
+    for chunk_start in range(0, len(valid), batch_size):
+        batch_num += 1
+        chunk = valid[chunk_start : chunk_start + batch_size]
+        chunk_count = await _process_async_chunk_with_retry(session, feed_id, chunk)
+        count += chunk_count
+        
+        # Log progress every 10 batches to track ingestion progress
+        if batch_num % 10 == 0 or batch_num == total_batches:
+            logger.info("feed_ingest_progress", feed=feed_name, batch=batch_num, total_batches=total_batches, processed=count)
 
     # Re-fetch feed after the last chunk commit for the final status update.
     result = await session.execute(
@@ -529,25 +547,43 @@ def ingest_iocs_sync(
     session: Session,
     feed: FeedSource,
     raw_iocs: List[Dict[str, Any]],
+    batch_size: Optional[int] = None,
 ) -> int:
     """Synchronous version for Celery tasks.
 
-    Processes IOCs in small chunks (_BATCH_SIZE rows) and commits after each
-    chunk to release InnoDB row locks promptly. Each chunk is wrapped in retry
+    Processes IOCs in chunks (batch_size rows) and commits after each chunk
+    to release InnoDB row locks promptly. Each chunk is wrapped in retry
     logic: on ER_LOCK_WAIT_TIMEOUT (1205) or ER_LOCK_DEADLOCK (1213) the
     chunk transaction is rolled back and retried with exponential back-off
     (1 s → 2 s → 4 s) via _process_chunk_with_retry.
+    
+    Args:
+        session: Database session
+        feed: FeedSource model
+        raw_iocs: List of raw IOC dictionaries
+        batch_size: Number of IOCs per commit (defaults to 15, use 500 for high-volume feeds)
     """
+    if batch_size is None:
+        batch_size = _DEFAULT_BATCH_SIZE
+    
     valid = _normalize_batch(raw_iocs)
-    logger.info("sync_feed_ingest_start", feed=feed.name, valid=len(valid), total=len(raw_iocs))
+    total_batches = (len(valid) + batch_size - 1) // batch_size  # ceiling division
+    logger.info("sync_feed_ingest_start", feed=feed.name, valid=len(valid), total=len(raw_iocs), batch_size=batch_size, total_batches=total_batches)
 
     feed_id = feed.id
     feed_name = feed.name
     count = 0
+    batch_num = 0
 
-    for chunk_start in range(0, len(valid), _BATCH_SIZE):
-        chunk = valid[chunk_start : chunk_start + _BATCH_SIZE]
-        count += _process_chunk_with_retry(session, feed_id, chunk)
+    for chunk_start in range(0, len(valid), batch_size):
+        batch_num += 1
+        chunk = valid[chunk_start : chunk_start + batch_size]
+        chunk_count = _process_chunk_with_retry(session, feed_id, chunk)
+        count += chunk_count
+        
+        # Log progress every 10 batches to track ingestion progress
+        if batch_num % 10 == 0 or batch_num == total_batches:
+            logger.info("sync_feed_ingest_progress", feed=feed_name, batch=batch_num, total_batches=total_batches, processed=count)
 
     # Final status update — re-fetch after the last chunk commit.
     feed = session.query(FeedSource).filter(FeedSource.id == feed_id).first()

@@ -1,5 +1,6 @@
 """Application configuration loaded from environment variables."""
 
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from typing import Optional
 
@@ -59,7 +60,8 @@ class Settings(BaseSettings):
     ENABLE_ERROR_EMAILS: bool = True  # Toggle error email notifications
 
     class Config:
-        env_file = "/home/cloudpeak/Desktop/Viraj/Wiestell_threatIntel_platform/backend/.env"
+        # Find .env file relative to this config.py file (backend/app/.env -> ../../.env)
+        env_file = str(Path(__file__).parent.parent / ".env")
         case_sensitive = True
         extra = 'ignore'  # Ignore extra environment variables not in Settings
 
