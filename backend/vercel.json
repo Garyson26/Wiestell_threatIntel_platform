@@ -14,5 +14,11 @@
   ],
   "env": {
     "PORT": "8000"
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/v1/feeds/sync-all",
+      "schedule": "0 * * * *"
+    }
+  ]
 }
