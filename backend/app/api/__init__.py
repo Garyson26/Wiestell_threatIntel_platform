@@ -1,7 +1,7 @@
 """API router registration."""
 
 from fastapi import APIRouter
-from app.api import ioc, feeds, enrichment, dashboard, reports, attack, users, ai, contact, cron
+from app.api import ioc, feeds, enrichment, dashboard, reports, attack, users, ai, contact
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -14,4 +14,3 @@ api_router.include_router(attack.router, prefix="/attack", tags=["ATT&CK"])
 api_router.include_router(users.router, prefix="/users", tags=["Users"])
 api_router.include_router(ai.router, prefix="/ai", tags=["AI"])
 api_router.include_router(contact.router, prefix="/contact", tags=["Contact"])
-api_router.include_router(cron.router, prefix="/cron", tags=["Cron"])
