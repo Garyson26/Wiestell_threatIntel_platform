@@ -30,10 +30,20 @@ def _patch_aiomysql() -> None:
             try:
                 await _orig_ensure_closed(self)
             except RuntimeError as exc:
-                if "TCPTransport" in str(exc) or "handler is closed" in str(exc):
+                # Catch RuntimeError from closed/invalid transports
+                exc_str = str(exc)
+                if any(phrase in exc_str for phrase in [
+                    "TCPTransport",
+                    "handler is closed",
+                    "unable to perform operation",
+                    "closed=True"
+                ]):
                     pass  # transport already gone — nothing to close
                 else:
                     raise
+            except Exception:
+                # Swallow any other connection cleanup errors
+                pass
 
         aiomysql.Connection.ensure_closed = _safe_ensure_closed
     except ImportError:
@@ -114,15 +124,15 @@ else:
     # Production pool — sized for high concurrency.
     # pool_size=10 + max_overflow=20 allows up to 30 simultaneous connections
     # without exhausting typical shared-host limits.
-    # pool_recycle=1800 ensures connections are replaced well before the MySQL
-    # server's wait_timeout closes them from the server side.
+    # pool_recycle=280 ensures connections are replaced well before the MySQL
+    # server's wait_timeout (300s) closes them from the server side.
     # pool_pre_ping validates connection health before use so stale connections
     # are discarded transparently instead of raising OperationalError.
     async_engine = create_async_engine(
         async_db_url,
         pool_size=10,
         max_overflow=20,
-        pool_recycle=1800,
+        pool_recycle=280,
         pool_pre_ping=True,
         pool_timeout=30,
         echo=False,

@@ -28,7 +28,7 @@ logger = structlog.get_logger()
 _DEFAULT_BATCH_SIZE = 15
 
 # High-volume feeds require larger batches to complete within timeout limits
-_HIGH_VOLUME_BATCH_SIZE = 500
+_HIGH_VOLUME_BATCH_SIZE = 1000
 
 
 def _now() -> datetime:
