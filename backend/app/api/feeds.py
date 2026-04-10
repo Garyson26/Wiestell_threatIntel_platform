@@ -19,9 +19,16 @@ router = APIRouter()
 @router.get("", response_model=list[FeedResponse])
 async def list_feeds(db: AsyncSession = Depends(get_db)):
     """List all feed sources with their status."""
-    result = await db.execute(select(FeedSource).order_by(FeedSource.name))
-    feeds = result.scalars().all()
-    return [FeedResponse.model_validate(f) for f in feeds]
+    try:
+        result = await db.execute(select(FeedSource).order_by(FeedSource.name))
+        feeds = result.scalars().all()
+        return [FeedResponse.model_validate(f) for f in feeds]
+    except Exception as e:
+        logger.error("failed_to_list_feeds", error=str(e), error_type=type(e).__name__)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve feed sources. Please try again."
+        )
 
 
 @router.post("", response_model=FeedResponse)
