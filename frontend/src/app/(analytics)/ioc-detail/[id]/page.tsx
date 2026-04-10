@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Globe, Link, Hash, ExternalLink, Mail, ShieldAlert, Tag, Clock, Activity, Database } from 'lucide-react';
+import { ArrowLeft, Globe, Link, Hash, ExternalLink, Mail, ShieldAlert, Tag, Clock, Activity, Database, Sparkles } from 'lucide-react';
 import { getIOC } from '@/lib/api';
 import ScoreBadge from '@/components/ioc/ScoreBadge';
 import { cn, formatDate, formatTimestamp, getScoreCategory, getScoreColor } from '@/lib/utils';
@@ -179,6 +179,7 @@ export default function IOCDetailPage() {
       <div className="flex gap-1 border-b border-sentinel-border overflow-x-auto">
         {[
           { id: 'overview',         label: 'Overview',          icon: Activity     },
+          { id: 'enrichment',       label: 'Enrichment',        icon: Sparkles     },
           { id: 'history',          label: 'History',           icon: Clock        },
           { id: 'sources',          label: 'Sources',           icon: Database     },
           { id: 'relationships',    label: 'Relationships',     icon: Link         },
@@ -257,6 +258,40 @@ export default function IOCDetailPage() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'enrichment' && (
+          <div className="sentinel-card overflow-hidden">
+            <div className="px-5 py-3 border-b border-sentinel-border">
+              <h3 className="text-sm font-display font-semibold text-sentinel-text-primary">Enrichment Data</h3>
+            </div>
+            {ioc.enrichments && ioc.enrichments.length > 0 ? (
+              <div className="divide-y divide-sentinel-border">
+                {ioc.enrichments.map((enrichment, idx) => (
+                  <div key={idx} className="p-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-sentinel-accent" />
+                        <span className="text-xs font-mono font-semibold text-sentinel-text-primary uppercase tracking-wider">
+                          {enrichment.source}
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono text-sentinel-text-muted">
+                        {formatTimestamp(enrichment.enriched_at)}
+                      </span>
+                    </div>
+                    <div className="bg-sentinel-bg-primary rounded p-3 border border-sentinel-border">
+                      <pre className="text-[10px] font-mono text-sentinel-text-secondary overflow-x-auto">
+{JSON.stringify(enrichment.data, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-8 text-center text-xs font-mono text-sentinel-text-muted">No enrichment data available</div>
+            )}
           </div>
         )}
 
