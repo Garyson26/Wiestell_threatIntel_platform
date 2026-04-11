@@ -1,6 +1,6 @@
 """Feed management API endpoints."""
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -109,22 +109,50 @@ async def trigger_sync(feed_id: str, background_tasks: BackgroundTasks, db: Asyn
 
 
 @router.post("/sync-all", status_code=202)
-async def sync_all_feeds(db: AsyncSession = Depends(get_db)):
+async def sync_all_feeds(
+    db: AsyncSession = Depends(get_db),
+    enrich: bool = Query(True, description="Auto-enrich unenriched IOCs after feed sync"),
+    enrich_limit: int = Query(100, description="Max IOCs to enrich", ge=1, le=500)
+):
     """
-    Sync all overdue feeds. Designed for Vercel Cron jobs.
+    🔄 UNIFIED DAILY CRON JOB - Sync feeds + Enrich IOCs
     
-    This endpoint triggers synchronous feed syncs for all enabled feeds
-    that are overdue based on their sync_frequency.
+    This endpoint performs ALL background maintenance in a single cron job:
     
-    ⚠️ Note: On Vercel, this runs synchronously within the 60s timeout limit.
-    For production with many feeds, consider batching or using a queue.
+    STEP 1: Feed Synchronization
+    - Syncs all enabled feeds that are overdue based on sync_frequency
+    - Processes each feed sequentially to avoid timeout
+    
+    STEP 2: Enrichment (if enrich=True)
+    - Finds IOCs without enrichment data or with expired enrichments
+    - Enriches up to enrich_limit IOCs (default: 100)
+    - Runs synchronously to ensure completion within Vercel timeout
+    
+    ⚠️ Designed for Vercel Hobby Plan (1 cron/day, 60s timeout)
     
     Usage with Vercel Cron:
-    - vercel.json: {"path": "/api/v1/feeds/sync-all", "schedule": "0 * * * *"}
-    - Runs every hour automatically
+    vercel.json:
+    {
+      "crons": [{
+        "path": "/api/v1/feeds/sync-all?enrich=true&enrich_limit=100",
+        "schedule": "0 0 * * *"  // Daily at midnight UTC
+      }]
+    }
     """
     from datetime import datetime
+    from sqlalchemy import select, or_
+    from sqlalchemy.orm import selectinload
+    from app.models.enrichment import Enrichment
+    from app.models.ioc import IOC
+    from app.services.enrichment_engine import enrich_ioc, _utcnow
 
+    start_time = datetime.utcnow()
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # STEP 1: FEED SYNCHRONIZATION
+    # ═══════════════════════════════════════════════════════════════════════
+    logger.info("cron_job_started", step="feed_sync")
+    
     result = await db.execute(
         select(FeedSource).where(FeedSource.is_enabled == True)  # noqa: E712
     )
@@ -187,14 +215,88 @@ async def sync_all_feeds(db: AsyncSession = Depends(get_db)):
     synced_count = len([r for r in synced_results if r.get("status") == "success"])
     failed_count = len([r for r in synced_results if r.get("status") == "failed"])
     
+    feed_sync_duration = (datetime.utcnow() - start_time).total_seconds()
+    logger.info("feed_sync_completed", 
+                synced=synced_count, 
+                failed=failed_count, 
+                duration_sec=feed_sync_duration)
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # STEP 2: ENRICHMENT
+    # ═══════════════════════════════════════════════════════════════════════
+    enrichment_results = {
+        "enabled": enrich,
+        "enriched_count": 0,
+        "failed_count": 0,
+        "duration_sec": 0
+    }
+    
+    if enrich:
+        enrich_start = datetime.utcnow()
+        logger.info("cron_job_started", step="enrichment", limit=enrich_limit)
+        
+        # Find IOCs without enrichment (up to limit)
+        no_enrichment_query = (
+            select(IOC)
+            .options(selectinload(IOC.enrichments))
+            .outerjoin(Enrichment, IOC.id == Enrichment.ioc_id)
+            .where(Enrichment.id.is_(None))
+            .limit(enrich_limit)
+        )
+        result = await db.execute(no_enrichment_query)
+        iocs_to_enrich = result.scalars().all()
+        
+        logger.info("found_unenriched_iocs", count=len(iocs_to_enrich))
+        
+        # Enrich each IOC synchronously
+        enriched = 0
+        failed = 0
+        
+        for ioc in iocs_to_enrich:
+            try:
+                await enrich_ioc(db, ioc)
+                await db.flush()
+                enriched += 1
+                
+                if enriched % 10 == 0:
+                    logger.info("enrichment_progress", 
+                               enriched=enriched, 
+                               total=len(iocs_to_enrich))
+                               
+            except Exception as e:
+                failed += 1
+                logger.warning("enrichment_failed", 
+                              ioc_id=str(ioc.id), 
+                              ioc_value=ioc.value,
+                              error=str(e))
+        
+        enrichment_results["enriched_count"] = enriched
+        enrichment_results["failed_count"] = failed
+        enrichment_results["duration_sec"] = (datetime.utcnow() - enrich_start).total_seconds()
+        
+        logger.info("enrichment_completed", 
+                   enriched=enriched, 
+                   failed=failed,
+                   duration_sec=enrichment_results["duration_sec"])
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # FINAL RESULTS
+    # ═══════════════════════════════════════════════════════════════════════
+    total_duration = (datetime.utcnow() - start_time).total_seconds()
+    
     return {
         "status": "completed",
-        "synced_count": synced_count,
-        "failed_count": failed_count,
-        "skipped_count": skipped_count,
-        "total_feeds": len(feeds),
-        "results": synced_results,
-        "message": f"Synced {synced_count} feed(s), {failed_count} failed, {skipped_count} skipped.",
+        "total_duration_sec": round(total_duration, 2),
+        "feed_sync": {
+            "synced_count": synced_count,
+            "failed_count": failed_count,
+            "skipped_count": skipped_count,
+            "total_feeds": len(feeds),
+            "duration_sec": round(feed_sync_duration, 2),
+            "results": synced_results
+        },
+        "enrichment": enrichment_results,
+        "message": f"✅ Synced {synced_count} feed(s) | ⚡ Enriched {enrichment_results['enriched_count']} IOC(s) | ⏱️ {round(total_duration, 1)}s total"
     }
 
 
