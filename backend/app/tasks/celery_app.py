@@ -29,18 +29,22 @@ celery_app.conf.update(
 )
 
 # Periodic task schedule
+# ⚠️ NOTE: These tasks require persistent Celery workers (Redis/Celery Beat)
+# They will NOT run on Vercel (serverless platform)
+# For Vercel deployment, use the unified cron job: POST /api/v1/feeds/sync-all
 celery_app.conf.beat_schedule = {
-    "sync-all-feeds-hourly": {
-        "task": "app.tasks.feed_tasks.sync_all_feeds",
-        "schedule": crontab(minute=0),  # Every hour
-    },
-    "sync-critical-feeds": {
-        "task": "app.tasks.feed_tasks.sync_critical_feeds",
-        "schedule": crontab(minute="*/15"),  # Every 15 minutes
-    },
-    "enrich-unenriched-iocs": {
-        "task": "app.tasks.enrichment_tasks.enrich_unenriched_iocs",
-        "schedule": crontab(minute="*/30"),  # Every 30 minutes
-        "kwargs": {"limit": 100},  # Enrich up to 100 IOCs per run
-    },
+    # DISABLED FOR VERCEL - Use daily cron job instead
+    # "sync-all-feeds-hourly": {
+    #     "task": "app.tasks.feed_tasks.sync_all_feeds",
+    #     "schedule": crontab(minute=0),  # Every hour
+    # },
+    # "sync-critical-feeds": {
+    #     "task": "app.tasks.feed_tasks.sync_critical_feeds",
+    #     "schedule": crontab(minute="*/15"),  # Every 15 minutes
+    # },
+    # "enrich-unenriched-iocs": {
+    #     "task": "app.tasks.enrichment_tasks.enrich_unenriched_iocs",
+    #     "schedule": crontab(minute="*/30"),  # Every 30 minutes
+    #     "kwargs": {"limit": 100},  # Enrich up to 100 IOCs per run
+    # },
 }
