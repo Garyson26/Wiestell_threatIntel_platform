@@ -262,35 +262,189 @@ export default function IOCDetailPage() {
         )}
 
         {activeTab === 'enrichment' && (
-          <div className="sentinel-card overflow-hidden">
-            <div className="px-5 py-3 border-b border-sentinel-border">
-              <h3 className="text-sm font-display font-semibold text-sentinel-text-primary">Enrichment Data</h3>
-            </div>
+          <div className="space-y-6">
             {ioc.enrichments && ioc.enrichments.length > 0 ? (
-              <div className="divide-y divide-sentinel-border">
-                {ioc.enrichments.map((enrichment, idx) => (
-                  <div key={idx} className="p-5">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <Sparkles className="w-4 h-4 text-sentinel-accent" />
-                        <span className="text-xs font-mono font-semibold text-sentinel-text-primary uppercase tracking-wider">
-                          {enrichment.source}
-                        </span>
-                      </div>
-                      <span className="text-[10px] font-mono text-sentinel-text-muted">
-                        {formatTimestamp(enrichment.enriched_at)}
-                      </span>
-                    </div>
-                    <div className="bg-sentinel-bg-primary rounded p-3 border border-sentinel-border">
-                      <pre className="text-[10px] font-mono text-sentinel-text-secondary overflow-x-auto">
-{JSON.stringify(enrichment.data, null, 2)}
-                      </pre>
-                    </div>
+              ioc.enrichments.map((e, i) => (
+                <div key={i} className="sentinel-card overflow-hidden">
+                  <div className="bg-sentinel-bg-secondary/50 px-4 py-2.5 border-b border-sentinel-border flex items-center justify-between">
+                    <h3 className="text-xs font-mono font-semibold uppercase tracking-wider text-sentinel-text-primary">{e.source}</h3>
+                    <span className="text-[10px] font-mono text-sentinel-text-muted">{formatTimestamp(e.enriched_at)}</span>
                   </div>
-                ))}
-              </div>
+                  
+                  {/* GeoIP Table */}
+                  {e.source === 'geoip' && e.data && (
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-sentinel-border/50 bg-sentinel-bg-primary/30">
+                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Field</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(e.data).map(([key, value]) => (
+                          <tr key={key} className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
+                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted capitalize">{key.replace(/_/g, ' ')}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">{String(value || 'N/A')}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+
+                  {/* WHOIS Table */}
+                  {e.source === 'whois' && e.data && (
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-sentinel-border/50 bg-sentinel-bg-primary/30">
+                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Field</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(e.data).map(([key, value]) => (
+                          <tr key={key} className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
+                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted capitalize">{key.replace(/_/g, ' ')}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">
+                              {Array.isArray(value) ? value.join(', ') : String(value || 'N/A')}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+
+                  {/* DNS Table */}
+                  {e.source === 'dns' && e.data && (
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-sentinel-border/50 bg-sentinel-bg-primary/30">
+                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Record Type</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Records</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(e.data).map(([recordType, records]) => (
+                          Array.isArray(records) && records.length > 0 && (
+                            <tr key={recordType} className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
+                              <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted uppercase">{recordType}</td>
+                              <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">
+                                {records.map((r, idx) => (
+                                  <div key={idx}>{String(r)}</div>
+                                ))}
+                              </td>
+                            </tr>
+                          )
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+
+                  {/* Reputation Table */}
+                  {e.source === 'reputation' && e.data && (
+                    <div>
+                      <table className="w-full mb-4">
+                        <thead>
+                          <tr className="border-b border-sentinel-border/50 bg-sentinel-bg-primary/30">
+                            <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Metric</th>
+                            <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Value</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
+                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted">Aggregate Score</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary font-semibold">{(e.data as any).aggregate_score || 0}</td>
+                          </tr>
+                          <tr className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
+                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted">Sources Checked</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">{(e.data as any).sources_checked || 0}</td>
+                          </tr>
+                          <tr className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
+                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted">Sources Flagged</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">{(e.data as any).sources_flagged || 0}</td>
+                          </tr>
+                          {(e.data as any).note && (
+                            <tr className="hover:bg-sentinel-bg-secondary/20">
+                              <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted">Note</td>
+                              <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-secondary italic">{String((e.data as any).note)}</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                      
+                      {/* Reputation Details */}
+                      {(e.data as any).details && Object.keys((e.data as any).details).length > 0 && (
+                        <div className="px-4 pb-4">
+                          <h4 className="text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted mb-2">Source Details</h4>
+                          <table className="w-full">
+                            <thead>
+                              <tr className="border-b border-sentinel-border/50">
+                                <th className="px-3 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Source</th>
+                                <th className="px-3 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Data</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {Object.entries((e.data as any).details).map(([source, data]) => (
+                                <tr key={source} className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
+                                  <td className="px-3 py-2 font-mono text-[10px] text-sentinel-text-muted">{source}</td>
+                                  <td className="px-3 py-2 font-mono text-[10px] text-sentinel-text-secondary">
+                                    {typeof data === 'object' ? JSON.stringify(data) : String(data)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* MalwareBazaar Table */}
+                  {e.source === 'malwarebazaar' && e.data && (
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-sentinel-border/50 bg-sentinel-bg-primary/30">
+                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Field</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(e.data).map(([key, value]) => (
+                          <tr key={key} className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
+                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted capitalize">{key.replace(/_/g, ' ')}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">
+                              {Array.isArray(value) ? value.join(', ') : String(value || 'N/A')}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+
+                  {/* Generic fallback for other sources */}
+                  {!['geoip', 'whois', 'dns', 'reputation', 'malwarebazaar'].includes(e.source) && e.data && (
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-sentinel-border/50 bg-sentinel-bg-primary/30">
+                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Field</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(e.data).map(([key, value]) => (
+                          <tr key={key} className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
+                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted capitalize">{key.replace(/_/g, ' ')}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">
+                              {typeof value === 'object' ? JSON.stringify(value) : String(value || 'N/A')}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              ))
             ) : (
-              <div className="p-8 text-center text-xs font-mono text-sentinel-text-muted">No enrichment data available</div>
+              <div className="sentinel-card p-8 text-center text-xs font-mono text-sentinel-text-muted">No enrichment data available</div>
             )}
           </div>
         )}
