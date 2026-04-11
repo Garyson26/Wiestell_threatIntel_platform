@@ -136,7 +136,7 @@ export default function AboutPage() {
               About Wiestell
             </h1>
             <p className="text-lg text-sentinel-text-secondary font-mono">
-              Free, Open-Source Threat Intelligence for Everyone
+              Free Threat Intelligence for Everyone
             </p>
           </div>
 
@@ -147,7 +147,7 @@ export default function AboutPage() {
             </h2>
             <div className="space-y-4 text-sentinel-text-secondary font-mono text-sm leading-relaxed">
               <p>
-                <strong className="text-sentinel-accent">Wiestell</strong> is a free, open-source threat intelligence platform designed for security analysts, SOC teams, incident responders, and cybersecurity researchers. It aggregates and correlates data from the world's most trusted open-source threat intelligence feeds, giving defenders a single place to investigate indicators of compromise (IOCs) quickly and without cost.
+                <strong className="text-sentinel-accent">Wiestell</strong> is a free threat intelligence platform designed for security analysts, SOC teams, incident responders, and cybersecurity researchers. It aggregates and correlates data from the world's most trusted open-source threat intelligence feeds, giving defenders a single place to investigate indicators of compromise (IOCs) quickly and without cost.
               </p>
             </div>
           </section>
@@ -296,7 +296,7 @@ export default function AboutPage() {
             </h2>
             <div className="space-y-4 text-sentinel-text-secondary font-mono text-sm leading-relaxed">
               <p>
-                Wiestell is <strong className="text-sentinel-accent">open source</strong>. We believe in transparency and community-driven security. Contributions, bug reports, and feature suggestions are welcome.
+                Wiestell is <strong className="text-sentinel-accent">free</strong>. We believe in transparency and community-driven security. Contributions, bug reports, and feature suggestions are welcome.
               </p>
             </div>
           </section>

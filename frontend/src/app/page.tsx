@@ -196,7 +196,7 @@ export default function Home() {
                          
               <div className="space-y-6 text-sentinel-text-secondary font-mono text-sm leading-relaxed">
                 <p>
-                  <strong className="text-sentinel-accent font-semibold">Wiestell</strong> is a free, open-source threat intelligence platform that aggregates data from the most trusted open-source feeds on the internet. Security analysts, SOC teams, and threat researchers can instantly look up any IP address, domain name, URL, or file hash to check its reputation, malware associations, and threat history.
+                  <strong className="text-sentinel-accent font-semibold">Wiestell</strong> is a free threat intelligence platform that aggregates data from the most trusted open-source feeds on the internet. Security analysts, SOC teams, and threat researchers can instantly look up any IP address, domain name, URL, or file hash to check its reputation, malware associations, and threat history.
                 </p>
 
                 <blockquote className="border-l-4 border-sentinel-accent pl-6 py-4 my-8 bg-sentinel-bg-tertiary/30 rounded-r">
