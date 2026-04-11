@@ -6,6 +6,7 @@ from typing import Dict, Any, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.models.ioc import IOC
 from app.models.enrichment import Enrichment
@@ -88,7 +89,26 @@ async def enrich_ioc(
 
         results.append({"source": source, "data": result})
 
-    await session.flush()
+    # Flush enrichment changes using a nested transaction (savepoint)
+    # This allows us to rollback just the enrichment on error without
+    # poisoning the outer transaction managed by FastAPI's get_db() dependency
+    async with session.begin_nested():
+        try:
+            await session.flush()
+        except IntegrityError as e:
+            # Duplicate enrichment - another request beat us to it (race condition)
+            # The savepoint automatically rolls back, session remains clean
+            logger.info("enrichment_duplicate_ignored", 
+                        ioc_id=ioc.id, 
+                        error=str(e))
+            # Re-query cached enrichments after savepoint rollback
+            cached_results = []
+            for source in sources:
+                cached = await _get_cached_enrichment(session, ioc.id, source)
+                if cached:
+                    cached_results.append(cached)
+            return cached_results
+    
     return results
 
 

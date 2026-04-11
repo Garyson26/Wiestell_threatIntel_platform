@@ -73,15 +73,10 @@ async def lookup_ioc(
 
     # Run enrichment (uses cache if already enriched recently)
     await enrich_ioc(db, ioc)
-    await db.commit()
+    await db.flush()  # Flush instead of commit - let dependency handle commit
 
-    # Reload with enrichments
-    result = await db.execute(
-        select(IOC)
-        .options(selectinload(IOC.enrichments), selectinload(IOC.sources).selectinload(IOCSource.feed))
-        .where(IOC.id == ioc.id)
-    )
-    ioc = result.scalar_one()
+    # Refresh to get enrichments
+    await db.refresh(ioc, ["enrichments", "sources"])
 
     # Get relationships
     rels_result = await db.execute(
@@ -137,10 +132,18 @@ async def list_iocs(
     sort_order: str = Query("desc"),
     tag: Optional[str] = Query(None),
     q: Optional[str] = Query(None),
+    enrich: bool = Query(False, description="Auto-enrich IOCs without enrichment data"),
     db: AsyncSession = Depends(get_db),
 ):
-    """List IOCs with pagination, filtering, and sorting."""
+    """List IOCs with pagination, filtering, and sorting.
+    
+    Set enrich=true to automatically enrich IOCs without enrichment data.
+    """
     from app.schemas.ioc import ALLOWED_SORT_FIELDS, ALLOWED_SORT_ORDERS
+    from app.services.enrichment_engine import enrich_ioc
+    import structlog
+    logger = structlog.get_logger()
+    
     if sort_by not in ALLOWED_SORT_FIELDS:
         sort_by = "last_seen"
     if sort_order not in ALLOWED_SORT_ORDERS:
@@ -148,6 +151,10 @@ async def list_iocs(
 
     query = select(IOC)
     count_query = select(func.count(IOC.id))
+    
+    # Load enrichments if enrich flag is set
+    if enrich:
+        query = query.options(selectinload(IOC.enrichments))
 
     if ioc_type:
         query = query.where(IOC.type == ioc_type)
@@ -178,6 +185,25 @@ async def list_iocs(
 
     result = await db.execute(query)
     iocs = result.scalars().all()
+    
+    # Auto-enrich if requested and IOCs have no enrichment (limit to 10 to avoid timeout)
+    if enrich:
+        enriched_count = 0
+        enriched_iocs = []
+        for ioc in iocs:
+            if not ioc.enrichments and enriched_count < 10:
+                try:
+                    await enrich_ioc(db, ioc)
+                    enriched_iocs.append(ioc)
+                    enriched_count += 1
+                except Exception as e:
+                    logger.warning("list_enrich_failed", ioc_id=str(ioc.id), error=str(e))
+        
+        if enriched_count > 0:
+            await db.flush()  # Flush instead of commit - let dependency handle commit
+            # Refresh enrichments for the enriched IOCs
+            for ioc in enriched_iocs:
+                await db.refresh(ioc, ["enrichments"])
 
     return PaginatedIOCResponse(
         items=[IOCResponse.model_validate(ioc) for ioc in iocs],
@@ -190,7 +216,14 @@ async def list_iocs(
 
 @router.get("/{ioc_id}", response_model=IOCDetailResponse)
 async def get_ioc(ioc_id: str, db: AsyncSession = Depends(get_db)):
-    """Get detailed IOC information including enrichment data."""
+    """Get detailed IOC information including enrichment data.
+    
+    Automatically triggers enrichment if no enrichment data exists.
+    """
+    from app.services.enrichment_engine import enrich_ioc
+    import structlog
+    logger = structlog.get_logger()
+    
     result = await db.execute(
         select(IOC)
         .options(
@@ -203,6 +236,19 @@ async def get_ioc(ioc_id: str, db: AsyncSession = Depends(get_db)):
 
     if not ioc:
         raise HTTPException(status_code=404, detail="IOC not found")
+    
+    # Auto-enrich if no enrichment data exists
+    if not ioc.enrichments:
+        try:
+            await enrich_ioc(db, ioc)
+            await db.flush()  # Flush instead of commit - let dependency handle commit
+            # Reload enrichments after flush
+            await db.refresh(ioc, ["enrichments"])
+        except Exception as e:
+            # Log but don't fail the request if enrichment fails
+            logger.warning("auto_enrich_failed", ioc_id=ioc_id, error=str(e))
+            # Don't rollback - let the dependency handle it
+            # Just continue with whatever enrichments we have (possibly none)
 
     # Get relationships
     rels = await db.execute(
@@ -257,7 +303,9 @@ async def get_ioc(ioc_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.post("", response_model=IOCResponse)
 async def create_ioc(ioc_data: IOCCreate, db: AsyncSession = Depends(get_db)):
-    """Submit a new IOC."""
+    """Submit a new IOC and automatically trigger enrichment."""
+    from app.tasks.enrichment_tasks import enrich_ioc_task
+    
     if not validate_ioc(ioc_data.type, ioc_data.value):
         detected = detect_ioc_type(ioc_data.value)
         if detected:
@@ -293,6 +341,13 @@ async def create_ioc(ioc_data: IOCCreate, db: AsyncSession = Depends(get_db)):
     )
     db.add(ioc)
     await db.flush()
+    
+    # Trigger background enrichment for newly created IOC
+    try:
+        enrich_ioc_task.delay(str(ioc.id))
+    except Exception:
+        # Don't fail the request if enrichment dispatch fails
+        pass
 
     return IOCResponse.model_validate(ioc)
 
@@ -384,15 +439,18 @@ async def search_iocs(search: IOCSearchRequest, db: AsyncSession = Depends(get_d
                 )
                 db.add(ioc)
                 await db.flush()
-            # Run enrichment in background (non-blocking for response speed)
+            # Run enrichment (non-blocking for response speed)
             try:
                 await enrich_ioc(db, ioc)
-                await db.commit()
-            except Exception:
-                await db.rollback()
-            # Reload fresh after enrichment
-            fresh = await db.execute(select(IOC).where(IOC.id == ioc.id))
-            ioc = fresh.scalar_one_or_none()
+                await db.flush()  # Flush instead of commit - let dependency handle commit
+                # Refresh to get enrichments
+                await db.refresh(ioc, ["enrichments"])
+            except Exception as e:
+                # Log but don't fail - just return IOC without enrichment
+                import structlog
+                logger = structlog.get_logger()
+                logger.warning("search_enrich_failed", ioc_id=str(ioc.id), error=str(e))
+            
             if ioc:
                 iocs = [ioc]
                 total = 1
@@ -408,7 +466,7 @@ async def search_iocs(search: IOCSearchRequest, db: AsyncSession = Depends(get_d
 
 @router.post("/bulk", response_model=List[IOCResponse])
 async def bulk_lookup(request: IOCBulkRequest, db: AsyncSession = Depends(get_db)):
-    """Bulk IOC lookup — search for multiple IOC values at once."""
+    """Bulk IOC lookup - search for multiple IOC values at once."""
     results = []
     for value in request.values[:100]:  # Limit to 100
         value = value.strip()
@@ -537,14 +595,43 @@ async def get_timeline(ioc_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.post("/export")
 async def export_iocs(request: IOCExportRequest, db: AsyncSession = Depends(get_db)):
-    """Export IOCs in various formats (JSON, CSV, STIX)."""
+    """Export IOCs in various formats (JSON, CSV, STIX).
+    
+    Automatically triggers enrichment for IOCs without enrichment data before export.
+    """
+    from app.services.enrichment_engine import enrich_ioc
+    import structlog
+    logger = structlog.get_logger()
+    
     if request.ioc_ids:
-        result = await db.execute(select(IOC).where(IOC.id.in_(request.ioc_ids)))
+        result = await db.execute(
+            select(IOC)
+            .options(selectinload(IOC.enrichments))
+            .where(IOC.id.in_(request.ioc_ids))
+        )
     else:
-        query = select(IOC).order_by(desc(IOC.threat_score)).limit(1000)
+        query = select(IOC).options(selectinload(IOC.enrichments)).order_by(desc(IOC.threat_score)).limit(1000)
         result = await db.execute(query)
 
     iocs = result.scalars().all()
+    
+    # Auto-enrich IOCs without enrichment data (limit to avoid timeout)
+    unenriched_count = 0
+    for ioc in iocs:
+        if not ioc.enrichments and unenriched_count < 20:  # Limit to 20 to avoid timeout
+            try:
+                await enrich_ioc(db, ioc)
+                unenriched_count += 1
+            except Exception as e:
+                logger.warning("export_enrich_failed", ioc_id=str(ioc.id), error=str(e))
+    
+    if unenriched_count > 0:
+        await db.flush()  # Flush instead of commit - let dependency handle commit
+        # Refresh the enrichments relationship for enriched IOCs
+        for ioc in iocs:
+            if ioc.id in [i.id for i in iocs[:20]]:  # Only refresh the ones we enriched
+                await db.refresh(ioc, ["enrichments"])
+    
     ioc_dicts = [
         {
             "id": str(ioc.id),
@@ -558,6 +645,10 @@ async def export_iocs(request: IOCExportRequest, db: AsyncSession = Depends(get_
             "tags": ioc.tags or [],
             "created_at": ioc.created_at.isoformat() if ioc.created_at else None,
             "updated_at": ioc.updated_at.isoformat() if ioc.updated_at else None,
+            "enrichments": [
+                {"source": e.source, "data": e.data}
+                for e in ioc.enrichments
+            ] if ioc.enrichments else [],
         }
         for ioc in iocs
     ]
@@ -571,10 +662,14 @@ async def export_iocs(request: IOCExportRequest, db: AsyncSession = Depends(get_
         )
     elif request.format == "csv":
         output = io.StringIO()
-        writer = csv.DictWriter(output, fieldnames=["type", "value", "threat_score", "confidence", "first_seen", "last_seen", "tags"])
+        fieldnames = ["type", "value", "threat_score", "confidence", "first_seen", "last_seen", "tags", "enrichment_sources"]
+        writer = csv.DictWriter(output, fieldnames=fieldnames)
         writer.writeheader()
         for d in ioc_dicts:
             d["tags"] = "|".join(d.get("tags", []))
+            # Add enrichment sources to CSV
+            enrichment_sources = [e["source"] for e in d.get("enrichments", [])]
+            d["enrichment_sources"] = "|".join(enrichment_sources) if enrichment_sources else ""
             writer.writerow({k: d.get(k) for k in writer.fieldnames})
         return Response(
             content=output.getvalue(),
