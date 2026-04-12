@@ -8,7 +8,7 @@ import {
   CheckCircle2, XCircle, MinusCircle, ChevronDown, ChevronUp,
   Trash2, Settings2, Zap, BarChart3, Filter, Search
 } from 'lucide-react';
-import { getFeeds, triggerFeedSync, updateFeed, createFeed, deleteFeed, getFeedLogs } from '@/lib/api';
+import { getFeeds, triggerFeedSync, triggerAllFeedsSync, updateFeed, createFeed, deleteFeed, getFeedLogs } from '@/lib/api';
 import { cn, formatTimestamp, formatNumber, formatDate } from '@/lib/utils';
 import type { FeedSource } from '@/lib/types';
 
@@ -67,12 +67,14 @@ export default function FeedsPage() {
 
   async function handleSyncAll() {
     setSyncingAll(true);
-    const enabled = feeds.filter(f => f.is_enabled);
-    for (const feed of enabled) {
-      try { await triggerFeedSync(feed.id); } catch { /* skip */ }
+    try {
+      await triggerAllFeedsSync();
+      await loadFeeds();
+    } catch {
+      // ignore
+    } finally {
+      setSyncingAll(false);
     }
-    await loadFeeds();
-    setSyncingAll(false);
   }
 
   async function handleToggle(feed: FeedSource) {

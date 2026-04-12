@@ -92,8 +92,10 @@ export const getIOCTimeline = (id: string) => fetchAPI<unknown[]>(`/api/v1/iocs/
 
 // Feeds
 export const getFeeds = () => fetchAPI<import('./types').FeedSource[]>('/api/v1/feeds');
-export const triggerFeedSync = (id: string) =>
-  fetchAPI<unknown>(`/api/v1/feeds/${id}/sync`, { method: 'POST' });
+export const triggerFeedSync = (id?: string) =>
+  fetchAPI<unknown>('/api/v1/feeds/sync-all?force=true&enrich=false', { method: 'POST' });
+export const triggerAllFeedsSync = () =>
+  fetchAPI<unknown>('/api/v1/feeds/sync-all?force=true&enrich=false', { method: 'POST' });
 export const updateFeed = (id: string, data: Partial<import('./types').FeedSource>) =>
   fetchAPI<import('./types').FeedSource>(`/api/v1/feeds/${id}`, {
     method: 'PUT',
