@@ -111,6 +111,8 @@ async def trigger_sync(feed_id: str, background_tasks: BackgroundTasks, db: Asyn
 @router.post("/sync-all", status_code=202)
 async def sync_all_feeds(
     db: AsyncSession = Depends(get_db),
+    force: bool = Query(False, description="Force sync all feeds (ignore sync_frequency)"),
+    feed_slug: str = Query(None, description="Sync only specific feed by slug (e.g., 'threatfox')"),
     enrich: bool = Query(True, description="Auto-enrich unenriched IOCs after feed sync"),
     enrich_limit: int = Query(100, description="Max IOCs to enrich", ge=1, le=500)
 ):
@@ -119,23 +121,29 @@ async def sync_all_feeds(
     
     This endpoint performs ALL background maintenance in a single cron job:
     
-    STEP 1: Feed Synchronization
-    - Syncs all enabled feeds that are overdue based on sync_frequency
-    - Processes each feed sequentially to avoid timeout
+    STEP 1: Feed Synchronization (SEQUENTIAL - one by one)
+    - If force=False: Syncs only overdue feeds based on sync_frequency
+    - If force=True: Syncs ALL enabled feeds regardless of last sync time
+    - If feed_slug provided: Syncs ONLY that specific feed (e.g., 'threatfox')
+    - Each feed completes fully before next feed starts (no parallel processing)
     
     STEP 2: Enrichment (if enrich=True)
     - Finds IOCs without enrichment data or with expired enrichments
     - Enriches up to enrich_limit IOCs (default: 100)
     - Runs synchronously to ensure completion within Vercel timeout
     
-    ⚠️ Designed for Vercel Hobby Plan (1 cron/day, 60s timeout)
+    ⚠️ Designed for Vercel serverless (sequential to avoid timeout)
     
-    Usage with Vercel Cron:
-    vercel.json:
+    Usage Examples:
+    - Sync all feeds: POST /api/v1/feeds/sync-all?force=true
+    - Sync only ThreatFox: POST /api/v1/feeds/sync-all?feed_slug=threatfox
+    - Sync ThreatFox without enrichment: POST /api/v1/feeds/sync-all?feed_slug=threatfox&enrich=false
+    
+    Vercel Cron:
     {
       "crons": [{
-        "path": "/api/v1/feeds/sync-all?enrich=true&enrich_limit=100",
-        "schedule": "0 0 * * *"  // Daily at midnight UTC
+        "path": "/api/v1/feeds/sync-all?force=true&enrich=true&enrich_limit=100",
+        "schedule": "0 0 * * *"
       }]
     }
     """
@@ -153,24 +161,33 @@ async def sync_all_feeds(
     # ═══════════════════════════════════════════════════════════════════════
     logger.info("cron_job_started", step="feed_sync")
     
-    result = await db.execute(
-        select(FeedSource).where(FeedSource.is_enabled == True)  # noqa: E712
-    )
+    # Build query - filter by slug if specified
+    query = select(FeedSource).where(FeedSource.is_enabled == True)  # noqa: E712
+    if feed_slug:
+        query = query.where(FeedSource.slug == feed_slug)
+    
+    result = await db.execute(query)
     feeds = result.scalars().all()
+    
+    if feed_slug and not feeds:
+        raise HTTPException(status_code=404, detail=f"Feed with slug '{feed_slug}' not found or disabled")
     
     now = datetime.utcnow()
     synced_results = []
     skipped_count = 0
     
     for feed in feeds:
-        # Check if feed is overdue for sync
-        freq = feed.sync_frequency or 3600  # default 1 hour
-        last = feed.last_sync_at
-        overdue = last is None or (now - last).total_seconds() >= freq
-        
-        if not overdue:
-            skipped_count += 1
-            continue
+        # Check if feed should be synced
+        if not force:
+            # Only sync if overdue (smart mode)
+            freq = feed.sync_frequency or 3600  # default 1 hour
+            last = feed.last_sync_at
+            overdue = last is None or (now - last).total_seconds() >= freq
+            
+            if not overdue:
+                skipped_count += 1
+                continue
+        # If force=True, skip the overdue check and sync all feeds
             
         connector_path = FEED_CONNECTORS.get(feed.slug)
         if not connector_path:
@@ -200,7 +217,7 @@ async def sync_all_feeds(
                 "last_sync": to_ist_str(feed.last_sync_at) if feed.last_sync_at else "never",
             })
             
-            logger.info("cron_sync_success", feed=feed.slug, frequency=freq)
+            logger.info("cron_sync_success", feed=feed.slug, forced=force)
             
         except Exception as e:
             logger.error("cron_sync_failed", feed=feed.slug, error=str(e))

@@ -17,7 +17,7 @@
   },
   "crons": [
     {
-      "path": "/api/v1/feeds/sync-all?enrich=true&enrich_limit=100",
+      "path": "/api/v1/feeds/sync-all?force=true&enrich=true&enrich_limit=100", // STEP 1: FEED SYNCHRONIZATION
       "schedule": "0 0 * * *"
     }
   ]
