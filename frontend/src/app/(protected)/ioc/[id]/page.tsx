@@ -312,8 +312,8 @@ export default function IOCDetailPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {Object.entries(e.data).map(([recordType, records]) => (
-                          Array.isArray(records) && records.length > 0 && (
+                        {Object.entries(e.data).map(([recordType, records]) => 
+                          Array.isArray(records) && records.length > 0 ? (
                             <tr key={recordType} className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
                               <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted uppercase">{recordType}</td>
                               <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">
@@ -322,8 +322,8 @@ export default function IOCDetailPage() {
                                 ))}
                               </td>
                             </tr>
-                          )
-                        ))}
+                          ) : null
+                        )}
                       </tbody>
                     </table>
                   )}
@@ -341,49 +341,62 @@ export default function IOCDetailPage() {
                         <tbody>
                           <tr className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
                             <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted">Aggregate Score</td>
-                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary font-semibold">{e.data.aggregate_score || 0}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary font-semibold">{(e.data.aggregate_score as number) || 0}</td>
                           </tr>
                           <tr className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
                             <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted">Sources Checked</td>
-                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">{e.data.sources_checked || 0}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">{(e.data.sources_checked as number) || 0}</td>
                           </tr>
                           <tr className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
                             <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted">Sources Flagged</td>
-                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">{e.data.sources_flagged || 0}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">{(e.data.sources_flagged as number) || 0}</td>
                           </tr>
-                          {e.data.note && (
+                          {e.data.note ? (
                             <tr className="hover:bg-sentinel-bg-secondary/20">
                               <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted">Note</td>
-                              <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-secondary italic">{e.data.note}</td>
+                              <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-secondary italic">{String(e.data.note)}</td>
                             </tr>
-                          )}
+                          ) : null}
                         </tbody>
                       </table>
                       
                       {/* Reputation Details */}
-                      {e.data.details && Object.keys(e.data.details).length > 0 && (
+                      {e.data.details && typeof e.data.details === 'object' && Object.keys(e.data.details as Record<string, unknown>).length > 0 ? (
                         <div className="px-4 pb-4">
                           <h4 className="text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted mb-2">Source Details</h4>
-                          <table className="w-full">
-                            <thead>
-                              <tr className="border-b border-sentinel-border/50">
-                                <th className="px-3 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Source</th>
-                                <th className="px-3 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Data</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {Object.entries(e.data.details).map(([source, data]) => (
-                                <tr key={source} className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
-                                  <td className="px-3 py-2 font-mono text-[10px] text-sentinel-text-muted">{source}</td>
-                                  <td className="px-3 py-2 font-mono text-[10px] text-sentinel-text-secondary">
-                                    {typeof data === 'object' ? JSON.stringify(data) : String(data)}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                          {Object.entries(e.data.details as Record<string, unknown>).map(([source, data]) => (
+                            <div key={source} className="mb-4 last:mb-0">
+                              <div className="text-[10px] font-mono font-semibold uppercase text-sentinel-accent mb-1">{source}</div>
+                              <table className="w-full border border-sentinel-border/30 rounded">
+                                <tbody>
+                                  {typeof data === 'object' && data !== null ? (
+                                    Object.entries(data as Record<string, unknown>).map(([key, value]) => (
+                                      <tr key={key} className="border-b border-sentinel-border/20 last:border-0 hover:bg-sentinel-bg-secondary/10">
+                                        <td className="px-3 py-2 font-mono text-[10px] text-sentinel-text-muted w-1/3 capitalize">
+                                          {key.replace(/_/g, ' ')}
+                                        </td>
+                                        <td className="px-3 py-2 font-mono text-[10px] text-sentinel-text-primary">
+                                          {typeof value === 'object' && value !== null
+                                            ? JSON.stringify(value)
+                                            : value === null || value === undefined
+                                            ? 'N/A'
+                                            : String(value)}
+                                        </td>
+                                      </tr>
+                                    ))
+                                  ) : (
+                                    <tr>
+                                      <td className="px-3 py-2 font-mono text-[10px] text-sentinel-text-secondary" colSpan={2}>
+                                        {String(data)}
+                                      </td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          ))}
                         </div>
-                      )}
+                      ) : null}
                     </div>
                   )}
 
