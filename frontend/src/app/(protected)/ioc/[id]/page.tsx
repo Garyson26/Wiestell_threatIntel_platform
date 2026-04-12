@@ -273,7 +273,23 @@ export default function IOCDetailPage() {
                         {Object.entries(e.data).map(([key, value]) => (
                           <tr key={key} className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
                             <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted capitalize">{key.replace(/_/g, ' ')}</td>
-                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">{String(value || 'N/A')}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">
+                              {Array.isArray(value) ? (
+                                value.length === 0 ? (
+                                  <span className="text-sentinel-text-muted italic">Empty</span>
+                                ) : (
+                                  <div className="flex flex-wrap gap-1">
+                                    {value.map((item, idx) => (
+                                      <span key={idx} className="px-2 py-0.5 bg-sentinel-bg-secondary/50 border border-sentinel-border/30 rounded text-[10px]">
+                                        {String(item)}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )
+                              ) : (
+                                String(value || 'N/A')
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -294,7 +310,21 @@ export default function IOCDetailPage() {
                           <tr key={key} className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
                             <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted capitalize">{key.replace(/_/g, ' ')}</td>
                             <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">
-                              {Array.isArray(value) ? value.join(', ') : String(value || 'N/A')}
+                              {Array.isArray(value) ? (
+                                value.length === 0 ? (
+                                  <span className="text-sentinel-text-muted italic">Empty</span>
+                                ) : (
+                                  <div className="flex flex-wrap gap-1">
+                                    {value.map((item, idx) => (
+                                      <span key={idx} className="px-2 py-0.5 bg-sentinel-bg-secondary/50 border border-sentinel-border/30 rounded text-[10px]">
+                                        {String(item)}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )
+                              ) : (
+                                String(value || 'N/A')
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -414,7 +444,21 @@ export default function IOCDetailPage() {
                           <tr key={key} className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
                             <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted capitalize">{key.replace(/_/g, ' ')}</td>
                             <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">
-                              {Array.isArray(value) ? value.join(', ') : String(value || 'N/A')}
+                              {Array.isArray(value) ? (
+                                value.length === 0 ? (
+                                  <span className="text-sentinel-text-muted italic">Empty</span>
+                                ) : (
+                                  <div className="flex flex-wrap gap-1">
+                                    {value.map((item, idx) => (
+                                      <span key={idx} className="px-2 py-0.5 bg-sentinel-bg-secondary/50 border border-sentinel-border/30 rounded text-[10px]">
+                                        {String(item)}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )
+                              ) : (
+                                String(value || 'N/A')
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -436,7 +480,23 @@ export default function IOCDetailPage() {
                           <tr key={key} className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
                             <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted capitalize">{key.replace(/_/g, ' ')}</td>
                             <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">
-                              {typeof value === 'object' ? JSON.stringify(value) : String(value || 'N/A')}
+                              {Array.isArray(value) ? (
+                                value.length === 0 ? (
+                                  <span className="text-sentinel-text-muted italic">Empty</span>
+                                ) : (
+                                  <div className="flex flex-wrap gap-1">
+                                    {value.map((item, idx) => (
+                                      <span key={idx} className="px-2 py-0.5 bg-sentinel-bg-secondary/50 border border-sentinel-border/30 rounded text-[10px]">
+                                        {String(item)}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )
+                              ) : typeof value === 'object' && value !== null ? (
+                                <pre className="text-[10px] overflow-x-auto">{JSON.stringify(value, null, 2)}</pre>
+                              ) : (
+                                String(value || 'N/A')
+                              )}
                             </td>
                           </tr>
                         ))}
