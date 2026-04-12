@@ -240,8 +240,19 @@ async def _enrich_shodan(value: str) -> Optional[Dict]:
             "last_update": host.get("last_update"),
             "tags": host.get("tags", []),
         }
+    except shodan.APIError as e:
+        error_msg = str(e)
+        # Handle specific Shodan API errors - return minimal error info
+        if "403" in error_msg or "Forbidden" in error_msg:
+            return {"error": "Shodan service unavailable"}
+        elif "401" in error_msg or "Unauthorized" in error_msg:
+            return {"error": "Shodan authentication failed"}
+        elif "No information available" in error_msg:
+            return {"error": "No Shodan data available"}
+        else:
+            return {"error": "Shodan lookup failed"}
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Shodan lookup failed"}
 
 
 async def _enrich_whois(value: str, ioc_type: str) -> Optional[Dict]:
@@ -359,14 +370,152 @@ async def _enrich_malwarebazaar(value: str) -> Optional[Dict]:
 
 
 async def _enrich_reputation(value: str, ioc_type: str) -> Optional[Dict]:
-    """Aggregate reputation check across available sources."""
-    return {
-        "aggregate_score": 0,
-        "sources_checked": 0,
-        "sources_flagged": 0,
-        "details": {},
-        "note": "Enable feed API keys for live reputation checks",
+    """Aggregate reputation check across available sources (AbuseIPDB, VirusTotal, OTX)."""
+    import httpx
+    
+    sources_checked = 0
+    sources_flagged = 0
+    details = {}
+    scores = []
+    
+    # Check AbuseIPDB for IPs
+    if ioc_type == "ip" and settings.ABUSEIPDB_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                response = await client.get(
+                    "https://api.abuseipdb.com/api/v2/check",
+                    params={"ipAddress": value, "maxAgeInDays": 90},
+                    headers={"Key": settings.ABUSEIPDB_API_KEY, "Accept": "application/json"}
+                )
+                if response.status_code == 200:
+                    data = response.json().get("data", {})
+                    abuse_score = data.get("abuseConfidenceScore", 0)
+                    sources_checked += 1
+                    if abuse_score > 0:
+                        sources_flagged += 1
+                        scores.append(abuse_score)
+                    details["abuseipdb"] = {
+                        "score": abuse_score,
+                        "reports": data.get("totalReports", 0),
+                        "last_reported": data.get("lastReportedAt"),
+                        "is_whitelisted": data.get("isWhitelisted", False),
+                    }
+        except Exception as e:
+            logger.warning("abuseipdb_reputation_failed", error=str(e))
+    
+    # Check VirusTotal (works for IPs, domains, URLs, hashes)
+    if settings.VT_API_KEY and ioc_type in ["ip", "domain", "url", "hash"]:
+        try:
+            # Determine VT resource type
+            if ioc_type == "ip":
+                vt_url = f"https://www.virustotal.com/api/v3/ip_addresses/{value}"
+            elif ioc_type == "domain":
+                vt_url = f"https://www.virustotal.com/api/v3/domains/{value}"
+            elif ioc_type == "url":
+                import base64
+                url_id = base64.urlsafe_b64encode(value.encode()).decode().strip("=")
+                vt_url = f"https://www.virustotal.com/api/v3/urls/{url_id}"
+            elif ioc_type == "hash":
+                vt_url = f"https://www.virustotal.com/api/v3/files/{value}"
+            else:
+                vt_url = None
+            
+            if vt_url:
+                async with httpx.AsyncClient(timeout=15) as client:
+                    response = await client.get(
+                        vt_url,
+                        headers={"x-apikey": settings.VT_API_KEY}
+                    )
+                    if response.status_code == 200:
+                        data = response.json().get("data", {})
+                        attributes = data.get("attributes", {})
+                        last_analysis = attributes.get("last_analysis_stats", {})
+                        
+                        malicious = last_analysis.get("malicious", 0)
+                        suspicious = last_analysis.get("suspicious", 0)
+                        total_engines = sum(last_analysis.values())
+                        
+                        sources_checked += 1
+                        if malicious > 0 or suspicious > 0:
+                            sources_flagged += 1
+                            # Score: percentage of engines that flagged it as malicious
+                            vt_score = int((malicious / total_engines * 100)) if total_engines > 0 else 0
+                            scores.append(vt_score)
+                        
+                        details["virustotal"] = {
+                            "malicious": malicious,
+                            "suspicious": suspicious,
+                            "harmless": last_analysis.get("harmless", 0),
+                            "undetected": last_analysis.get("undetected", 0),
+                            "total_engines": total_engines,
+                            "reputation": attributes.get("reputation", 0),
+                        }
+        except Exception as e:
+            logger.warning("virustotal_reputation_failed", error=str(e))
+    
+    # Check OTX AlienVault (works for IPs, domains, URLs, hashes)
+    if settings.OTX_API_KEY and ioc_type in ["ip", "domain", "url", "hash"]:
+        try:
+            # Determine OTX indicator type
+            if ioc_type == "ip":
+                otx_type = "IPv4"
+            elif ioc_type == "domain":
+                otx_type = "domain"
+            elif ioc_type == "url":
+                otx_type = "url"
+            elif ioc_type == "hash":
+                otx_type = "file"
+            else:
+                otx_type = None
+            
+            if otx_type:
+                async with httpx.AsyncClient(timeout=15) as client:
+                    # Get general info
+                    response = await client.get(
+                        f"https://otx.alienvault.com/api/v1/indicators/{otx_type}/{value}/general",
+                        headers={"X-OTX-API-KEY": settings.OTX_API_KEY}
+                    )
+                    if response.status_code == 200:
+                        data = response.json()
+                        pulse_count = data.get("pulse_info", {}).get("count", 0)
+                        
+                        sources_checked += 1
+                        if pulse_count > 0:
+                            sources_flagged += 1
+                            # Score based on number of pulses (capped at 100)
+                            otx_score = min(pulse_count * 10, 100)
+                            scores.append(otx_score)
+                        
+                        details["otx"] = {
+                            "pulse_count": pulse_count,
+                            "validation": data.get("validation", []),
+                            "sections": list(data.get("sections", [])),
+                        }
+        except Exception as e:
+            logger.warning("otx_reputation_failed", error=str(e))
+    
+    # Calculate aggregate score (average of all scores, or 0 if no sources checked)
+    if scores:
+        aggregate_score = int(sum(scores) / len(scores))
+    else:
+        aggregate_score = 0
+    
+    # Add note if no sources were checked
+    note = None
+    if sources_checked == 0:
+        note = "No API keys configured for reputation checks (AbuseIPDB, VirusTotal, OTX)"
+    
+    result = {
+        "aggregate_score": aggregate_score,
+        "sources_checked": sources_checked,
+        "sources_flagged": sources_flagged,
+        "details": details,
     }
+    
+    if note:
+        result["note"] = note
+    
+    return result
 
 
 def _get_ttl(source: str) -> int:
