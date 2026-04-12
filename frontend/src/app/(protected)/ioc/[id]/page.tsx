@@ -371,15 +371,15 @@ export default function IOCDetailPage() {
                         <tbody>
                           <tr className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
                             <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted">Aggregate Score</td>
-                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary font-semibold">{(e.data.aggregate_score as number) || 0}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary font-semibold">{String((e.data.aggregate_score as number) ?? 0)}</td>
                           </tr>
                           <tr className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
                             <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted">Sources Checked</td>
-                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">{(e.data.sources_checked as number) || 0}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">{String((e.data.sources_checked as number) ?? 0)}</td>
                           </tr>
                           <tr className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
                             <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted">Sources Flagged</td>
-                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">{(e.data.sources_flagged as number) || 0}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">{String((e.data.sources_flagged as number) ?? 0)}</td>
                           </tr>
                           {e.data.note ? (
                             <tr className="hover:bg-sentinel-bg-secondary/20">
