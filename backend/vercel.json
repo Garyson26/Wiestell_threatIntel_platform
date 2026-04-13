@@ -17,12 +17,8 @@
   },
   "crons": [
     {
-      "path": "/api/v1/feeds/sync-all?feed_slug=threatfox&enrich=false",
-      "schedule": "0 1 * * *"
-    },
-    {
-      "path": "/api/v1/feeds/sync-all?force=false&enrich=true&enrich_limit=30",
-      "schedule": "0 7 * * *"
+      "path": "/api/v1/feeds/sync-all?force=true&enrich=true&enrich_limit=100",
+      "schedule": "0 0 * * *"
     }
   ]
 }
