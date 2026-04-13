@@ -114,36 +114,37 @@ async def sync_all_feeds(
     force: bool = Query(False, description="Force sync all feeds (ignore sync_frequency)"),
     feed_slug: str = Query(None, description="Sync only specific feed by slug (e.g., 'threatfox')"),
     enrich: bool = Query(True, description="Auto-enrich unenriched IOCs after feed sync"),
-    enrich_limit: int = Query(50, description="Max IOCs to enrich", ge=1, le=200)
+    enrich_limit: int = Query(100, description="Max IOCs to enrich", ge=1, le=500)
 ):
     """
-    🔄 UNIFIED CRON JOB - Sync feeds + Enrich IOCs
+    🔄 UNIFIED DAILY CRON JOB - Sync feeds + Enrich IOCs
     
-    This endpoint performs background maintenance tasks:
+    This endpoint performs ALL background maintenance in a single cron job:
     
     STEP 1: Feed Synchronization (SEQUENTIAL - one by one)
     - If force=False: Syncs only overdue feeds based on sync_frequency
     - If force=True: Syncs ALL enabled feeds regardless of last sync time
     - If feed_slug provided: Syncs ONLY that specific feed (e.g., 'threatfox')
-    - Processes feeds in priority order (high-value feeds first)
+    - Each feed completes fully before next feed starts (no parallel processing)
     
     STEP 2: Enrichment (if enrich=True)
-    - Finds IOCs without enrichment data
-    - Enriches up to enrich_limit IOCs (default: 50)
+    - Finds IOCs without enrichment data or with expired enrichments
+    - Enriches up to enrich_limit IOCs (default: 100)
+    - Runs synchronously to ensure completion within Vercel timeout
     
-    ⚠️ Optimized for Vercel free tier (59min/day limit)
+    ⚠️ Designed for Vercel serverless (sequential to avoid timeout)
     
     Usage Examples:
-    - Sync priority feeds: POST /api/v1/feeds/sync-all?force=false&enrich_limit=30
+    - Sync all feeds: POST /api/v1/feeds/sync-all?force=true
     - Sync only ThreatFox: POST /api/v1/feeds/sync-all?feed_slug=threatfox
-    - Sync without enrichment: POST /api/v1/feeds/sync-all?enrich=false
+    - Sync ThreatFox without enrichment: POST /api/v1/feeds/sync-all?feed_slug=threatfox&enrich=false
     
-    Vercel Cron (Separate jobs for large feeds):
+    Vercel Cron:
     {
-      "crons": [
-        {"path": "/api/v1/feeds/sync-all?feed_slug=threatfox&enrich=false", "schedule": "0 1 * * *"},
-        {"path": "/api/v1/feeds/sync-all?force=false&enrich=true&enrich_limit=30", "schedule": "0 7 * * *"}
-      ]
+      "crons": [{
+        "path": "/api/v1/feeds/sync-all?force=true&enrich=true&enrich_limit=100",
+        "schedule": "0 0 * * *"
+      }]
     }
     """
     from datetime import datetime
@@ -171,19 +172,11 @@ async def sync_all_feeds(
     if feed_slug and not feeds:
         raise HTTPException(status_code=404, detail=f"Feed with slug '{feed_slug}' not found or disabled")
     
-    # Priority order: sync high-value feeds first (in case of timeout)
-    # ThreatFox, URLhaus, and MalwareBazaar are high-value threat intelligence feeds
-    priority_order = ["threatfox", "urlhaus", "malwarebazaar", "abuseipdb", "otx-alienvault"]
-    feeds_sorted = sorted(feeds, key=lambda f: (
-        priority_order.index(f.slug) if f.slug in priority_order else 999,
-        f.slug
-    ))
-    
     now = datetime.utcnow()
     synced_results = []
     skipped_count = 0
     
-    for feed in feeds_sorted:
+    for feed in feeds:
         # Check if feed should be synced
         if not force:
             # Only sync if overdue (smart mode)
@@ -208,7 +201,7 @@ async def sync_all_feeds(
             })
             continue
         
-        # Sync without timeout constraints
+        # Sync synchronously (blocking) - required for Vercel serverless
         try:
             await run_feed_sync(
                 feed_id=str(feed.id),
@@ -308,7 +301,6 @@ async def sync_all_feeds(
     # ═══════════════════════════════════════════════════════════════════════
     total_duration = (datetime.utcnow() - start_time).total_seconds()
     
-    status_emoji = "⚠️" if timeout_reached else "✅"
     return {
         "status": "completed",
         "total_duration_sec": round(total_duration, 2),
@@ -316,12 +308,12 @@ async def sync_all_feeds(
             "synced_count": synced_count,
             "failed_count": failed_count,
             "skipped_count": skipped_count,
-            "total_feeds": len(feeds_sorted),
+            "total_feeds": len(feeds),
             "duration_sec": round(feed_sync_duration, 2),
             "results": synced_results
         },
         "enrichment": enrichment_results,
-        "message": f"✅ Synced {synced_count}/{len(feeds_sorted)} feed(s) | ⚡ Enriched {enrichment_results['enriched_count']} IOC(s) | ⏱️ {round(total_duration, 1)}s total"
+        "message": f"✅ Synced {synced_count} feed(s) | ⚡ Enriched {enrichment_results['enriched_count']} IOC(s) | ⏱️ {round(total_duration, 1)}s total"
     }
 
 
@@ -329,6 +321,7 @@ async def sync_all_feeds(
 async def get_sync_logs(feed_id: str, db: AsyncSession = Depends(get_db)):
     """Get recent sync logs for a feed."""
     result = await db.execute(select(FeedSource).where(FeedSource.id == feed_id))
+    feed = result.scalar_one_or_none()
     if not feed:
         raise HTTPException(status_code=404, detail="Feed not found")
 

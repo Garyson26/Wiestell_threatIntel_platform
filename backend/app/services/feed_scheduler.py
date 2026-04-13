@@ -106,17 +106,8 @@ async def _run_feed_sync_inner(feed_id: str, feed_slug: str, connector_path: str
 
     # Ingest — fresh session per attempt; ingest_iocs commits in chunks internally
     _MAX_RETRIES = 3
-    # Optimized batch sizes for Vercel timeout protection:
-    # Larger batches for big feeds = fewer commits = faster total time
-    # - ThreatFox: 5000 (large dataset ~57k IOCs, needs speed over safety)
-    # - URLhaus/MalwareBazaar: 2000 (medium datasets)
-    # - Default: 1000 (smaller feeds)
-    if feed_slug in ["urlhaus", "threatfox"]:
-        batch_size = 5000
-    elif feed_slug in ["malwarebazaar"]:
-        batch_size = 2000
-    else:
-        batch_size = 1000
+    # ThreatFox has ~57k IOCs; use larger batch size to complete within timeout
+    batch_size = 3000 if feed_slug == "threatfox" else 1000
     
     for attempt in range(1, _MAX_RETRIES + 1):
         async with AsyncSessionLocal() as session:
