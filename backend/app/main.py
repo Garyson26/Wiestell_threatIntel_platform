@@ -117,21 +117,21 @@ async def error_notification_middleware(request: Request, call_next):
 app.include_router(api_router)
 
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 async def root():
-    """Root endpoint - simple health check for Render."""
+    """Root endpoint - simple health check for Render (supports GET and HEAD)."""
     return {"status": "ok", "service": "sentinel-api"}
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 async def health_root():
-    """Simple health check at root level for Render."""
+    """Simple health check at root level for Render (supports GET and HEAD)."""
     return {"status": "healthy", "service": "sentinel-api", "version": "1.0.0"}
 
 
-@app.get("/api/v1/health")
+@app.api_route("/api/v1/health", methods=["GET", "HEAD"])
 async def health_check():
-    """Detailed health check endpoint for Docker and monitoring."""
+    """Detailed health check endpoint for Docker and monitoring (supports GET and HEAD)."""
     from datetime import datetime
     
     health_status = {
