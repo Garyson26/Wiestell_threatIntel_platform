@@ -80,7 +80,7 @@ docker-compose exec backend python /app/../scripts/seed_mitre.py
 
 # Generate sample data (optional, for demo)
 docker-compose exec backend python /app/../scripts/generate_sample_data.py
-```
+```   
 
 Access the application:
 - **Dashboard**: http://localhost:3000
