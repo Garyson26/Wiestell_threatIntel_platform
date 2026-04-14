@@ -107,7 +107,7 @@ async def _run_feed_sync_inner(feed_id: str, feed_slug: str, connector_path: str
     # Ingest — fresh session per attempt; ingest_iocs commits in chunks internally
     _MAX_RETRIES = 3
     # High-volume feeds (URLhaus ~34K, ThreatFox ~57K) need large batches to finish within timeout
-    batch_size = 1000 if feed_slug in ("urlhaus", "urlhaus-feed", "threatfox") else 100
+    batch_size = 30 if feed_slug in ("urlhaus", "urlhaus-feed", "threatfox") else 30
     
     for attempt in range(1, _MAX_RETRIES + 1):
         async with AsyncSessionLocal() as session:
