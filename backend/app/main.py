@@ -117,14 +117,45 @@ async def error_notification_middleware(request: Request, call_next):
 app.include_router(api_router)
 
 
+@app.get("/")
+async def root():
+    """Root endpoint - simple health check for Render."""
+    return {"status": "ok", "service": "sentinel-api"}
+
+
+@app.get("/health")
+async def health_root():
+    """Simple health check at root level for Render."""
+    return {"status": "healthy", "service": "sentinel-api", "version": "1.0.0"}
+
+
 @app.get("/api/v1/health")
 async def health_check():
-    """Health check endpoint for Docker and monitoring."""
-    return {
+    """Detailed health check endpoint for Docker and monitoring."""
+    from datetime import datetime
+    
+    health_status = {
         "status": "healthy",
         "service": "sentinel-api",
         "version": "1.0.0",
+        "timestamp": datetime.utcnow().isoformat(),
+        "environment": settings.ENVIRONMENT,
     }
+    
+    # Optional: Check database connectivity
+    try:
+        from app.database import AsyncSessionLocal
+        from sqlalchemy import text
+        
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("SELECT 1"))
+            health_status["database"] = "connected"
+    except Exception as e:
+        logger.warning("health_check_db_error", error=str(e))
+        health_status["database"] = "disconnected"
+        health_status["status"] = "degraded"
+    
+    return health_status
 
 
 @app.get("/api/v1/cron-status")

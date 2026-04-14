@@ -15,9 +15,9 @@ services:
       python --version
       pip install --upgrade pip
       pip install -r requirements.txt
-      python download_geolite2.py || echo "GeoLite2 download failed, continuing..."
-      alembic upgrade head
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+      python download_geolite2.py || echo "⚠️  GeoLite2 download failed - continuing..."
+      alembic upgrade head || echo "⚠️  Database migration failed - continuing..."
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --log-level info
     rootDir: backend
     envVars:
       - key: PYTHON_VERSION
@@ -81,7 +81,7 @@ services:
         sync: false
       - key: URLHAUS_API_KEY
         sync: false
-    healthCheckPath: /api/v1/health
+    healthCheckPath: /health
     autoDeploy: true  # Auto-deploy on git push
     disk:
       name: geolite-data
