@@ -82,6 +82,8 @@ services:
       - key: URLHAUS_API_KEY
         sync: false
     healthCheckPath: /health
+    healthCheckInterval: 50  # seconds - check every 50s to keep service alive
+    healthCheckTimeout: 10   # seconds - timeout for health check response
     autoDeploy: true  # Auto-deploy on git push
     disk:
       name: geolite-data
