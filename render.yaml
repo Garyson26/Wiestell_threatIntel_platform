@@ -88,33 +88,48 @@ services:
       sizeGB: 1
 
   # ============================================================================
+  # FRONTEND - Next.js
+  # ============================================================================
+  - type: web
+    name: sentinel-frontend
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    rootDir: frontend
+    envVars:
+      - key: NODE_VERSION
+        value: 20.12.0
+      - key: PORT
+        value: 3000
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          name: sentinel-backend
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+    autoDeploy: true
+
+  # ============================================================================
   # REDIS - Caching & Background Jobs
   # ============================================================================
   - type: redis
-    name: wiestell-redis
+    name: sentinel-redis
     plan: starter  # Free tier available
     region: oregon
     ipAllowList: []  # Allow all (within Render network)
     maxmemoryPolicy: allkeys-lru  # Evict least recently used keys when full
 
 # ============================================================================
-# CRON JOBS - Scheduled Tasks (Optional)
+# CRON JOBS - Scheduled Tasks
 # ============================================================================
-# Note: Render cron jobs require a paid plan ($7/month+)
-# 
-# ALTERNATIVE (FREE): Use Vercel Cron on your frontend project:
-# Add to frontend/vercel.json:
-# {
-#   "crons": [{
-#     "path": "/api/cron/feed-sync",
-#     "schedule": "0 0 * * *"
-#   }]
-# }
-# Then create frontend/pages/api/cron/feed-sync.ts that calls your backend.
-#
-# OR use external service like cron-job.org (see RENDER_DEPLOY.md)
+# Note: Render cron jobs require a paid plan. For free tier, use an external
+# service like cron-job.org pointing to your /api/v1/feeds/sync-all endpoint
+# with authentication.
 
-# Uncomment below if you have a Render paid plan:
+# Uncomment below if you have a paid plan:
 # jobs:
 #   - type: cron
 #     name: daily-feed-sync
@@ -128,7 +143,7 @@ services:
 #       async def sync():
 #         async with httpx.AsyncClient(timeout=300) as client:
 #           response = await client.post(
-#             'https://wiestell-backend.onrender.com/api/v1/feeds/sync-all',
+#             'https://sentinel-backend.onrender.com/api/v1/feeds/sync-all',
 #             params={'force': 'true', 'enrich': 'true', 'enrich_limit': 100}
 #           )
 #           print(f'Status: {response.status_code}')
