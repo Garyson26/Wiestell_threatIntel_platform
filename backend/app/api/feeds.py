@@ -15,6 +15,9 @@ logger = structlog.get_logger()
 
 router = APIRouter()
 
+# Temporarily disabled feeds — add/remove slugs as needed
+_TEMP_DISABLED_FEEDS: set[str] = {"threatfox"}
+
 
 @router.get("", response_model=list[FeedResponse])
 async def list_feeds(db: AsyncSession = Depends(get_db)):
@@ -98,6 +101,12 @@ async def trigger_sync(feed_id: str, background_tasks: BackgroundTasks, db: Asyn
             detail=f"No connector registered for feed slug '{feed.slug}'",
         )
 
+    if feed.slug in _TEMP_DISABLED_FEEDS:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Feed '{feed.slug}' is temporarily disabled.",
+        )
+
     background_tasks.add_task(run_feed_sync, feed_id=feed_id, feed_slug=feed.slug, connector_path=connector_path)
 
     return {
@@ -148,6 +157,12 @@ async def _run_sync_all_background(
         skipped_count = 0
         
         for feed in feeds:
+            # Skip temporarily disabled feeds
+            if feed.slug in _TEMP_DISABLED_FEEDS:
+                logger.info("background_sync_skipped_temp_disabled", slug=feed.slug)
+                skipped_count += 1
+                continue
+
             # Check if feed should be synced
             if not force:
                 # Only sync if overdue (smart mode)
