@@ -108,8 +108,167 @@ async def trigger_sync(feed_id: str, background_tasks: BackgroundTasks, db: Asyn
     }
 
 
+async def _run_sync_all_background(
+    force: bool,
+    feed_slug: str,
+    enrich: bool,
+    enrich_limit: int
+):
+    """Background task that performs feed sync and enrichment."""
+    from datetime import datetime
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+    from app.models.enrichment import Enrichment
+    from app.models.ioc import IOC
+    from app.services.enrichment_engine import enrich_ioc
+    from app.database import AsyncSessionLocal
+    
+    async with AsyncSessionLocal() as db:
+        start_time = datetime.utcnow()
+        
+        # ═══════════════════════════════════════════════════════════════════════
+        # STEP 1: FEED SYNCHRONIZATION
+        # ═══════════════════════════════════════════════════════════════════════
+        logger.info("background_cron_started", step="feed_sync", force=force, feed_slug=feed_slug)
+        
+        # Build query - filter by slug if specified
+        query = select(FeedSource).where(FeedSource.is_enabled == True)  # noqa: E712
+        if feed_slug:
+            query = query.where(FeedSource.slug == feed_slug)
+        
+        result = await db.execute(query)
+        feeds = result.scalars().all()
+        
+        if feed_slug and not feeds:
+            logger.error("background_cron_feed_not_found", slug=feed_slug)
+            return
+        
+        now = datetime.utcnow()
+        synced_results = []
+        skipped_count = 0
+        
+        for feed in feeds:
+            # Check if feed should be synced
+            if not force:
+                # Only sync if overdue (smart mode)
+                freq = feed.sync_frequency or 3600  # default 1 hour
+                last = feed.last_sync_at
+                overdue = last is None or (now - last).total_seconds() >= freq
+                
+                if not overdue:
+                    skipped_count += 1
+                    continue
+            # If force=True, skip the overdue check and sync all feeds
+                
+            connector_path = FEED_CONNECTORS.get(feed.slug)
+            if not connector_path:
+                logger.warning("background_sync_no_connector", slug=feed.slug)
+                synced_results.append({
+                    "feed_id": str(feed.id),
+                    "name": feed.name,
+                    "slug": feed.slug,
+                    "status": "error",
+                    "message": "No connector registered"
+                })
+                continue
+            
+            # Sync synchronously (blocking)
+            try:
+                await run_feed_sync(
+                    feed_id=str(feed.id),
+                    feed_slug=feed.slug,
+                    connector_path=connector_path
+                )
+                
+                synced_results.append({
+                    "feed_id": str(feed.id),
+                    "name": feed.name,
+                    "slug": feed.slug,
+                    "status": "success",
+                    "last_sync": to_ist_str(feed.last_sync_at) if feed.last_sync_at else "never",
+                })
+                
+                logger.info("background_sync_success", feed=feed.slug, forced=force)
+                
+            except Exception as e:
+                logger.error("background_sync_failed", feed=feed.slug, error=str(e))
+                synced_results.append({
+                    "feed_id": str(feed.id),
+                    "name": feed.name,
+                    "slug": feed.slug,
+                    "status": "failed",
+                    "error": str(e)
+                })
+        
+        synced_count = len([r for r in synced_results if r.get("status") == "success"])
+        failed_count = len([r for r in synced_results if r.get("status") == "failed"])
+        
+        feed_sync_duration = (datetime.utcnow() - start_time).total_seconds()
+        logger.info("background_feed_sync_completed", 
+                    synced=synced_count, 
+                    failed=failed_count,
+                    skipped=skipped_count,
+                    duration_sec=feed_sync_duration)
+        
+        # ═══════════════════════════════════════════════════════════════════════
+        # STEP 2: ENRICHMENT
+        # ═══════════════════════════════════════════════════════════════════════
+        if enrich:
+            enrich_start = datetime.utcnow()
+            logger.info("background_enrichment_started", limit=enrich_limit)
+            
+            # Find IOCs without enrichment (up to limit)
+            no_enrichment_query = (
+                select(IOC)
+                .options(selectinload(IOC.enrichments))
+                .outerjoin(Enrichment, IOC.id == Enrichment.ioc_id)
+                .where(Enrichment.id.is_(None))
+                .limit(enrich_limit)
+            )
+            result = await db.execute(no_enrichment_query)
+            iocs_to_enrich = result.scalars().all()
+            
+            logger.info("found_unenriched_iocs", count=len(iocs_to_enrich))
+            
+            # Enrich each IOC synchronously
+            enriched = 0
+            failed = 0
+            
+            for ioc in iocs_to_enrich:
+                try:
+                    await enrich_ioc(db, ioc)
+                    await db.flush()
+                    enriched += 1
+                    
+                    if enriched % 10 == 0:
+                        logger.info("background_enrichment_progress", 
+                                   enriched=enriched, 
+                                   total=len(iocs_to_enrich))
+                                   
+                except Exception as e:
+                    failed += 1
+                    logger.warning("background_enrichment_failed", 
+                                  ioc_id=str(ioc.id), 
+                                  ioc_value=ioc.value,
+                                  error=str(e))
+            
+            enrichment_duration = (datetime.utcnow() - enrich_start).total_seconds()
+            
+            logger.info("background_enrichment_completed", 
+                       enriched=enriched, 
+                       failed=failed,
+                       duration_sec=enrichment_duration)
+        
+        total_duration = (datetime.utcnow() - start_time).total_seconds()
+        logger.info("background_cron_completed",
+                   total_duration_sec=round(total_duration, 2),
+                   synced_feeds=synced_count,
+                   enriched_iocs=enriched if enrich else 0)
+
+
 @router.post("/sync-all", status_code=202)
 async def sync_all_feeds(
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     force: bool = Query(False, description="Force sync all feeds (ignore sync_frequency)"),
     feed_slug: str = Query(None, description="Sync only specific feed by slug (e.g., 'threatfox')"),
@@ -117,27 +276,26 @@ async def sync_all_feeds(
     enrich_limit: int = Query(100, description="Max IOCs to enrich", ge=1, le=500)
 ):
     """
-    🔄 UNIFIED DAILY CRON JOB - Sync feeds + Enrich IOCs
+    🔄 UNIFIED DAILY CRON JOB - Sync feeds + Enrich IOCs (Background)
     
-    This endpoint performs ALL background maintenance in a single cron job:
+    This endpoint queues ALL background maintenance and returns immediately:
     
-    STEP 1: Feed Synchronization (SEQUENTIAL - one by one)
+    STEP 1: Feed Synchronization (runs in background)
     - If force=False: Syncs only overdue feeds based on sync_frequency
     - If force=True: Syncs ALL enabled feeds regardless of last sync time
     - If feed_slug provided: Syncs ONLY that specific feed (e.g., 'threatfox')
     - Each feed completes fully before next feed starts (no parallel processing)
     
-    STEP 2: Enrichment (if enrich=True)
+    STEP 2: Enrichment (runs in background if enrich=True)
     - Finds IOCs without enrichment data or with expired enrichments
     - Enriches up to enrich_limit IOCs (default: 100)
-    - Runs synchronously to ensure completion within Vercel timeout
     
-    ⚠️ Designed for Vercel serverless (sequential to avoid timeout)
+    ⚠️ Returns 202 Accepted immediately - actual work runs in background
     
     Usage Examples:
     - Sync all feeds: POST /api/v1/feeds/sync-all?force=true
     - Sync only ThreatFox: POST /api/v1/feeds/sync-all?feed_slug=threatfox
-    - Sync ThreatFox without enrichment: POST /api/v1/feeds/sync-all?feed_slug=threatfox&enrich=false
+    - Sync ThreatFox without enrichment: POST /api/v1/feeds/sync-all?feed_slug=threadfox&enrich=false
     
     Vercel Cron:
     {
@@ -148,173 +306,49 @@ async def sync_all_feeds(
     }
     """
     from datetime import datetime
-    from sqlalchemy import select, or_
-    from sqlalchemy.orm import selectinload
-    from app.models.enrichment import Enrichment
-    from app.models.ioc import IOC
-    from app.services.enrichment_engine import enrich_ioc, _utcnow
-
-    start_time = datetime.utcnow()
+    from sqlalchemy import select
     
-    # ═══════════════════════════════════════════════════════════════════════
-    # STEP 1: FEED SYNCHRONIZATION
-    # ═══════════════════════════════════════════════════════════════════════
-    logger.info("cron_job_started", step="feed_sync")
-    
-    # Build query - filter by slug if specified
-    query = select(FeedSource).where(FeedSource.is_enabled == True)  # noqa: E712
+    # Validate feed_slug if provided
     if feed_slug:
-        query = query.where(FeedSource.slug == feed_slug)
-    
-    result = await db.execute(query)
-    feeds = result.scalars().all()
-    
-    if feed_slug and not feeds:
-        raise HTTPException(status_code=404, detail=f"Feed with slug '{feed_slug}' not found or disabled")
-    
-    now = datetime.utcnow()
-    synced_results = []
-    skipped_count = 0
-    
-    for feed in feeds:
-        # Check if feed should be synced
-        if not force:
-            # Only sync if overdue (smart mode)
-            freq = feed.sync_frequency or 3600  # default 1 hour
-            last = feed.last_sync_at
-            overdue = last is None or (now - last).total_seconds() >= freq
-            
-            if not overdue:
-                skipped_count += 1
-                continue
-        # If force=True, skip the overdue check and sync all feeds
-            
-        connector_path = FEED_CONNECTORS.get(feed.slug)
-        if not connector_path:
-            logger.warning("cron_sync_no_connector", slug=feed.slug)
-            synced_results.append({
-                "feed_id": str(feed.id),
-                "name": feed.name,
-                "slug": feed.slug,
-                "status": "error",
-                "message": "No connector registered"
-            })
-            continue
-        
-        # Sync synchronously (blocking) - required for Vercel serverless
-        try:
-            await run_feed_sync(
-                feed_id=str(feed.id),
-                feed_slug=feed.slug,
-                connector_path=connector_path
-            )
-            
-            synced_results.append({
-                "feed_id": str(feed.id),
-                "name": feed.name,
-                "slug": feed.slug,
-                "status": "success",
-                "last_sync": to_ist_str(feed.last_sync_at) if feed.last_sync_at else "never",
-            })
-            
-            logger.info("cron_sync_success", feed=feed.slug, forced=force)
-            
-        except Exception as e:
-            logger.error("cron_sync_failed", feed=feed.slug, error=str(e))
-            synced_results.append({
-                "feed_id": str(feed.id),
-                "name": feed.name,
-                "slug": feed.slug,
-                "status": "failed",
-                "error": str(e)
-            })
-    
-    synced_count = len([r for r in synced_results if r.get("status") == "success"])
-    failed_count = len([r for r in synced_results if r.get("status") == "failed"])
-    
-    feed_sync_duration = (datetime.utcnow() - start_time).total_seconds()
-    logger.info("feed_sync_completed", 
-                synced=synced_count, 
-                failed=failed_count, 
-                duration_sec=feed_sync_duration)
-    
-    # ═══════════════════════════════════════════════════════════════════════
-    # STEP 2: ENRICHMENT
-    # ═══════════════════════════════════════════════════════════════════════
-    enrichment_results = {
-        "enabled": enrich,
-        "enriched_count": 0,
-        "failed_count": 0,
-        "duration_sec": 0
-    }
-    
-    if enrich:
-        enrich_start = datetime.utcnow()
-        logger.info("cron_job_started", step="enrichment", limit=enrich_limit)
-        
-        # Find IOCs without enrichment (up to limit)
-        no_enrichment_query = (
-            select(IOC)
-            .options(selectinload(IOC.enrichments))
-            .outerjoin(Enrichment, IOC.id == Enrichment.ioc_id)
-            .where(Enrichment.id.is_(None))
-            .limit(enrich_limit)
+        query = select(FeedSource).where(
+            FeedSource.slug == feed_slug,
+            FeedSource.is_enabled == True  # noqa: E712
         )
-        result = await db.execute(no_enrichment_query)
-        iocs_to_enrich = result.scalars().all()
-        
-        logger.info("found_unenriched_iocs", count=len(iocs_to_enrich))
-        
-        # Enrich each IOC synchronously
-        enriched = 0
-        failed = 0
-        
-        for ioc in iocs_to_enrich:
-            try:
-                await enrich_ioc(db, ioc)
-                await db.flush()
-                enriched += 1
-                
-                if enriched % 10 == 0:
-                    logger.info("enrichment_progress", 
-                               enriched=enriched, 
-                               total=len(iocs_to_enrich))
-                               
-            except Exception as e:
-                failed += 1
-                logger.warning("enrichment_failed", 
-                              ioc_id=str(ioc.id), 
-                              ioc_value=ioc.value,
-                              error=str(e))
-        
-        enrichment_results["enriched_count"] = enriched
-        enrichment_results["failed_count"] = failed
-        enrichment_results["duration_sec"] = (datetime.utcnow() - enrich_start).total_seconds()
-        
-        logger.info("enrichment_completed", 
-                   enriched=enriched, 
-                   failed=failed,
-                   duration_sec=enrichment_results["duration_sec"])
+        result = await db.execute(query)
+        feed = result.scalar_one_or_none()
+        if not feed:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Feed with slug '{feed_slug}' not found or disabled"
+            )
     
-    # ═══════════════════════════════════════════════════════════════════════
-    # FINAL RESULTS
-    # ═══════════════════════════════════════════════════════════════════════
-    total_duration = (datetime.utcnow() - start_time).total_seconds()
+    # Queue the background task - returns immediately
+    background_tasks.add_task(
+        _run_sync_all_background,
+        force=force,
+        feed_slug=feed_slug,
+        enrich=enrich,
+        enrich_limit=enrich_limit
+    )
+    
+    logger.info("sync_all_queued",
+               force=force,
+               feed_slug=feed_slug,
+               enrich=enrich,
+               enrich_limit=enrich_limit)
     
     return {
-        "status": "completed",
-        "total_duration_sec": round(total_duration, 2),
-        "feed_sync": {
-            "synced_count": synced_count,
-            "failed_count": failed_count,
-            "skipped_count": skipped_count,
-            "total_feeds": len(feeds),
-            "duration_sec": round(feed_sync_duration, 2),
-            "results": synced_results
+        "status": "queued",
+        "message": "Feed synchronization and enrichment has been queued and will run in the background",
+        "parameters": {
+            "force": force,
+            "feed_slug": feed_slug or "all",
+            "enrich": enrich,
+            "enrich_limit": enrich_limit if enrich else 0
         },
-        "enrichment": enrichment_results,
-        "message": f"✅ Synced {synced_count} feed(s) | ⚡ Enriched {enrichment_results['enriched_count']} IOC(s) | ⏱️ {round(total_duration, 1)}s total"
+        "note": "Check server logs for progress and results"
     }
+
 
 
 @router.get("/{feed_id}/logs")
