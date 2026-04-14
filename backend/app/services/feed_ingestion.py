@@ -25,7 +25,7 @@ logger = structlog.get_logger()
 # Default chunk size for bulk IOC processing. Smaller batches mean fewer rows
 # touched per transaction, which reduces InnoDB lock contention. High-volume
 # feeds like ThreatFox (~57k IOCs) can override this with a larger batch_size.
-_DEFAULT_BATCH_SIZE = 15
+_DEFAULT_BATCH_SIZE = 100
 
 # High-volume feeds require larger batches to complete within timeout limits
 _HIGH_VOLUME_BATCH_SIZE = 500
