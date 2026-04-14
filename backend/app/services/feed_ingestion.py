@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Tuple
 
-from sqlalchemy import select, tuple_, update as sa_update
+from sqlalchemy import insert as sa_insert, select, tuple_, update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -159,12 +159,12 @@ async def _ingest_chunk(
 
     count = 0
     ioc_ids: List[str] = []
-    # Collect new field values WITHOUT mutating tracked ORM objects.
-    # Mutating attributes marks each object dirty and causes SQLAlchemy to
-    # emit N individual UPDATEs at flush time, holding row locks across the
-    # entire Python loop. Using a plain dict + executemany UPDATE instead
-    # sends one round-trip and releases locks immediately.
+    # Collect field values for existing-row updates WITHOUT mutating tracked ORM objects.
+    # Using a plain dict + executemany UPDATE sends one round-trip and releases locks immediately.
     update_mappings: List[Dict[str, Any]] = []
+    # Collect new IOC rows for a single bulk INSERT IGNORE — no per-IOC savepoints.
+    new_ioc_rows: List[Dict[str, Any]] = []
+    new_ioc_ids: List[str] = []
 
     for raw in chunk:
         key = (raw["type"], raw["value"])
@@ -204,61 +204,48 @@ async def _ingest_chunk(
                 })
                 ioc_ids.append(existing.id)
             else:
-                score = raw.get("threat_score") or calculate_threat_score(raw, source_count=1)
                 new_id = str(uuid.uuid4())
-                new_ioc = IOC(
-                    id=new_id,
-                    type=raw["type"],
-                    value=raw["value"],
-                    threat_score=score,
-                    confidence=raw.get("confidence", 50),
-                    first_seen=_strip_tz(raw.get("first_seen")) or _now(),
-                    last_seen=_strip_tz(raw.get("last_seen")) or _now(),
-                    sighting_count=1,
-                    tags=raw.get("tags", []),
-                    metadata_=raw.get("metadata", {}),
-                    mitre_techniques=raw.get("mitre_techniques", []),
-                )
-                try:
-                    async with session.begin_nested():
-                        session.add(new_ioc)
-                        await session.flush()
-                    existing_map[key] = new_ioc
-                    ioc_ids.append(new_id)
-                except IntegrityError:
-                    # Another concurrent worker inserted this IOC between our
-                    # SELECT and INSERT — fetch the winner's row and use it.
-                    logger.warning(
-                        "ioc_duplicate_skipped",
-                        type=raw["type"],
-                        value=raw.get("value", ""),
-                    )
-                    res = await session.execute(
-                        select(IOC).where(
-                            IOC.type == raw["type"], IOC.value == raw["value"]
-                        )
-                    )
-                    refetched = res.scalar_one_or_none()
-                    if refetched:
-                        existing_map[key] = refetched
-                        ioc_ids.append(refetched.id)
+                score = raw.get("threat_score") or calculate_threat_score(raw, source_count=1)
+                now = _now()
+                new_ioc_rows.append({
+                    "id": new_id,
+                    "type": raw["type"],
+                    "value": raw["value"],
+                    "threat_score": score,
+                    "confidence": raw.get("confidence", 50),
+                    "first_seen": _strip_tz(raw.get("first_seen")) or now,
+                    "last_seen": _strip_tz(raw.get("last_seen")) or now,
+                    "sighting_count": 1,
+                    "tags": raw.get("tags", []),
+                    "metadata": raw.get("metadata", {}),
+                    "mitre_techniques": raw.get("mitre_techniques", []),
+                    "created_at": now,
+                    "updated_at": now,
+                })
+                new_ioc_ids.append(new_id)
 
             count += 1
         except Exception as e:
             logger.error("ioc_chunk_error", error=str(e), value=raw.get("value", "")[:50])
 
+    # Single INSERT IGNORE for all new IOCs — one DB round-trip, no per-IOC savepoints.
+    # INSERT IGNORE silently skips rows that violate UNIQUE(type, value) (concurrent-insert
+    # race with another worker) without raising an exception.
+    if new_ioc_rows:
+        await session.execute(
+            sa_insert(IOC.__table__).prefix_with("IGNORE").values(new_ioc_rows)
+        )
+        ioc_ids.extend(new_ioc_ids)
+
     # Single executemany UPDATE — one DB round-trip, minimal lock window.
-    # synchronize_session="evaluate" (default) updates the in-memory identity
-    # map so the objects reflect their new values; this is a no-op if no
-    # objects were loaded into the current session for these rows.
     if update_mappings:
         await session.execute(sa_update(IOC), update_mappings)
 
-    # Flush pending new IOC inserts (already inside savepoints above, but
-    # flush here to ensure everything is visible before IOCSource linking).
     await session.flush()
 
-    # Bulk-check which (ioc_id, feed_id) source links already exist.
+    # Bulk-check which (ioc_id, feed_id) source links already exist, then INSERT IGNORE
+    # all new links in one statement. INSERT IGNORE handles FK misses for any IOC whose
+    # INSERT was silently skipped above (concurrent-insert race, extremely rare).
     if ioc_ids:
         existing_sources = await session.execute(
             select(IOCSource.ioc_id).where(
@@ -268,18 +255,22 @@ async def _ingest_chunk(
         )
         already_linked = {row[0] for row in existing_sources}
 
-        # Deduplicate ioc_ids within this chunk — the same URL can appear
-        # multiple times in a feed (e.g. URLhaus), which would produce two
-        # IOCSource rows for the same (ioc_id, feed_id) unique constraint.
         seen: set = set()
-        new_sources = []
+        new_source_rows: List[Dict[str, Any]] = []
         for ioc_id in ioc_ids:
             if ioc_id not in already_linked and ioc_id not in seen:
-                new_sources.append(IOCSource(ioc_id=ioc_id, feed_id=feed.id))
+                new_source_rows.append({
+                    "id": str(uuid.uuid4()),
+                    "ioc_id": ioc_id,
+                    "feed_id": feed.id,
+                    "ingested_at": _now(),
+                })
                 seen.add(ioc_id)
 
-        if new_sources:
-            session.add_all(new_sources)
+        if new_source_rows:
+            await session.execute(
+                sa_insert(IOCSource.__table__).prefix_with("IGNORE").values(new_source_rows)
+            )
 
         await session.flush()
 
