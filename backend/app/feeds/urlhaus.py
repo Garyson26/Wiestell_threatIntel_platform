@@ -38,8 +38,8 @@ class URLhausFeed(BaseFeed):
     feed_type = "api"
     url = "https://urlhaus.abuse.ch/downloads/csv_recent/"
     description = "URLhaus collects and shares malicious URLs used for malware distribution"
-    requires_api_key = True
-    api_key_env = "URLHAUS_API_KEY"     # already set in your environment
+    requires_api_key = False  # Optional - works without key but provides more data with key
+    api_key_env = "URLHAUS_API_KEY"
     default_sync_frequency = 900        # 15 minutes
 
     # ── Free no-auth endpoints (confirmed live April 2026) ───────────────────
