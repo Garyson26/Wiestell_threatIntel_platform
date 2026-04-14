@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     PHISHTANK_API_KEY: Optional[str] = None
     MALWAREBAZAAR_API_KEY: Optional[str] = None
     THREATFOX_API_KEY: Optional[str] = None
+    URLHAUS_API_KEY: Optional[str] = None
 
     # AI
     GROQ_API_KEY: str = ""

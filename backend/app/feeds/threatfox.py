@@ -32,8 +32,8 @@ class ThreatFoxFeed(BaseFeed):
     feed_type = "api"
     url = "https://threatfox-api.abuse.ch/api/v1/"
     description = "ThreatFox shares IOCs associated with malware families"
-    requires_api_key = True
-    api_key_env = "THREATFOX_API_KEY"      # already set in your environment
+    requires_api_key = False  # Optional - works without key but limited features
+    api_key_env = "THREATFOX_API_KEY"
     default_sync_frequency = 1800
 
     # ── Free export endpoints — no auth, validated live April 2026 ──────────
@@ -48,29 +48,41 @@ class ThreatFoxFeed(BaseFeed):
     # ── fetch ────────────────────────────────────────────────────────────────
 
     async def fetch(self) -> Dict[str, Any]:
-        if not self.api_key:
-            raise ValueError(
-                "ThreatFox requires an API key. "
-                "Register free at https://auth.abuse.ch/ and set THREATFOX_API_KEY."
-            )
-        masked = self.api_key[:4] + "****" if len(self.api_key) > 4 else "****"
-        logger.info("threatfox_fetch_start", api_key=masked)
+        if self.api_key:
+            masked = self.api_key[:4] + "****" if len(self.api_key) > 4 else "****"
+            logger.info("threatfox_fetch_start", api_key=masked)
+        else:
+            logger.info("threatfox_fetch_start", api_key="none", note="Using free endpoints only")
 
         results: Dict[str, Any] = {}
 
-        # 1. Query API — Auth-Key in request HEADER (not URL)
-        try:
-            resp = await self.client.post(
-                self.url,
-                headers={"Auth-Key": self.api_key},
-                json={"query": "get_iocs", "days": 1},
-            )
-            resp.raise_for_status()
-            results["api"] = resp.json()
-            logger.info("threatfox_api_fetched")
-        except Exception as exc:
-            logger.warning("threatfox_api_failed", error=str(exc))
-            results["api"] = {}
+        # 1. Query API — Auth-Key in request HEADER (not URL) - optional
+        if self.api_key:
+            try:
+                resp = await self.client.post(
+                    self.url,
+                    headers={"Auth-Key": self.api_key},
+                    json={"query": "get_iocs", "days": 1},
+                )
+                resp.raise_for_status()
+                results["api"] = resp.json()
+                logger.info("threatfox_api_fetched")
+            except Exception as exc:
+                logger.warning("threatfox_api_failed", error=str(exc))
+                results["api"] = {}
+        else:
+            # API works without auth for basic queries
+            try:
+                resp = await self.client.post(
+                    self.url,
+                    json={"query": "get_iocs", "days": 1},
+                )
+                resp.raise_for_status()
+                results["api"] = resp.json()
+                logger.info("threatfox_api_fetched", auth="none")
+            except Exception as exc:
+                logger.warning("threatfox_api_failed_no_auth", error=str(exc))
+                results["api"] = {}
 
         # 2–5. Free CSV exports — no auth required
         for key, endpoint in (
