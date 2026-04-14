@@ -12,9 +12,10 @@ services:
     plan: starter  # Change to 'standard' or 'pro' for production
     region: oregon  # Change to your preferred region (oregon, frankfurt, singapore, etc.)
     buildCommand: |
+      python --version
       pip install --upgrade pip
       pip install -r requirements.txt
-      python download_geolite2.py
+      python download_geolite2.py || echo "GeoLite2 download failed, continuing..."
       alembic upgrade head
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     rootDir: backend
