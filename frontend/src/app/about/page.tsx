@@ -292,7 +292,7 @@ export default function AboutPage() {
           {/* Open Source */}
           <section className="sentinel-card p-8 md:p-10">
             <h2 className="text-2xl md:text-3xl font-display font-bold text-sentinel-text-primary mb-6">
-              Open Source
+              Community Driven
             </h2>
             <div className="space-y-4 text-sentinel-text-secondary font-mono text-sm leading-relaxed">
               <p>
