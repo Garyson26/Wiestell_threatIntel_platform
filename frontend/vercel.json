@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://wiestell-backend-zeta.vercel.app/api/:path*"
+      "destination": "https://wiestell-threatintel-platform.onrender.com/api/:path*"
     }
   ]
 }
