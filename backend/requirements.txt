@@ -40,7 +40,7 @@ bcrypt==3.2.2
 stix2==3.0.1
 
 # Utilities
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 structlog==24.1.0
 tenacity==8.2.3
 croniter==2.0.1
