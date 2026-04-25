@@ -9,7 +9,7 @@
 set -e
 
 DOMAIN="${1:-wiestell.com}"
-BACKEND_DOMAIN="${2:-${BACKEND_URL:-wiestell-threatintel-platform.onrender.com}}"
+BACKEND_DOMAIN="${2:-${BACKEND_URL:-wiestellthreatintelligencebackend.vercel.app}}"
 
 echo "=================================================="
 echo "Security Headers Verification for: $DOMAIN"
