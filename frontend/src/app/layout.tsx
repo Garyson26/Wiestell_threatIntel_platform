@@ -5,7 +5,7 @@ import { AuthProvider } from '@/lib/auth';
 export const metadata: Metadata = {
   metadataBase: new URL('https://wiestell.com'),
   verification: {
-    google: 'your-google-verification-code-here',
+    google: '6Pe7rE27OmzXczBnDuDLoIXwUGPTcDqTYYzi7zo-Lak',
   },
   title: 'Wiestell | Free Threat Intelligence Platform | IOC Lookup',
   description: 'Free threat intelligence platform aggregating IOC data from URLhaus, ThreatFox, AlienVault OTX, AbuseIPDB, and more. Analyze IPs, domains, file hashes & URLs with comprehensive threat feeds.',
