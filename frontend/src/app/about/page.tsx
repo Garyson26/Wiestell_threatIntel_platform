@@ -8,8 +8,8 @@ import { ArrowLeft, Shield, Search, Activity, Zap, Lock, Cloud, FileCheck, User,
 import { useAuth } from '@/lib/auth';
 
 // export const metadata: Metadata = {
-//   title: 'About Wiestell | Free Open-Source Threat Intelligence Platform',
-//   description: 'Learn about Wiestell, a free open-source threat intelligence platform built to help security analysts look up IPs, domains, and file hashes against the world\'s best open threat feeds.',
+//   title: 'About Wiestell | Free Threat Intelligence Platform',
+//   description: 'Learn about Wiestell, a free threat intelligence platform built to help security analysts look up IPs, domains, and file hashes against the world\'s best open threat feeds.',
 // };
 
 export default function AboutPage() {
