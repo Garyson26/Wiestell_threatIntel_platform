@@ -46,8 +46,8 @@ export const metadata: Metadata = {
     locale: 'en_US',
     url: 'https://wiestell.com',
     siteName: 'Wiestell',
-    title: 'Wiestell | Free Open Source Threat Intelligence Platform | IOC Lookup',
-    description: 'Free open-source threat intelligence platform aggregating IOC data from URLhaus, ThreatFox, AlienVault OTX, AbuseIPDB, and more. Analyze IPs, domains, file hashes & URLs with comprehensive threat feeds.',
+    title: 'Wiestell | Free Threat Intelligence Platform | IOC Lookup',
+    description: 'Free threat intelligence platform aggregating IOC data from URLhaus, ThreatFox, AlienVault OTX, AbuseIPDB, and more. Analyze IPs, domains, file hashes & URLs with comprehensive threat feeds.',
     images: [
       {
         url: '/og-image.png',
