@@ -262,7 +262,7 @@ That's why Wiestell exists."
       <footer className="border-t border-sentinel-border bg-sentinel-bg-secondary/50 py-6">
         <div className="container mx-auto px-6 text-center">
           <p className="text-xs font-mono text-sentinel-text-muted">
-            © 2026 Wiestell Open Source Threat Intelligence Platform.
+            © 2026 Wiestell Free Threat Intelligence Platform.
           </p>
         </div>
       </footer>
