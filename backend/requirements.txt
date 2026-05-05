@@ -5,9 +5,9 @@ python-multipart==0.0.9
 
 # Database
 sqlalchemy==2.0.27
-aiomysql==0.2.0
-pymysql==1.1.0
-cryptography==42.0.2
+aiomysql==0.3.0
+pymysql==1.1.1
+cryptography==42.0.4
 alembic==1.13.1
 
 # Redis
@@ -32,7 +32,7 @@ geoip2==4.8.0
 # shodan==1.31.0  # Optional - not compatible with Vercel serverless (no binary wheels)
 
 # Security
-python-jose[cryptography]==3.3.0
+python-jose==3.4.0
 passlib[bcrypt]==1.7.4
 bcrypt==3.2.2
 
@@ -44,7 +44,7 @@ python-dotenv==1.0.1
 structlog==24.1.0
 tenacity==8.2.3
 croniter==2.0.1
-jinja2==3.1.3
+jinja2==3.1.4
 weasyprint==61.2
 
 # AI
@@ -52,3 +52,8 @@ groq>=0.12.0
 
 # CSV parsing
 pandas==2.2.0
+urllib3>=1.26.19 # not directly required, pinned by Snyk to avoid a vulnerability
+pyasn1>=0.6.2 # not directly required, pinned by Snyk to avoid a vulnerability
+zipp>=3.19.1 # not directly required, pinned by Snyk to avoid a vulnerability
+filelock>=3.20.1 # not directly required, pinned by Snyk to avoid a vulnerability
+requests>=2.32.2 # not directly required, pinned by Snyk to avoid a vulnerability
