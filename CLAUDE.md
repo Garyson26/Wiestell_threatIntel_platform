@@ -150,9 +150,43 @@ DATABASE_URL="mysql+pymysql://u:p@localhost/db" SECRET_KEY="$(python -c 'import 
   Python and filters through the ORM, `NaiveUTCDateTime` coerces them and an IST-aware
   boundary is now merely redundant rather than wrong. Two routes are still unprotected:
   computing boundaries **in SQL** via `sa.text()`, and `func.date()`/`DATE_FORMAT`
-  grouping, which operates on the stored naive value and so silently groups by UTC day
-  regardless of what the UI labels it. Build boundaries as naive UTC either way.
+  grouping, which operates on the stored naive value and so groups by UTC day.
   Design note: [docs/superpowers/specs/2026-07-30-naive-utc-typedecorator-design.md](docs/superpowers/specs/2026-07-30-naive-utc-typedecorator-design.md).
+
+  **Audited 2026-07-31 — the current endpoints are self-consistent, so this is a
+  constraint on the rewrite rather than a live bug.** `get_stats` groups with
+  `func.DATE(IOC.created_at)` (UTC day) and keys the Python side off
+  `datetime.now(timezone.utc)` (UTC date), so bucket and label agree; `get_trends`
+  builds midnight-UTC boundaries and labels with the UTC date, likewise agreeing — and
+  it has no frontend caller at all (`getTrends` is exported from `lib/api.ts` and never
+  invoked). `StatsCards` renders the sparkline as unlabelled bars, so no date is shown
+  to a user today. Nothing is currently mislabelled.
+
+  **What that leaves is latent and specific.** Every *other* timestamp the UI shows goes
+  through `to_ist_str`, so the moment date labels or an axis are added to a trends chart,
+  the natural move is to render the `date` field as-is — a UTC date beside IST
+  timestamps. An IOC created 03:00 IST on 31 Jul (21:30 UTC on 30 Jul) then counts in the
+  "30 Jul" bar while its own row reads 31 Jul. The 00:00–05:30 IST window is ~23% of each
+  day's ingests, so it is not a rounding-error-sized discrepancy. **Decide the bucket
+  timezone explicitly in the rewrite and label it to match.**
+
+  **If you group by IST day, use the offset form, not the zone name.** Measured against
+  the local MySQL 8.0 container:
+
+  | Expression | Result |
+  |---|---|
+  | `DATE('2026-07-30 21:30:00')` | `2026-07-30` (UTC day) |
+  | `DATE(CONVERT_TZ(…,'+00:00','+05:30'))` | `2026-07-31` — correct, needs no tz tables |
+  | `CONVERT_TZ(…,'UTC','Asia/Kolkata')` | correct **here** — `mysql.time_zone_name` has 1795 rows |
+  | `CONVERT_TZ(…,'UTC','No/Such_Zone')` | **NULL, silently** — no error, no warning |
+
+  The named form depends on the timezone tables being populated, which they are in the
+  `mysql:8.0` image and frequently are **not** on shared hosting. When they are absent
+  `CONVERT_TZ` returns NULL for every row, `DATE(NULL)` is NULL, and every bucket
+  collapses into one NULL group — which reads as "no data" rather than as a failure. That
+  is a defect that passes locally and breaks only in production, the same trap as the
+  `DB_IMAGE`/MariaDB note above. India observes no DST, so `'+05:30'` is a fixed offset
+  year-round and the offset form is not merely safer but fully correct.
 - IDs are `CHAR(36)` UUID **strings**, not UUID objects — path params are typed `str`.
 - `database.py` patches `aiomysql.Connection.ensure_closed` to swallow dead-transport errors from the shared host's `wait_timeout`; pool settings (`pool_recycle=280`, `pool_pre_ping`) are tuned around that. Don't "clean this up" without understanding the failure it prevents.
 

@@ -319,7 +319,28 @@ Password → OTP → JWT. After this review the flow enforces: purpose-bound sin
 
     It is not hash-specific and it is not new — it predates all of the Spec 3–5 work. Surfaced by the hash design question, because a thin OTX verdict wins the reputation resolution order ahead of any other evidence.
 
-    **Not fixed: this is reputation calibration and needs sign-off** (Spec 5 §6, alongside the hash proposal and the `MIN_ASSESSED_POINTS = 3` revisit). Two candidate shapes, neither implemented: floor the mapping at `NEUTRAL_REPUTATION` so a positive verdict can never read below "unknown"; or rescale so one pulse is meaningfully above neutral (pulse counts are heavily skewed to 1–2, so `10 * count` spends most of its range on a tail that rarely occurs). The first is the smaller change and fixes the inversion outright; the second also fixes the calibration.
+    **Not fixed: this is reputation calibration and needs sign-off** (Spec 5 §6, alongside the hash proposal and the `MIN_ASSESSED_POINTS = 3` revisit). Owner direction 2026-07-31: **rescale rather than floor.** Flooring at `NEUTRAL_REPUTATION` fixes the inversion but flattens 1, 2 and 3 pulses to one value; rescaling fixes it and keeps pulse count monotonic. Shape: `NEUTRAL + min(pulse_count * k, 100 - NEUTRAL)`, with `k` set from the observed pulse-count distribution rather than picked.
+
+    **Blocked on data for `k`.** The distribution cannot be derived here — there is no OTX key in this environment and no production access. It needs either an owner query against the `enrichments` table (`JSON_EXTRACT(data, '$.details.otx.pulse_count')` where `source = 'reputation'`) or a key to sample with. Setting `k` by intuition is the thing the owner asked to avoid.
+
+    **Blast radius is larger than anything in Sections 1–2** — it moves reputation for *every* OTX-flagged indicator across all four types, at a 30% weight, so it must be measured before sign-off rather than argued.
+
+    **Aggregation checked at the same time, and it splits two ways (2026-07-31).** The question was whether `aggregate_score` averages a silent provider in as a zero.
+
+    *Silence: already correct.* `scores.append(...)` executes only inside the `> 0` branches, so a silent or unconfigured provider contributes **nothing** to the list rather than a zero. AbuseIPDB at 100 with OTX silent reads **100**, not 50. Non-issue, and now pinned by a test so it cannot regress into a mean-over-all-providers.
+
+    *Weak positives: a real dilution, same family, one level up.* The mean is taken over **incommensurable scales**. AbuseIPDB reports a calibrated 0–100 confidence; OTX reports `pulse_count * 10`. Averaging them means a single OTX pulse drags a maximal AbuseIPDB verdict down hard:
+
+    | AbuseIPDB | OTX | aggregate | reputation | composite | bucket |
+    |---|---|---|---|---|---|
+    | 100 | not configured | 100 | 100.0 | 66 | high |
+    | 100 | silent | 100 | 100.0 | 66 | high |
+    | 100 | **1 pulse** | **55** | 55.0 | **45** | **medium** |
+    | 100 | 2 pulses | 60 | 60.0 | 47 | medium |
+    | 100 | 7 pulses | 85 | 85.0 | 61 | high |
+    | 100 | 10 pulses | 100 | 100.0 | 66 | high |
+
+    So an IP that AbuseIPDB rates 100/100 **loses a bucket** — high to medium, −21 composite — because OTX also flagged it once. Corroborating evidence lowers the score. This lands on IPs, the largest population, and it is a consequence of the same pulse-count scale as item 15's inversion, so **rescaling OTX fixes both** — which is the strongest argument for rescale over floor. Whether the mean should also be weighted by provider confidence is a separate §6 question; fixing the scale first may make it unnecessary.
 
 14. **The GeoIP database is fetched by a build step that fails open, and nothing surfaces its absence.** `render.yaml:18` and `backend/render-build.sh:11` both run `python download_geolite2.py || echo "⚠️ GeoLite2 download failed - continuing anyway"`, and that script requires `MAXMIND_ACCOUNT_ID` and `MAXMIND_LICENSE_KEY`. The `.mmdb` is not committed. So a deploy without those credentials starts normally and **loses country and ASN enrichment for the entire IP population**, with no error, no failed health check and no dashboard indication — only a per-IOC `{"error_city": "GeoIP city database not available"}` row buried in the `enrichments` table.
 
