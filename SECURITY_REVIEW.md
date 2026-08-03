@@ -471,7 +471,25 @@ Accepted or out-of-scope items, in rough priority order:
    3. **Default to trusting nothing.** Unset ⇒ ignore `X-Forwarded-For` entirely and use the socket peer. This matters locally: the container is directly reachable in development, so a default that trusts the header is a bypass in every dev environment. Failing closed over-restricts; failing open is the bug being fixed.
    4. **Verify the count empirically at Phase 6, not from documentation.** Log the raw header from a deployed instance and count the entries. Render may front with Cloudflare, but `CF-Connecting-IP` is undocumented on Render's side, so do not build on it.
 
-   **Sequencing note.** Deploying the fail-closed default to Render *before* the count is measured makes every caller share the edge's address, so the limiter becomes a global cap that one noisy client exhausts for everyone. That is the acceptable-but-undesirable direction, and it is the reason the measurement comes first rather than the code.
+   **Helper implemented 2026-07-31; only the value is deferred.** `deps.py::_client_ip` now counts from the right using `settings.TRUSTED_PROXY_HOPS`, falls back to the socket peer whenever the header is absent, unusable, or shorter than the configured hop count, and **defaults to 0 — trust nothing**. So the code has landed inert: behaviour is unchanged until the count is configured, and the bypass closes the moment one environment variable is set. Deferring the whole implementation would have left the spoofable left-most-entry path live through UAT for no benefit. Pinned by `tests/test_client_ip.py`, including a sweep asserting the left-most entry is never taken at any hop count; reverting to `split(",")[0]` fails 8 of its 13 tests.
+
+   **Still to do at Phase 6:** measure the hop count against a deployed instance and set it. Note that setting it to a *wrong* non-zero value is worse than leaving it at 0 — too low reads an attacker-supplied entry, too high falls back to the peer and buckets every caller under Render's edge address, making the limiter a global cap one noisy client exhausts for everyone.
+
+8. **NEW 2026-07-31 — `/login` has no per-account attempt counter, and no amount of correct `X-Forwarded-For` handling fixes it.** This is the highest-cost item in the group above and it is not an XFF problem.
+
+   A per-IP bucket, even with a perfectly measured hop count, is defeated by rotating source addresses. Residential proxy pools make that cheap and unremarkable, so password guessing against a known username is bounded only by the attacker's willingness to rotate. Correct hop counting reduces the XFF work to what it actually protects — **API spend on the `ai-*` endpoints and contact-form spam** — and leaves credentials unprotected.
+
+   **The control has to be IP-independent, exactly like the OTP counter that is already holding.** `otps.attempts` works because it lives in the database, is keyed to the credential rather than the caller, and is shared across every process and instance — the three properties the per-IP limiter lacks. The equivalent for password login:
+
+   - a `failed_login_attempts` counter and a `locked_until` timestamp on `users`, both incremented and checked inside the login handler;
+   - reset on a successful authentication;
+   - **backoff rather than a hard lock**, because a hard lock on a username-keyed counter is a denial-of-service primitive against a known account — an attacker who knows an admin's email can lock them out indefinitely. Escalating delay degrades brute force without handing over that capability;
+   - the response must stay identical whether the account is throttled or the password is simply wrong, or the counter becomes a username oracle — and note `/register` already enumerates emails via its 409 (residual risk #6), so this must not add a second channel;
+   - it must not consult the request IP at all, so rotation is irrelevant by construction.
+
+   **Cost:** one Alembic revision (two columns on `users`), a change inside the login handler, and tests for the counter, the reset, the backoff curve and response-shape equality. **It does not wait on Phase 6, the hop count, or Redis** — unlike everything else in residual risk #5 — which is why it is listed separately rather than folded in. It does wait on the migration chain, since it needs a revision to apply, so it is blocked behind the same four owner queries as `iocs.scoring_model_version`.
+
+   Not implemented: it is an auth change requiring its own design pass and sign-off, and CLAUDE.md directs reading this document's residual-risk section before touching auth.
 6. **Registration still enumerates emails** via `409 Username or email already registered`. This is a deliberate usability trade-off; rate limiting is the mitigation.
 7. **No audit log.** Privileged actions (feed deletion, user creation, role changes) are logged with structlog but not persisted to a tamper-evident store.
 8. **`postcss` and `sharp` high-severity advisories remain.** Both are transitive dependencies pinned inside Next.js itself, so the only fix npm offers is downgrading Next to v9 — rejected. They clear when Next ships updated transitives. Exposure is limited: postcss runs at build time, and `sharp`/libvips only handles images passing through `next/image`, which this app uses for a local logo and favicon.

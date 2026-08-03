@@ -63,6 +63,44 @@ def _provider_record(
     }
 
 
+def aggregate_provider_scores(scores: List[float]) -> int:
+    """Combine per-provider scores into one reputation figure.
+
+    **MAX, not mean** (changed 2026-07-31, Spec 5 §6b). Every score in ``scores`` came
+    from a provider that reached a *positive* verdict — the caller only appends on a
+    non-zero reading — so nobody is arguing the indicator is clean. Averaging therefore
+    measures how loudly the providers agree and drags the strongest verdict toward the
+    weakest. Measured before the change: an IP AbuseIPDB rated 100/100 read aggregate 55
+    and composite 45 (medium) because OTX had also flagged it once, so corroborating
+    evidence *lowered* the score — on the largest IOC population.
+
+    Two positive verdicts must never read less confident than the stronger alone. Max and
+    mean are identical whenever only one provider is positive, which is the common case
+    (AbuseIPDB is IP-only; OTX is frequently silent), so only the
+    both-positive-and-disagreeing case moves.
+
+    **Known limits, both recorded in PROJECT_SUMMARY.md §8 item 15.**
+
+    * This does not fix the *scale* mismatch. AbuseIPDB reports calibrated 0-100
+      confidence, OTX reports ``pulse_count * 10``, so one pulse still reads 10 — below
+      ``NEUTRAL_REPUTATION``. The rescale must cover **both** providers: an AbuseIPDB
+      confidence of 5 maps to 5 for the same reason. Blocked on the pulse distribution.
+    * Max makes provider *agreement* invisible to the composite. That gap is real and now
+      explicit: nothing else measures it either — ``source_count`` counts feeds, not
+      providers, and ``sources_flagged`` is written and never read. It was previously
+      "filled" by an averaging artefact pointing the wrong way, which is worse than an
+      honest zero. If agreement should count it wants to be a declared signal
+      (``multi_provider_agreement``), not an emergent property of this function.
+
+    Exists as a module-level function so tests exercise the real aggregation rather than
+    reimplementing it — a duplicated copy in the test file drifted the moment this
+    changed, which is how that fragility was found.
+    """
+    if not scores:
+        return 0
+    return int(max(scores))
+
+
 class ReputationEnricher(BaseEnricher):
     """Queries every configured reputation provider and averages their verdicts.
 
@@ -194,7 +232,7 @@ class ReputationEnricher(BaseEnricher):
                 logger.warning("otx_reputation_failed", error=str(e))
         providers.append(otx)
 
-        aggregate_score = int(sum(scores) / len(scores)) if scores else 0
+        aggregate_score = aggregate_provider_scores(scores)
 
         # `aggregate_score` is assessable only if a provider covering this IOC type
         # reached an actual verdict. A provider that answered but was silent has told
