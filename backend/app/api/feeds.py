@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import structlog
+from app.api.deps import get_current_user, require_admin, require_admin_or_cron
 from app.database import get_db
 from app.models.feed import FeedSource
 from app.schemas.feed import FeedCreate, FeedUpdate, FeedResponse
@@ -16,7 +17,7 @@ logger = structlog.get_logger()
 router = APIRouter()
 
 
-@router.get("", response_model=list[FeedResponse])
+@router.get("", response_model=list[FeedResponse], dependencies=[Depends(get_current_user)])
 async def list_feeds(db: AsyncSession = Depends(get_db)):
     """List all feed sources with their status."""
     try:
@@ -31,7 +32,7 @@ async def list_feeds(db: AsyncSession = Depends(get_db)):
         )
 
 
-@router.post("", response_model=FeedResponse)
+@router.post("", response_model=FeedResponse, dependencies=[Depends(require_admin)])
 async def create_feed(feed_data: FeedCreate, db: AsyncSession = Depends(get_db)):
     """Add a custom feed source."""
     existing = await db.execute(
@@ -55,7 +56,7 @@ async def create_feed(feed_data: FeedCreate, db: AsyncSession = Depends(get_db))
     return FeedResponse.model_validate(feed)
 
 
-@router.put("/{feed_id}", response_model=FeedResponse)
+@router.put("/{feed_id}", response_model=FeedResponse, dependencies=[Depends(require_admin)])
 async def update_feed(feed_id: str, update: FeedUpdate, db: AsyncSession = Depends(get_db)):
     """Update feed configuration."""
     result = await db.execute(select(FeedSource).where(FeedSource.id == feed_id))
@@ -70,7 +71,7 @@ async def update_feed(feed_id: str, update: FeedUpdate, db: AsyncSession = Depen
     return FeedResponse.model_validate(feed)
 
 
-@router.delete("/{feed_id}")
+@router.delete("/{feed_id}", dependencies=[Depends(require_admin)])
 async def delete_feed(feed_id: str, db: AsyncSession = Depends(get_db)):
     """Remove a feed source."""
     result = await db.execute(select(FeedSource).where(FeedSource.id == feed_id))
@@ -83,7 +84,7 @@ async def delete_feed(feed_id: str, db: AsyncSession = Depends(get_db)):
     return {"status": "deleted", "feed_id": str(feed_id)}
 
 
-@router.post("/{feed_id}/sync", status_code=202)
+@router.post("/{feed_id}/sync", status_code=202, dependencies=[Depends(require_admin)])
 async def trigger_sync(feed_id: str, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     """Queue a feed sync. Returns 202 immediately; ingestion runs in the background."""
     result = await db.execute(select(FeedSource).where(FeedSource.id == feed_id))
@@ -268,7 +269,7 @@ async def _run_sync_all_background(
                    enriched_iocs=enriched if enrich else 0)
 
 
-@router.post("/sync-all", status_code=202)
+@router.post("/sync-all", status_code=202, dependencies=[Depends(require_admin_or_cron)])
 async def sync_all_feeds(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
@@ -299,13 +300,8 @@ async def sync_all_feeds(
     - Sync only ThreatFox: POST /api/v1/feeds/sync-all?feed_slug=threatfox
     - Sync ThreatFox without enrichment: POST /api/v1/feeds/sync-all?feed_slug=threadfox&enrich=false
     
-    Vercel Cron:
-    {
-      "crons": [{
-        "path": "/api/v1/feeds/sync-all?force=true&enrich=true&enrich_limit=100",
-        "schedule": "0 0 * * *"
-      }]
-    }
+    Access: an admin bearer token, or an ``X-Cron-Secret`` header matching the
+    ``CRON_SECRET`` environment variable (for scheduler-driven invocations).
     """
     from datetime import datetime
     from sqlalchemy import select
@@ -353,7 +349,7 @@ async def sync_all_feeds(
 
 
 
-@router.get("/{feed_id}/logs")
+@router.get("/{feed_id}/logs", dependencies=[Depends(get_current_user)])
 async def get_sync_logs(feed_id: str, db: AsyncSession = Depends(get_db)):
     """Get recent sync logs for a feed."""
     result = await db.execute(select(FeedSource).where(FeedSource.id == feed_id))

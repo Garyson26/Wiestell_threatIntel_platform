@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { getMe } from '@/lib/api';
+import { clearUserActivities } from '@/lib/userActivity';
 import type { UserProfile } from '@/lib/types';
 
 interface AuthContextType {
@@ -48,10 +49,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    // Locally cached IOC activity is per-user analyst history; it must not
+    // survive logout for the next person to use this browser.
+    if (user?.id) {
+      clearUserActivities(user.id);
+    }
     localStorage.removeItem('sentinel_token');
     setToken(null);
     setUser(null);
-  }, []);
+  }, [user]);
 
   return (
     <AuthContext.Provider value={{ user, token, login, logout, loading }}>

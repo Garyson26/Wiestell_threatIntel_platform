@@ -4,11 +4,12 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.api.deps import rate_limit, require_analyst
 from app.database import get_db
 from app.models.ioc import IOC
 from app.models.report import Report
@@ -21,13 +22,15 @@ router = APIRouter()
 
 
 class ChatMessage(BaseModel):
-    role: str  # "user" or "assistant"
-    content: str
+    # Only conversational turns are accepted — a caller cannot smuggle in a
+    # "system" role and rewrite the assistant's instructions.
+    role: str = Field(..., pattern="^(user|assistant)$")
+    content: str = Field(..., min_length=1, max_length=8000)
 
 
 class ChatRequest(BaseModel):
-    messages: List[ChatMessage]
-    context: Optional[str] = None
+    messages: List[ChatMessage] = Field(..., min_length=1, max_length=40)
+    context: Optional[str] = Field(None, max_length=4000)
 
 
 class ChatResponse(BaseModel):
@@ -58,7 +61,11 @@ async def ai_status():
     )
 
 
-@router.post("/analyze/{ioc_id}", response_model=AIAnalysisResponse)
+@router.post(
+    "/analyze/{ioc_id}",
+    response_model=AIAnalysisResponse,
+    dependencies=[Depends(rate_limit("ai-analyze", max_requests=20, window_seconds=300))],
+)
 async def analyze_ioc(ioc_id: str, db: AsyncSession = Depends(get_db)):
     """Generate AI threat analysis for a specific IOC."""
     if not groq_service.is_available:
@@ -98,7 +105,11 @@ async def analyze_ioc(ioc_id: str, db: AsyncSession = Depends(get_db)):
     )
 
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post(
+    "/chat",
+    response_model=ChatResponse,
+    dependencies=[Depends(rate_limit("ai-chat", max_requests=30, window_seconds=300))],
+)
 async def chat(request: ChatRequest):
     """Chat with the AI threat intelligence assistant."""
     if not groq_service.is_available:
@@ -125,7 +136,13 @@ async def chat(request: ChatRequest):
     return ChatResponse(response=response)
 
 
-@router.post("/report")
+@router.post(
+    "/report",
+    dependencies=[
+        Depends(require_analyst),
+        Depends(rate_limit("ai-report", max_requests=5, window_seconds=600)),
+    ],
+)
 async def generate_ai_report(db: AsyncSession = Depends(get_db)):
     """Generate an AI-written threat intelligence report."""
     if not groq_service.is_available:

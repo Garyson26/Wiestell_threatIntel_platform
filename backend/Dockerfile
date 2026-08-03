@@ -25,6 +25,12 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
     CMD curl -f http://localhost:${PORT:-8000}/api/v1/health || exit 1
 
-RUN chmod +x start.sh
+# Strip CRLF before making it executable. .gitattributes forces LF in the working
+# tree, but this also covers a file that arrived some other way — a zip download,
+# an editor that rewrote it, a bind mount from a Windows host. Without it the
+# shebang becomes `#!/bin/bash` and the container exits 255 with
+# "exec ./start.sh: no such file or directory", which names the script rather than
+# the missing interpreter and is correspondingly hard to read.
+RUN sed -i 's/$//' start.sh && chmod +x start.sh
 
 CMD ["./start.sh"]

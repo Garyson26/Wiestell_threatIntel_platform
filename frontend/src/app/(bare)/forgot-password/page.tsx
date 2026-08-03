@@ -7,6 +7,7 @@ import Image from 'next/image';
 import { Mail, ArrowLeft, Send, CheckCircle2, LogOut } from 'lucide-react';
 import { forgotPassword } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { storeResetEmail } from '@/lib/passwordResetHandoff';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -29,9 +30,12 @@ export default function ForgotPasswordPage() {
       const res = await forgotPassword({ email });
       setMessage(res.message);
       setSuccess(true);
-      // Redirect to reset password page after 2 seconds
+      // Hand the address over in sessionStorage rather than the query string: a
+      // URL-borne address ends up in browser history, in the Referer header sent
+      // to any external origin, and in access logs. See lib/passwordResetHandoff.
+      storeResetEmail(email);
       setTimeout(() => {
-        router.push(`/reset-password?email=${encodeURIComponent(email)}`);
+        router.push('/reset-password');
       }, 2000);
     } catch (err: any) {
       setError(err.message || 'Failed to send password reset email.');

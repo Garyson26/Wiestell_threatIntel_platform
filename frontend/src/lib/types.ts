@@ -219,3 +219,23 @@ export interface AIStatus {
   available: boolean;
   model: string;
 }
+
+// Contact Types
+export interface ContactMessage {
+  id: string;
+  name: string;
+  email: string;
+  reason: string;
+  ioc: string | null;
+  message: string;
+  is_resolved: string;
+  created_at: string;
+  resolved_at: string | null;
+}
+
+export interface ContactListResponse {
+  contacts: ContactMessage[];
+  total: number;
+  page: number;
+  page_size: number;
+}

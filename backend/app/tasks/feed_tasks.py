@@ -10,7 +10,7 @@ import structlog
 from app.tasks.celery_app import celery_app
 from app.database import SyncSessionLocal
 from app.models.feed import FeedSource
-from app.services.feed_ingestion import ingest_iocs_sync
+from app.services.feed_ingestion import ingest_iocs
 
 logger = structlog.get_logger()
 
@@ -60,8 +60,10 @@ FEED_CONNECTORS = {
     "feodo-tracker": "app.feeds.feodo_tracker.FeodoTrackerFeed",
     "otx-alienvault": "app.feeds.otx_alienvault.OTXAlienVaultFeed",
     "abuseipdb": "app.feeds.abuseipdb.AbuseIPDBFeed",
-    "phishtank": "app.feeds.phishtank.PhishTankFeed",
-    "virustotal": "app.feeds.virustotal.VirusTotalFeed",
+    # "phishtank" and "virustotal" removed 2026-07-29 with their connector
+    # modules. This registry is a duplicate of the authoritative one in
+    # services/feed_scheduler.py and is only reachable through the Celery beat
+    # schedule, which is entirely commented out.
 }
 
 
@@ -105,30 +107,48 @@ def sync_feed(self, feed_slug: str, api_key: Optional[str] = None):
         return {"status": "success", "iocs_ingested": 0}
 
     # ── Ingest phase ───────────────────────────────────────────────────────
-    session = SyncSessionLocal()
+    # Drives the ASYNC ingestion path. The synchronous mirror this used to call
+    # (`ingest_iocs_sync`) was deleted on 2026-07-31: it was unreachable in
+    # production and had drifted from the async copy twice in one change set. Rather
+    # than maintain two implementations of the ingest chunking, retry and scoring
+    # logic, this Celery entry point runs the single implementation in its own event
+    # loop — the same shape the fetch phase above already uses.
     try:
-        feed = session.query(FeedSource).filter(FeedSource.slug == feed_slug).first()
-        if not feed:
-            logger.error("feed_not_found", slug=feed_slug)
-            return {"status": "error", "message": "Feed not found in DB"}
-
-        # ThreatFox has ~57k IOCs; use larger batch size to complete within timeout
-        batch_size = 30 if feed_slug == "threatfox" else 30
-        count = ingest_iocs_sync(session, feed, iocs, batch_size=batch_size)
-        # ingest_iocs_sync commits after each chunk internally;
-        # a final commit here ensures any trailing flush is persisted.
-        session.commit()
-
-        logger.info("sync_feed_complete", feed=feed_slug, count=count)
-        return {"status": "success", "iocs_ingested": count}
-
+        count = asyncio.run(_ingest_async(feed_slug, iocs))
     except Exception as e:
-        session.rollback()
         logger.error("feed_ingestion_db_error", feed=feed_slug, error=str(e))
         _mark_feed_failed(feed_slug, str(e))
         return {"status": "error", "message": str(e)}
-    finally:
-        session.close()
+
+    if count is None:
+        logger.error("feed_not_found", slug=feed_slug)
+        return {"status": "error", "message": "Feed not found in DB"}
+
+    logger.info("sync_feed_complete", feed=feed_slug, count=count)
+    return {"status": "success", "iocs_ingested": count}
+
+
+async def _ingest_async(feed_slug: str, iocs: list) -> Optional[int]:
+    """Ingest via the async path, in a fresh async session.
+
+    Returns the ingested count, or None if the feed row is missing.
+    """
+    from sqlalchemy import select
+
+    from app.database import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(FeedSource).where(FeedSource.slug == feed_slug)
+        )
+        feed = result.scalar_one_or_none()
+        if not feed:
+            return None
+        # ingest_iocs commits per chunk internally; the trailing commit persists
+        # the final status update it makes to the feed row.
+        count = await ingest_iocs(session, feed, iocs)
+        await session.commit()
+        return count
 
 
 # Seconds between each feed dispatch to avoid running all feeds simultaneously

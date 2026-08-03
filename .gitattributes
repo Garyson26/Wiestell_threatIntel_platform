@@ -1,0 +1,46 @@
+# Line-ending policy.
+#
+# WHY THIS FILE EXISTS. Development happens on Windows with `core.autocrlf=true`,
+# so text files are checked out with CRLF. That is harmless for Python and
+# TypeScript, but fatal for a shell script that runs inside a Linux container:
+# the shebang becomes `#!/bin/bash\r`, the kernel looks for an interpreter
+# literally named `bash\r`, and the container dies with the famously unhelpful
+#
+#     exec ./start.sh: no such file or directory
+#
+# which names the script rather than the interpreter. `backend/start.sh` was in
+# exactly that state — `docker compose up backend` could never start from a
+# Windows checkout, and the container crashlooped with exit 255. Found 2026-07-30
+# while building the local Docker harness.
+#
+# Forcing eol=lf makes the working-tree copy LF regardless of core.autocrlf, so a
+# fresh clone on Windows produces a script the container can execute.
+
+# Default: let git decide what is text and normalise to LF in the repository.
+* text=auto
+
+# Anything executed by a Linux shell must be LF in the working tree too.
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.Dockerfile text eol=lf
+.dockerignore text eol=lf
+
+# Files consumed by Linux-hosted CDNs and platforms.
+_headers text eol=lf
+robots.txt text eol=lf
+
+# Windows-only scripts keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary — never touch.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.mmdb binary
+*.pdf binary
+*.woff binary
+*.woff2 binary

@@ -4,12 +4,13 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Column, String, Integer, Text, DateTime, Index,
+    Column, String, Integer, Text, Index,
     UniqueConstraint, JSON
 )
 from sqlalchemy.orm import relationship
 
 from app.database import Base
+from app.models.types import NaiveUTCDateTime
 
 
 class IOC(Base):
@@ -20,15 +21,14 @@ class IOC(Base):
     value = Column(Text, nullable=False)
     threat_score = Column(Integer, default=0)  # 0-100
     confidence = Column(Integer, default=0)     # 0-100
-    first_seen = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
-    last_seen = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    first_seen = Column(NaiveUTCDateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    last_seen = Column(NaiveUTCDateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     sighting_count = Column(Integer, default=1)
     tags = Column(JSON, default=list)
     metadata_ = Column("metadata", JSON, default=dict)
     mitre_techniques = Column(JSON, default=list)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
-    updated_at = Column(
-        DateTime,
+    created_at = Column(NaiveUTCDateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(NaiveUTCDateTime,
         default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
         onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
     )

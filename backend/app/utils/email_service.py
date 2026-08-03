@@ -1,12 +1,35 @@
 """Email service for sending OTP and notifications."""
 
+import html
 import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from typing import Optional
 import ssl
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from typing import Optional
+
+import structlog
 
 from app.config import settings
+
+logger = structlog.get_logger()
+
+
+def _smtp_configured() -> bool:
+    return bool(settings.SMTP_HOST and settings.EMAIL_USER and settings.EMAIL_PASSWORD)
+
+
+def _send(to_email: str, message: MIMEMultipart) -> None:
+    """Deliver a prepared message over SMTP (SSL or STARTTLS with cert checks)."""
+    context = ssl.create_default_context()
+    if settings.SMTP_SECURE and settings.SMTP_PORT == 465:
+        with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, context=context) as server:
+            server.login(settings.EMAIL_USER, settings.EMAIL_PASSWORD)
+            server.sendmail(settings.EMAIL_USER, to_email, message.as_string())
+    else:
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
+            server.starttls(context=context)
+            server.login(settings.EMAIL_USER, settings.EMAIL_PASSWORD)
+            server.sendmail(settings.EMAIL_USER, to_email, message.as_string())
 
 
 def send_otp_email(to_email: str, otp: str, username: str, is_password_reset: bool = False) -> bool:
@@ -22,10 +45,18 @@ def send_otp_email(to_email: str, otp: str, username: str, is_password_reset: bo
     Returns:
         True if email sent successfully, False otherwise
     """
+    if not _smtp_configured():
+        logger.error("smtp_not_configured", hint="Set SMTP_HOST, EMAIL_USER and EMAIL_PASSWORD")
+        return False
+
+    # The username is rendered inside an HTML email — escape it so a crafted
+    # display name cannot inject markup into the message body.
+    username = html.escape(username or "", quote=True)
+
     try:
         # Create message
         message = MIMEMultipart("alternative")
-        
+
         if is_password_reset:
             message["Subject"] = "Wiestell - Password Reset OTP"
             purpose = "password reset"
@@ -144,25 +175,15 @@ Wiestell Security Team
         message.attach(part1)
         message.attach(part2)
 
-        # Send email
-        if settings.SMTP_SECURE and settings.SMTP_PORT == 465:
-            # SSL connection
-            context = ssl.create_default_context()
-            with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, context=context) as server:
-                server.login(settings.EMAIL_USER, settings.EMAIL_PASSWORD)
-                server.sendmail(settings.EMAIL_USER, to_email, message.as_string())
-        else:
-            # TLS connection
-            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
-                server.starttls()
-                server.login(settings.EMAIL_USER, settings.EMAIL_PASSWORD)
-                server.sendmail(settings.EMAIL_USER, to_email, message.as_string())
+        _send(to_email, message)
 
-        print(f"✓ OTP email sent successfully to {to_email}")
+        # The recipient address and the code itself are deliberately absent from
+        # the log line — an OTP in a log file is a bypass of the second factor.
+        logger.info("otp_email_sent", is_password_reset=is_password_reset)
         return True
 
     except Exception as e:
-        print(f"✗ Failed to send OTP email to {to_email}: {str(e)}")
+        logger.error("otp_email_failed", error_type=type(e).__name__, error=str(e))
         return False
 
 
@@ -178,6 +199,10 @@ def send_notification_email(to_email: str, subject: str, message: str) -> bool:
     Returns:
         True if email sent successfully, False otherwise
     """
+    if not _smtp_configured():
+        logger.error("smtp_not_configured")
+        return False
+
     try:
         msg = MIMEMultipart()
         msg["Subject"] = subject
@@ -186,22 +211,13 @@ def send_notification_email(to_email: str, subject: str, message: str) -> bool:
 
         msg.attach(MIMEText(message, "plain"))
 
-        if settings.SMTP_SECURE and settings.SMTP_PORT == 465:
-            context = ssl.create_default_context()
-            with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, context=context) as server:
-                server.login(settings.EMAIL_USER, settings.EMAIL_PASSWORD)
-                server.sendmail(settings.EMAIL_USER, to_email, msg.as_string())
-        else:
-            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
-                server.starttls()
-                server.login(settings.EMAIL_USER, settings.EMAIL_PASSWORD)
-                server.sendmail(settings.EMAIL_USER, to_email, msg.as_string())
+        _send(to_email, msg)
 
-        print(f"✓ Notification email sent successfully to {to_email}")
+        logger.info("notification_email_sent")
         return True
 
     except Exception as e:
-        print(f"✗ Failed to send notification email to {to_email}: {str(e)}")
+        logger.error("notification_email_failed", error_type=type(e).__name__, error=str(e))
         return False
 
 
@@ -227,13 +243,22 @@ def send_error_alert_email(
     Returns:
         True if email sent successfully, False otherwise
     """
-    if not settings.ENABLE_ERROR_EMAILS:
+    if not settings.ENABLE_ERROR_EMAILS or not settings.ADMIN_EMAIL or not _smtp_configured():
         return False
-        
+
+    # Diagnostics are embedded in an HTML email; escape them so error text
+    # containing markup cannot inject content into the admin's mail client.
+    error_type = html.escape(str(error_type))
+    error_message = html.escape(str(error_message))
+    endpoint = html.escape(str(endpoint))
+    method = html.escape(str(method))
+    traceback_info = html.escape(str(traceback_info))
+    safe_request_data = html.escape(str(request_data)) if request_data else None
+
     try:
         from datetime import datetime
         timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-        
+
         # Create message
         message = MIMEMultipart("alternative")
         message["Subject"] = f"🚨 Wiestell API Error: {error_type}"
@@ -358,7 +383,7 @@ This is an automated alert from Wiestell API monitoring.
             <pre style="margin: 10px 0; white-space: pre-wrap;">{traceback_info}</pre>
         </div>
         
-        {f'<div class="info-row"><span class="label">Request Data:</span><br><pre style="margin: 10px 0; color: #9ca3af;">{request_data}</pre></div>' if request_data else ''}
+        {f'<div class="info-row"><span class="label">Request Data:</span><br><pre style="margin: 10px 0; color: #9ca3af;">{safe_request_data}</pre></div>' if safe_request_data else ''}
         
         <div class="footer">
             Wiestell Threat Intelligence Platform - Automated Error Monitoring<br>
@@ -375,22 +400,12 @@ This is an automated alert from Wiestell API monitoring.
         message.attach(part1)
         message.attach(part2)
 
-        # Send email
-        if settings.SMTP_SECURE and settings.SMTP_PORT == 465:
-            context = ssl.create_default_context()
-            with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, context=context) as server:
-                server.login(settings.EMAIL_USER, settings.EMAIL_PASSWORD)
-                server.sendmail(settings.EMAIL_USER, settings.ADMIN_EMAIL, message.as_string())
-        else:
-            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
-                server.starttls()
-                server.login(settings.EMAIL_USER, settings.EMAIL_PASSWORD)
-                server.sendmail(settings.EMAIL_USER, settings.ADMIN_EMAIL, message.as_string())
+        _send(settings.ADMIN_EMAIL, message)
 
-        print(f"✓ Error alert email sent to {settings.ADMIN_EMAIL}")
+        logger.info("error_alert_email_sent")
         return True
 
     except Exception as e:
         # Don't let email failures cause additional errors
-        print(f"✗ Failed to send error alert email: {str(e)}")
+        logger.warning("error_alert_email_failed", error_type=type(e).__name__)
         return False

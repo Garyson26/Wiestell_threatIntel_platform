@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import structlog
 
 from app.feeds.base import BaseFeed
+from app.utils.sanitize import redact_secrets
 
 logger = structlog.get_logger()
 
@@ -34,6 +35,22 @@ class ThreatFoxFeed(BaseFeed):
     description = "ThreatFox shares IOCs associated with malware families"
     requires_api_key = False  # Optional - works without key but limited features
     api_key_env = "THREATFOX_API_KEY"
+    rolling_window = True
+
+    # MEASURED 2026-07-30 across all four CSV exports: 2,486 IOCs spanning
+    #   2026-02-04 00:02:27Z .. 2026-07-30 13:05:05Z  =  176d 13h  (4237.04 hours)
+    #
+    # Two things that measurement corrected. First, the endpoints are named
+    # ".../recent/" but return essentially the whole non-expired catalogue, not a
+    # short window. Second, 176.5 days is just under the 180-day expiry
+    # (_MAX_IOC_AGE_DAYS) — so the lower bound is set by ThreatFox's *expiry
+    # policy*, not by a "recent" cutoff.
+    #
+    # Consequence, stated plainly: with a ~706x margin against a 6-hour interval,
+    # the continuity check will effectively never fire for this feed. It is retained
+    # because it is cheap, cannot raise, and would catch abuse.ch narrowing the
+    # export — not because this feed is at risk today.
+    _MEASURED_WINDOW_HOURS = 4237.04
     default_sync_frequency = 1800
 
     # ── Free export endpoints — no auth, validated live April 2026 ──────────
@@ -68,7 +85,7 @@ class ThreatFoxFeed(BaseFeed):
                 results["api"] = resp.json()
                 logger.info("threatfox_api_fetched")
             except Exception as exc:
-                logger.warning("threatfox_api_failed", error=str(exc))
+                logger.warning("threatfox_api_failed", error=redact_secrets(exc))
                 results["api"] = {}
         else:
             # API works without auth for basic queries
@@ -81,7 +98,7 @@ class ThreatFoxFeed(BaseFeed):
                 results["api"] = resp.json()
                 logger.info("threatfox_api_fetched", auth="none")
             except Exception as exc:
-                logger.warning("threatfox_api_failed_no_auth", error=str(exc))
+                logger.warning("threatfox_api_failed_no_auth", error=redact_secrets(exc))
                 results["api"] = {}
 
         # 2–5. Free CSV exports — no auth required
@@ -97,7 +114,7 @@ class ThreatFoxFeed(BaseFeed):
                 results[key] = resp.text
                 logger.info("threatfox_export_fetched", source=key)
             except Exception as exc:
-                logger.warning("threatfox_export_failed", source=key, error=str(exc))
+                logger.warning("threatfox_export_failed", source=key, error=redact_secrets(exc))
                 results[key] = ""
 
         # 6. Hostfile — DNS domains, no auth required
@@ -107,7 +124,7 @@ class ThreatFoxFeed(BaseFeed):
             results["hostfile"] = resp.text
             logger.info("threatfox_hostfile_fetched")
         except Exception as exc:
-            logger.warning("threatfox_hostfile_failed", error=str(exc))
+            logger.warning("threatfox_hostfile_failed", error=redact_secrets(exc))
             results["hostfile"] = ""
 
         return results
@@ -120,10 +137,16 @@ class ThreatFoxFeed(BaseFeed):
 
         iocs.extend(self._parse_api(raw_data.get("api", {}), seen))
 
+        # Every export is a slice of the same rolling window, so accumulate
+        # timestamps across all of them and record the union once.
+        window_timestamps: List[Optional[datetime]] = []
         for key in ("sha256_csv", "md5_csv", "url_csv", "ip_port_csv"):   # ← added ip_port_csv
             csv_text = raw_data.get(key, "")
             if csv_text:
-                iocs.extend(self._parse_export_csv(csv_text, seen))
+                iocs.extend(self._parse_export_csv(
+                    csv_text, seen, window_timestamps=window_timestamps
+                ))
+        self.record_observed_window(window_timestamps)
 
         hostfile_text = raw_data.get("hostfile", "")
         if hostfile_text:
@@ -198,7 +221,10 @@ class ThreatFoxFeed(BaseFeed):
         return iocs
 
     def _parse_export_csv(
-        self, raw_text: str, seen: set
+        self,
+        raw_text: str,
+        seen: set,
+        window_timestamps: Optional[List[Optional[datetime]]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Parse ThreatFox bulk export CSV files (sha256, md5, url exports).
@@ -238,7 +264,13 @@ class ThreatFoxFeed(BaseFeed):
 
                 first_seen = _parse_datetime(row.get("first_seen_utc"))
                 if _is_expired(first_seen):
+                    # Recorded *after* the expiry filter on purpose: a record we
+                    # deliberately excluded for age was not lost to a sync gap, so
+                    # counting it would mask real discontinuities behind the
+                    # 180-day cutoff.
                     continue
+                if window_timestamps is not None:
+                    window_timestamps.append(first_seen)
 
                 dedup_key = f"{ioc_type}:{ioc_value}"
                 if dedup_key in seen:

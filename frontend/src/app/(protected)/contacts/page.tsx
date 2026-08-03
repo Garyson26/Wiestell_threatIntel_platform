@@ -4,25 +4,8 @@ import { useState, useEffect } from 'react';
 import AdminRoute from '@/components/auth/AdminRoute';
 import { Mail, Calendar, User, MessageSquare, CheckCircle, Clock, AlertCircle, RefreshCw } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-
-interface Contact {
-  id: string;
-  name: string;
-  email: string;
-  reason: string;
-  ioc: string | null;
-  message: string;
-  is_resolved: string;
-  created_at: string;
-  resolved_at: string | null;
-}
-
-interface ContactListResponse {
-  contacts: Contact[];
-  total: number;
-  page: number;
-  page_size: number;
-}
+import { getContactMessages, resolveContactMessage } from '@/lib/api';
+import type { ContactMessage as Contact } from '@/lib/types';
 
 const reasonLabels: Record<string, string> = {
   'feed-issue': 'Feed Issue',
@@ -58,27 +41,17 @@ export default function ContactMessagesPage() {
       setLoading(true);
       setError(null);
       
-      const params = new URLSearchParams({
-        page: page.toString(),
-        page_size: '50',
-      });
-      
+      // Routed through the shared API client so the admin bearer token is sent.
+      const params: Record<string, string> = { page: page.toString(), page_size: '50' };
       if (filter !== 'all') {
-        params.append('status', filter);
+        params.status = filter;
       }
 
-      const response = await fetch(`/api/v1/contact/messages?${params}`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch contacts');
-      }
-
-      const data: ContactListResponse = await response.json();
+      const data = await getContactMessages(params);
       setContacts(data.contacts);
       setTotal(data.total);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load contacts');
-      console.error('Error fetching contacts:', err);
     } finally {
       setLoading(false);
     }
@@ -90,22 +63,13 @@ export default function ContactMessagesPage() {
 
   const handleResolve = async (contactId: string) => {
     try {
-      const response = await fetch(`/api/v1/contact/${contactId}/resolve`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notes: 'Resolved from admin panel' }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to resolve contact');
-      }
+      await resolveContactMessage(contactId, 'Resolved from admin panel');
 
       // Refresh the list
       fetchContacts();
       setSelectedContact(null);
     } catch (err) {
-      console.error('Error resolving contact:', err);
-      alert('Failed to resolve contact');
+      setError(err instanceof Error ? err.message : 'Failed to resolve contact');
     }
   };
 
