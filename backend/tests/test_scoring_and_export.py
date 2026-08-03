@@ -658,6 +658,158 @@ class TestCachedMeanRowsAreCorrectedOnRescore:
             {"details": {"abuseipdb": {"score": 0}, "otx": {"pulse_count": 0}}}) is None
 
 
+class TestBothConsumersOfTheStoredAggregate:
+    """`aggregate_score` feeds TWO terms, and the §6b change initially fixed only one.
+
+    Found 2026-07-31 by asking whether the field is read anywhere besides the reputation
+    fallback. It is: `_risk_reputation_aggregate` is the enrichment-risk scorer for the
+    reputation signal. So a legacy row drove the reputation term from the corrected max
+    and the risk term from the stale mean - one payload, two terms, two different
+    numbers. Neither is vestigial; both must read through the recomputation.
+    """
+
+    @staticmethod
+    def _legacy_mean_row(abuse=100, pulses=1):
+        scores = [abuse, min(pulses * 10, 100)]
+        return {"source": "reputation", "assessed": ["aggregate_score"], "data": {
+            "aggregate_score": int(sum(scores) / len(scores)),
+            "sources_checked": 2, "sources_flagged": 2,
+            "details": {"abuseipdb": {"score": abuse, "reports": 12},
+                        "otx": {"pulse_count": pulses}},
+            "providers": [
+                {"name": "abuseipdb", "supports_type": True, "configured": True,
+                 "responded": True, "verdict": "malicious", "corroboration": 12},
+                {"name": "otx", "supports_type": True, "configured": True,
+                 "responded": True, "verdict": "malicious", "corroboration": pulses}]}}
+
+    def test_the_risk_term_also_reads_the_corrected_value(self):
+        """A stored mean of 55 scores 1 point; the correct 100 scores 3."""
+        from app.services.scoring_engine import _risk_reputation_aggregate
+
+        row = self._legacy_mean_row()
+        assert row["data"]["aggregate_score"] == 55, "fixture is not a legacy mean row"
+        assert _risk_reputation_aggregate(row["data"]) == 3, (
+            "the enrichment-risk scorer is still reading the stale stored mean, so one "
+            "payload drives the reputation and risk terms from different numbers"
+        )
+
+    def test_both_terms_agree_on_the_same_payload(self):
+        from app.services.scoring_engine import (
+            _reputation_from_enrichment, _risk_reputation_aggregate,
+        )
+
+        row = self._legacy_mean_row()
+        assert _reputation_from_enrichment([row], True) == 100.0
+        # 3 points is the band for > 70, i.e. both terms saw 100 rather than 55.
+        assert _risk_reputation_aggregate(row["data"]) == 3
+
+    def test_the_risk_term_still_handles_a_missing_or_malformed_aggregate(self):
+        """The recomputation must not become a new way to raise."""
+        from app.services.scoring_engine import _risk_reputation_aggregate
+
+        assert _risk_reputation_aggregate({}) == 0
+        assert _risk_reputation_aggregate({"aggregate_score": "high"}) == 0
+        assert _risk_reputation_aggregate({"aggregate_score": True}) == 0
+        # Malformed details, valid stored score: the stored value still applies.
+        assert _risk_reputation_aggregate(
+            {"aggregate_score": 90, "details": "nonsense"}) == 3
+
+
+class TestTheDisplayedAggregateMatchesTheScore:
+    """The UI rendered the stored value, so it contradicted the badge beside it.
+
+    `(analytics)/ioc-detail/[id]` and `(protected)/ioc/[id]` both render
+    `aggregate_score` in a reputation table next to the threat-score badge. On a row
+    written before §6b that is a mean, so an analyst read 55 beside a badge computed
+    from 100 - the interface displaying the number the change had just decided was
+    wrong.
+    """
+
+    @staticmethod
+    def _row(abuse=100, pulses=1, stored=None):
+        scores = [abuse, min(pulses * 10, 100)]
+        return {"aggregate_score": (int(sum(scores) / len(scores))
+                                    if stored is None else stored),
+                "sources_checked": 2, "sources_flagged": 2,
+                "details": {"abuseipdb": {"score": abuse, "reports": 12},
+                            "otx": {"pulse_count": pulses}}}
+
+    def test_a_legacy_mean_is_displayed_as_the_corrected_max(self):
+        from app.services.scoring_engine import normalize_enrichment_for_display
+
+        out = normalize_enrichment_for_display("reputation", self._row())
+        assert out["aggregate_score"] == 100
+
+    def test_the_original_payload_is_not_mutated(self):
+        """It is a stored ORM attribute; mutating it would dirty the session."""
+        from app.services.scoring_engine import normalize_enrichment_for_display
+
+        row = self._row()
+        normalize_enrichment_for_display("reputation", row)
+        assert row["aggregate_score"] == 55, "the stored payload was mutated in place"
+
+    def test_other_sources_pass_through_unchanged(self):
+        from app.services.scoring_engine import normalize_enrichment_for_display
+
+        for source in ("geoip", "whois", "dns", "nvd", "malwarebazaar"):
+            payload = {"aggregate_score": 1, "details": {"abuseipdb": {"score": 99}}}
+            assert normalize_enrichment_for_display(source, payload) is payload
+
+    def test_a_correct_stored_value_is_left_alone(self):
+        """Rows written after §6b already hold the max; identity, not a copy."""
+        from app.services.scoring_engine import normalize_enrichment_for_display
+
+        row = self._row(stored=100)
+        assert normalize_enrichment_for_display("reputation", row) is row
+
+    def test_it_never_lowers_the_displayed_value(self):
+        from app.services.scoring_engine import normalize_enrichment_for_display
+
+        for abuse, pulses in [(100, 1), (40, 2), (90, 10), (0, 7), (55, 0)]:
+            row = self._row(abuse, pulses)
+            out = normalize_enrichment_for_display("reputation", row)
+            assert out["aggregate_score"] >= row["aggregate_score"]
+
+    def test_malformed_or_absent_details_pass_through(self):
+        from app.services.scoring_engine import normalize_enrichment_for_display
+
+        for payload in ({"aggregate_score": 55},
+                        {"aggregate_score": 55, "details": None},
+                        {"aggregate_score": 55, "details": "x"},
+                        {"aggregate_score": 55, "details": {}}):
+            assert normalize_enrichment_for_display(
+                "reputation", payload) is payload
+
+    def test_non_mapping_payloads_do_not_raise(self):
+        from app.services.scoring_engine import normalize_enrichment_for_display
+
+        for payload in (None, [], "text", 7):
+            assert normalize_enrichment_for_display("reputation", payload) is payload
+
+    def test_every_enrichment_serialiser_applies_it(self):
+        """Guards the wiring, not the function.
+
+        Four sites serialise enrichment rows to clients (three in api/ioc.py, one in
+        api/ai.py). A new one added without the normaliser reintroduces the
+        contradiction on that surface only, which is the hardest kind to notice.
+        """
+        import pathlib
+        import re
+
+        root = pathlib.Path(__file__).resolve().parents[1] / "app" / "api"
+        offenders = []
+        for path in root.glob("*.py"):
+            for num, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if re.search(r'"data":\s*e\.data', line):
+                    offenders.append(f"{path.name}:{num}")
+        assert not offenders, (
+            "these sites serialise a raw enrichment payload, so a legacy reputation row "
+            "would display a mean beside a badge computed from the max: "
+            + repr(offenders)
+            + ". Wrap with scoring_engine.normalize_enrichment_for_display."
+        )
+
+
 class TestReputationEvidenceModel:
     """0.0 requires positive evidence of harmlessness, not an absence of hits.
 
@@ -1692,6 +1844,7 @@ class TestScoringModelVersion:
         "_risk_kev_membership", "_risk_exploit_available", "_risk_exploit_references",
         "_risk_sample_present", "_risk_vendor_detections",
         "_reputation_from_malwarebazaar", "_strongest_provider_score",
+        "normalize_enrichment_for_display",
         "_risk_yara_rules", "_risk_clamav", "_risk_malware_families",
     )
 

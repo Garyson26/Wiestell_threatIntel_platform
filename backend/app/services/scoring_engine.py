@@ -161,13 +161,22 @@ NEUTRAL_REPUTATION = 30.0
 #      pulse maps to 10, below NEUTRAL_REPUTATION, and an AbuseIPDB confidence of 5
 #      maps to 5 — so a positive verdict can still read safer than silence. Blocked on
 #      the pulse-count distribution; must cover both providers.
-SCORING_MODEL_VERSION = 8
+#   9  2026-07-31  the §6b max reaches the OTHER consumer of `aggregate_score`.
+#      `_risk_reputation_aggregate` — the enrichment-risk scorer for the reputation
+#      signal — was still reading the stored value, so on a row written before §6b the
+#      reputation term used the corrected max while the risk term used the stale mean:
+#      one payload driving two terms from two different numbers. A mean of 55 scored 1
+#      point where the correct 100 scores 3. Found by asking whether the field is read
+#      anywhere besides the reputation fallback; it is, and neither read is vestigial.
+#      Affects legacy rows of every IOC type that carry a reputation payload with
+#      `details`. No effect on rows written after §6b, where stored and recomputed agree.
+SCORING_MODEL_VERSION = 9
 
 # SHA-256 over the score-determining code, docstrings and formatting excluded. Moves
 # together with SCORING_MODEL_VERSION in review; see
 # tests/test_scoring_and_export.py::TestScoringModelVersion for the guard and for why
 # it fails rather than auto-bumping.
-SCORING_MODEL_FINGERPRINT = "af79e122d6cca89c91d975b412ac8ce5"
+SCORING_MODEL_FINGERPRINT = "a971fb80fcb13a3b6315b2793b21e84d"
 
 
 def _weights_for(ioc_type: Optional[str]) -> Dict[str, float]:
@@ -405,6 +414,34 @@ def _strongest_provider_score(data: Mapping) -> Optional[float]:
             candidates.append(float(min(float(pulses) * 10.0, 100.0)))
 
     return max(candidates) if candidates else None
+
+
+def normalize_enrichment_for_display(source: str, data: Any) -> Any:
+    """Return ``data`` with ``aggregate_score`` corrected, for serialisation to clients.
+
+    The IOC detail pages render ``aggregate_score`` in a reputation table beside the
+    threat-score badge. Since the aggregator became a max (§6b) the *stored* value on any
+    row written earlier is a mean, so without this an analyst reads 55 next to a badge
+    computed from 100 — the UI contradicting the score, and displaying the exact number
+    the change decided was wrong.
+
+    Corrects the displayed copy rather than the row: rewriting stored enrichment payloads
+    would be a data migration, and this keeps one implementation of the rule instead of a
+    second copy in TypeScript. Non-reputation payloads and anything without usable
+    ``details`` pass through untouched, and the original dict is never mutated.
+    """
+    if source != "reputation" or not isinstance(data, Mapping):
+        return data
+    strongest = _strongest_provider_score(data)
+    if strongest is None:
+        return data
+    stored = data.get("aggregate_score")
+    if isinstance(stored, (int, float)) and not isinstance(stored, bool) \
+            and float(stored) >= strongest:
+        return data
+    corrected = dict(data)
+    corrected["aggregate_score"] = int(strongest)
+    return corrected
 
 
 def _reputation_from_enrichment(
@@ -731,9 +768,22 @@ def _risk_fast_flux(data: Mapping) -> int:
 
 
 def _risk_reputation_aggregate(data: Mapping) -> int:
+    """Reputation as an enrichment-risk signal.
+
+    Reads through :func:`_strongest_provider_score` for the same reason
+    :func:`_reputation_from_enrichment` does: ``aggregate_score`` is a stored field
+    written under whichever aggregator was live at the time, and rows are never
+    refreshed. This is the **second** consumer of that field — missing it in the
+    2026-07-31 §6b change left the risk term reading a stale mean while the reputation
+    term read the corrected max, so one payload drove two terms with two different
+    numbers. A legacy mean of 55 scores 1 point here where the correct 100 scores 3.
+    """
     score = data.get("aggregate_score", 0)
     if not isinstance(score, (int, float)) or isinstance(score, bool):
-        return 0
+        score = 0
+    strongest = _strongest_provider_score(data)
+    if strongest is not None:
+        score = max(float(score), strongest)
     if score > 70:
         return 3
     if score > 40:

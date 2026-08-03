@@ -21,6 +21,9 @@ from app.schemas.ioc import (
     IOCCreate, IOCResponse, IOCDetailResponse, IOCSearchRequest,
     IOCBulkRequest, IOCExportRequest, IOCTagUpdate, PaginatedIOCResponse,
 )
+from app.services.scoring_engine import (  # noqa: F401
+    normalize_enrichment_for_display,
+)
 from app.services.scoring_engine import calculate_threat_score
 from app.utils.ioc_validator import detect_ioc_type, validate_ioc, normalize_ioc
 from app.utils.stix_converter import export_stix_json
@@ -108,7 +111,9 @@ async def lookup_ioc(
     relationships = rels_result.scalars().all()
 
     enrichments = [
-        {"source": e.source, "data": e.data, "enriched_at": e.enriched_at.isoformat()}
+        {"source": e.source,
+         "data": normalize_enrichment_for_display(e.source, e.data),
+         "enriched_at": e.enriched_at.isoformat()}
         for e in ioc.enrichments
     ]
     sources = [
@@ -283,7 +288,9 @@ async def get_ioc(ioc_id: str, db: AsyncSession = Depends(get_db)):
     relationships = rels.scalars().all()
 
     enrichments = [
-        {"source": e.source, "data": e.data, "enriched_at": e.enriched_at.isoformat()}
+        {"source": e.source,
+         "data": normalize_enrichment_for_display(e.source, e.data),
+         "enriched_at": e.enriched_at.isoformat()}
         for e in ioc.enrichments
     ]
 
@@ -667,7 +674,8 @@ async def export_iocs(request: IOCExportRequest, db: AsyncSession = Depends(get_
             "created_at": ioc.created_at.isoformat() if ioc.created_at else None,
             "updated_at": ioc.updated_at.isoformat() if ioc.updated_at else None,
             "enrichments": [
-                {"source": e.source, "data": e.data}
+                {"source": e.source,
+                 "data": normalize_enrichment_for_display(e.source, e.data)}
                 for e in ioc.enrichments
             ] if ioc.enrichments else [],
         }

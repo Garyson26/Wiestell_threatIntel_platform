@@ -341,7 +341,13 @@ Password → OTP → JWT. After this review the flow enforces: purpose-bound sin
 
     **Not fixed: this is reputation calibration and needs sign-off** (Spec 5 §6, alongside the hash proposal and the `MIN_ASSESSED_POINTS = 3` revisit). Owner direction 2026-07-31: **rescale rather than floor.** Flooring at `NEUTRAL_REPUTATION` fixes the inversion but flattens 1, 2 and 3 pulses to one value; rescaling fixes it and keeps pulse count monotonic. Shape: `NEUTRAL + min(pulse_count * k, 100 - NEUTRAL)`, with `k` set from the observed pulse-count distribution rather than picked.
 
-    **Blocked on data for `k`.** The distribution cannot be derived here — there is no OTX key in this environment and no production access. It needs either an owner query against the `enrichments` table (`JSON_EXTRACT(data, '$.details.otx.pulse_count')` where `source = 'reputation'`) or a key to sample with. Setting `k` by intuition is the thing the owner asked to avoid.
+    **`k` wants data, with a pre-committed fallback so it cannot block.** The query is `JSON_EXTRACT(data, '$.details.otx.pulse_count')` over `enrichments` where `source = 'reputation'`. But the sample may well be too thin to calibrate anything: enrichment has only ever selected never-enriched IOCs at ≤100 per run against a corpus of tens of thousands, and the OTX-with-a-pulse subset is a slice of that slice.
+
+    **Decided in advance, 2026-07-31, so the section does not stall on a thin query:**
+
+    - **Trust threshold: 200 rows with `pulse_count >= 1`.** Below that, stop treating the sample as a distribution. Rationale: `k` only has to place the 1–2 pulse case sensibly, so what is needed is a usable estimate of the low quantiles; a few dozen rows all clustered at 1–2 tell you the mode and nothing about the spread, which is precisely the shape that invites over-fitting to noise.
+    - **Fallback `k = 20`**, from a stated judgement rather than from the data: **five pulses should read as certainly malicious.** Five independent write-ups is a well-documented indicator, and `NEUTRAL + min(pulses * 20, 70)` puts 1 pulse at 50, 2 at 70, 3 at 90 and 5+ at the 100 ceiling — so a single pulse sits meaningfully above the 30.0 neutral without being treated as conclusive, and monotonicity holds across the range that actually occurs. Anchored the same way `MIN_ASSESSED_POINTS = 3` was: a judgement stated as a judgement, with the reasoning recorded so it can be argued with rather than reverse-engineered.
+    - Either way, **record which path was taken** in the version-history entry, so a later reader knows whether `k` is measured or asserted.
 
     **Blast radius is larger than anything in Sections 1–2** — it moves reputation for *every* OTX-flagged indicator across all four types, at a 30% weight, so it must be measured before sign-off rather than argued.
 
