@@ -17,7 +17,22 @@ services:
       pip install -r requirements.txt
       python download_geolite2.py || echo "⚠️  GeoLite2 download failed - continuing..."
       alembic upgrade head || echo "⚠️  Database migration failed - continuing..."
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --log-level info
+    # --workers 1 is DELIBERATE AND LOAD-BEARING, not a throughput oversight. uvicorn
+    # already defaults to a single worker, so this is declared rather than relied upon:
+    # four separate conclusions elsewhere assume one process per instance, and raising
+    # this silently invalidates all of them. See tests/test_process_model.py.
+    #
+    #   1. the in-memory rate limiter becomes N independent limiters, so the effective
+    #      budget is N x AUTH_RATE_LIMIT_MAX (SECURITY_REVIEW.md residual risk #5);
+    #   2. the database pool is per process, so pool_size=2 + max_overflow=3 becomes
+    #      5N connections against a SHARED Hostinger account allowance;
+    #   3. enrichment_engine's module-level semaphore bounds concurrency per process, so
+    #      the real ceiling becomes 5N third-party calls in flight;
+    #   4. any in-process cache would be N caches serving inconsistent reads.
+    #
+    # If throughput ever requires more workers, all four have to be revisited together —
+    # Redis for (1) and (4), a smaller pool_size for (2), and a shared bound for (3).
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --log-level info --workers 1
     rootDir: backend
     envVars:
       - key: PYTHON_VERSION
