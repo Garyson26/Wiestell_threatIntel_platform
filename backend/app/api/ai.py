@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import rate_limit, require_analyst
 from app.database import get_db
+from app.services.scoring_engine import normalize_enrichment_for_display
 from app.models.ioc import IOC
 from app.models.report import Report
 from app.services.groq_service import groq_service
@@ -79,7 +80,9 @@ async def analyze_ioc(ioc_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="IOC not found")
 
     enrichment_data = [
-        {"source": e.source, "data": e.data, "enriched_at": str(e.enriched_at)}
+        {"source": e.source,
+         "data": normalize_enrichment_for_display(e.source, e.data),
+         "enriched_at": str(e.enriched_at)}
         for e in (ioc.enrichments or [])
     ]
 
