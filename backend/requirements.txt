@@ -46,10 +46,24 @@ structlog==24.4.0
 tenacity==9.0.0
 croniter==6.0.0
 jinja2==3.1.5             # fixes sandbox breakouts in <3.1.5
-weasyprint==63.1
+
+# REMOVED 2026-07-31 (owner decision): weasyprint==63.1 and pandas==2.2.3.
+#
+# Neither was imported anywhere in the codebase, and nothing generates a PDF at all -
+# verified by grep across the repo. So they were not "heavy imports to defer", they were
+# pure build and cold-start cost for capability that does not exist:
+#
+#   * weasyprint pulls cairo and pango as system libraries, on every build, against a
+#     500-minute pipeline budget, for a PDF export feature that has never been written;
+#   * pandas pulls numpy - the largest single install in this file - with no usage story
+#     at all. The "# CSV parsing" heading it sat under was aspirational: exports are built
+#     with the stdlib `csv` module in api/ioc.py.
+#
+# Add weasyprint back when PDF export is actually built. A heavy dependency for a
+# hypothetical feature costs every build and every cold start on a 512 MB instance.
+#
+# tests/test_phase5_performance.py::TestHeavyDependenciesAreUnused fails the moment
+# either package is imported, so re-adding one without also declaring it is caught.
 
 # AI
 groq>=0.13.0
-
-# CSV parsing
-pandas==2.2.3
