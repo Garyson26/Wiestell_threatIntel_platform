@@ -410,6 +410,54 @@ class TestReputationFromEnrichment:
         assert _base_reputation_score({"type": "cve"}, [_nvd(None)]) == NEUTRAL_REPUTATION
 
 
+class TestProviderAggregation:
+    """How `aggregate_score` combines providers. Audited 2026-07-31.
+
+    Reproduces `reputation_enricher.enrich`'s aggregation exactly:
+    `scores.append(...)` runs only inside the `> 0` branches, so the mean is over
+    *flagged* providers, and `aggregate_score = int(sum(scores) / len(scores))`.
+    """
+
+    @staticmethod
+    def _aggregate(abuse=None, pulses=None):
+        scores = []
+        if abuse is not None and abuse > 0:
+            scores.append(abuse)
+        if pulses is not None and pulses > 0:
+            scores.append(min(pulses * 10, 100))
+        return int(sum(scores) / len(scores)) if scores else 0
+
+    def test_a_silent_provider_is_excluded_from_the_mean(self):
+        """The correct half, pinned so it cannot regress.
+
+        If a silent provider were averaged in as a zero, AbuseIPDB at 100 with OTX
+        silent would read 50 — a strong verdict halved by an absence, which is the
+        defect the evidence model exists to prevent. It does not: silence appends
+        nothing. Anyone rewriting this aggregation must preserve that.
+        """
+        assert self._aggregate(abuse=100, pulses=None) == 100, "unconfigured diluted"
+        assert self._aggregate(abuse=100, pulses=0) == 100, "silence diluted"
+        assert self._aggregate(abuse=0, pulses=0) == 0, "no positives -> 0"
+
+    @pytest.mark.xfail(strict=True, reason=(
+        "PROJECT_SUMMARY.md §8 item 15: the mean is taken over incommensurable "
+        "scales. AbuseIPDB reports calibrated 0-100 confidence; OTX reports "
+        "pulse_count*10, so one pulse is 10. mean(100, 10) = 55 — an IP AbuseIPDB "
+        "rates 100/100 loses a bucket (high -> medium, -21 composite) because OTX "
+        "also flagged it once. Corroboration lowers the score. Fixed by rescaling "
+        "OTX in Spec 5 §6, which also fixes the below-neutral inversion; k must come "
+        "from the pulse-count distribution, which needs owner data. Deleting this "
+        "marker is the signal that the rescale landed."
+    ))
+    def test_a_weak_positive_does_not_drag_down_a_strong_one(self):
+        strong_alone = self._aggregate(abuse=100, pulses=None)
+        corroborated = self._aggregate(abuse=100, pulses=1)
+        assert corroborated >= strong_alone, (
+            f"AbuseIPDB 100 alone reads {strong_alone}, but with one corroborating "
+            f"OTX pulse it reads {corroborated}"
+        )
+
+
 class TestReputationEvidenceModel:
     """0.0 requires positive evidence of harmlessness, not an absence of hits.
 
