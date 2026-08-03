@@ -10,16 +10,25 @@ entirely. 300 queries × 0.1 ms = 30 ms and looks instant; the same 300 × 150 m
 45 seconds and times out. Counting statements is latency-independent, stable in CI
 and immune to a loaded developer machine.
 
-WHY SEVERAL OF THESE ARE xfail(strict=True). The ceilings describe the intended
-post-fix behaviour, and the fixes are not in this change set. `strict=True` means:
+THE xfail(strict=True) MARKERS ARE GONE, AND THAT WAS THE POINT. Three ceilings
+described intended post-fix behaviour while the N+1s were still live. `strict=True`
+meant the tests reported XFAIL — visibly expected, not mistaken for a broken suite —
+and the moment the endpoints were fixed they reported XPASS and **failed the run**,
+which is what prompted retiring the markers and locking the ceilings in. A plain
+`skip` would have stayed silent forever and the ceilings would never have become real.
 
-  * while the N+1 remains, the test reports XFAIL — visibly expected, not a
-    failure, and not something a reader mistakes for a broken suite;
-  * the moment someone fixes the endpoint, it reports XPASS and **fails the run**,
-    which is the prompt to delete the marker and lock the ceiling in.
+All three were retired on 2026-07-31 when Phase 5 landed the rewrites. Measured:
 
-That is the property a plain `skip` would not give: a skip stays silent forever and
-the ceiling never becomes real. Each marker names the work that retires it.
+  | Endpoint | Before | After |
+  |---|---|---|
+  | `/attack/matrix`            | 41 | 2 |
+  | `/attack/heatmap`           | 41 | 2 |
+  | `/dashboard/trends?days=30` | 60 | 3 |
+  | `/dashboard/stats`          |  3 | 3 (already aggregate-shaped) |
+
+The counts are now flat in the corpus and in `days` rather than proportional, which is
+the property worth guarding — `days` reaches 90 and the technique catalogue reaches the
+hundreds. Every ceiling below is a live assertion, so a reintroduced loop fails at once.
 """
 
 from __future__ import annotations
@@ -141,21 +150,14 @@ def _measure(counted_client, path):
 
 
 class TestAttackEndpointBudgets:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="N+1: attack.py::get_attack_matrix issues one COUNT per technique. "
-               "Retire this marker when it becomes a single GROUP BY.",
-    )
+    # Markers retired 2026-07-31: both endpoints now take one catalogue query plus one
+    # aggregate scan. Measured 41 -> 2 statements each. The ceilings below are live
+    # assertions rather than aspirations, so a reintroduced loop fails immediately.
     def test_attack_matrix_stays_under_five_statements(self, counted_client):
         response, counter = _measure(counted_client, "/api/v1/attack/matrix")
         assert response.status_code == 200, response.text
         assert counter.count <= 5, f"\n{counter.summary()}"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="N+1: attack.py::get_heatmap issues one COUNT per technique. "
-               "Retire this marker when it becomes a single GROUP BY.",
-    )
     def test_attack_heatmap_stays_under_five_statements(self, counted_client):
         response, counter = _measure(counted_client, "/api/v1/attack/heatmap")
         assert response.status_code == 200, response.text
@@ -163,12 +165,9 @@ class TestAttackEndpointBudgets:
 
 
 class TestDashboardEndpointBudgets:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="N+1: dashboard.py::get_trends issues 2 queries per day requested, "
-               "so days=30 is ~60. Retire when it becomes one GROUP BY over a date "
-               "expression.",
-    )
+    # Marker retired 2026-07-31: one GROUP BY over func.DATE with a conditional sum for
+    # the critical count. Measured 60 -> 3 statements at days=30, and now flat in `days`
+    # rather than 2n — the property worth having, since days can reach 90.
     def test_trends_30_days_stays_under_five_statements(self, counted_client):
         response, counter = _measure(
             counted_client, "/api/v1/dashboard/trends?days=30"
@@ -189,17 +188,47 @@ class TestDashboardEndpointBudgets:
 class TestBudgetHarnessItself:
     """The guard is only worth having if it would actually catch a regression."""
 
-    def test_the_counter_scales_with_the_corpus(self, counted_client, seeded):
-        """Proves the N+1 is real rather than a constant overhead.
+    def test_the_matrix_count_no_longer_scales_with_the_corpus(
+        self, counted_client, seeded
+    ):
+        """The property the Phase 5 rewrite buys, stated as an inequality.
 
-        The matrix endpoint's statement count must track the number of techniques,
-        which is what distinguishes an N+1 from a fixed set-up cost.
+        This asserted the *opposite* until 2026-07-31 — that the count tracked the
+        technique total — as proof the N+1 was real rather than a fixed set-up cost. The
+        N+1 is gone, so the assertion inverts: the statement count must be well below the
+        technique count, which is what "constant rather than proportional" means when the
+        catalogue is the thing that used to drive it.
         """
         response, counter = _measure(counted_client, "/api/v1/attack/matrix")
         assert response.status_code == 200
-        assert counter.count >= seeded["techniques"], (
-            "expected at least one statement per technique from the known N+1; "
-            f"got {counter.count} for {seeded['techniques']} techniques"
+        assert counter.count < seeded["techniques"], (
+            f"{counter.count} statements for {seeded['techniques']} techniques - the "
+            "count is tracking the catalogue again, so the N+1 has returned\n"
+            + counter.summary()
+        )
+
+    def test_the_counter_detects_a_deliberate_n_plus_one(self, mysql_engine):
+        """Proves the counter is still sensitive, without needing a live bug.
+
+        The sensitivity check used to ride on the matrix endpoint's N+1, so fixing that
+        endpoint removed the harness's own evidence that it can detect one. A guard that
+        cannot be shown to fire is indistinguishable from a guard that does not work —
+        the standing rule in CLAUDE.md — so the loop is constructed here instead.
+        """
+        from sqlalchemy import func, select
+
+        from app.models.attack_technique import AttackTechnique
+
+        counter = attach_counter(mysql_engine)
+        try:
+            with mysql_engine.connect() as conn:
+                for _ in range(7):
+                    conn.execute(select(func.count(AttackTechnique.id)))
+        finally:
+            detach_counter(counter)
+        assert counter.count == 7, (
+            f"the counter saw {counter.count} of 7 deliberate statements, so the "
+            "ceilings above cannot be trusted\n" + counter.summary()
         )
 
     def test_counted_endpoints_actually_return_data(self, counted_client):

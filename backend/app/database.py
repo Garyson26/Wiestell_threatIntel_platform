@@ -121,17 +121,31 @@ if IS_SERVERLESS:
         }
     )
 else:
-    # Production pool — sized for high concurrency.
-    # pool_size=10 + max_overflow=20 allows up to 30 simultaneous connections
-    # without exhausting typical shared-host limits.
-    # pool_recycle=280 ensures connections are replaced well before the MySQL
-    # server's wait_timeout (300s) closes them from the server side.
-    # pool_pre_ping validates connection health before use so stale connections
-    # are discarded transparently instead of raising OperationalError.
+    # Production pool — sized for the deployment that actually exists.
+    #
+    # RESIZED 2026-07-31 (Phase 5) from pool_size=10 / max_overflow=20. That allowed 30
+    # simultaneous connections *per process* and its comment claimed it stayed "within
+    # typical shared-host limits", which was the wrong reading of this deployment:
+    #
+    #  * the database is a **shared** Hostinger MySQL instance, where max_user_connections
+    #    is commonly 25-75 for the whole account — not per application. 30 from one
+    #    process could exhaust the account's allowance on its own and lock out Alembic,
+    #    the cron sync and any other client with error 1203;
+    #  * Render's free instance is capped at `cpus: 0.1` and 512 MB (see the limits in
+    #    docker-compose.yml, verified via `docker inspect`). A tenth of a core cannot
+    #    service 30 concurrent queries, so the extra connections buy queueing inside
+    #    MySQL rather than throughput;
+    #  * Render may run more than one instance, and each keeps its own pool, so the
+    #    account-wide total is this number multiplied by the instance count.
+    #
+    # 2 + 3 = 5 per process is deliberately close to the sync engine's 3 + 2, since both
+    # draw on the same account allowance. Requests that cannot get a connection wait up to
+    # `pool_timeout` rather than failing, which is the right trade when the alternative is
+    # a connection error the shared host raises for everyone.
     async_engine = create_async_engine(
         async_db_url,
-        pool_size=10,
-        max_overflow=20,
+        pool_size=2,
+        max_overflow=3,
         pool_recycle=280,
         pool_pre_ping=True,
         pool_timeout=30,

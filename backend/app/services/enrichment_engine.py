@@ -22,6 +22,45 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+# Ceiling on enrichers running at once, process-wide (Phase 5).
+#
+# `asyncio.gather` over the applicable sources was unbounded. Per IOC that is at most
+# five or six calls, which is fine — but the bulk backfill enriches up to 50,000 IOCs and
+# `POST /feeds/sync-all` drives enrichment behind a single request, so the in-flight total
+# is (IOCs being processed × sources each), with nothing capping it.
+#
+# Three costs, all on a Render free instance limited to `cpus: 0.1` and 512 MB:
+#
+#   * every enricher opens its own `httpx.AsyncClient` with a 15 s timeout, so sockets and
+#     TLS buffers scale with the fan-out;
+#   * WHOIS is blocking and runs via `run_in_executor`, so unbounded fan-out queues work
+#     onto the default thread pool, whose size is a function of CPU count — a tenth of a
+#     core does not absorb that;
+#   * third-party rate limits are per API key, not per task. NVD without a key allows five
+#     requests per 30 s, so parallelism beyond a handful converts directly into 429s and
+#     retries, which is slower than doing less at once.
+#
+# A semaphore rather than a smaller batch size because the sources have very different
+# latencies (a DNS lookup against a WHOIS query): a semaphore keeps the fast ones cycling
+# while a slow one holds its slot, where fixed batches would idle behind the slowest
+# member of each batch. Module-level so the bound is process-wide rather than per call —
+# a per-call semaphore would cap fan-out within one IOC and not across a backfill, which
+# is the case that actually needs it.
+ENRICHMENT_CONCURRENCY = 5
+_enrichment_semaphore = asyncio.Semaphore(ENRICHMENT_CONCURRENCY)
+
+
+async def _run_enricher_bounded(source: str, ioc: IOC) -> Optional[Dict[str, Any]]:
+    """`_run_enricher` behind the concurrency ceiling.
+
+    Kept as a thin wrapper so `_run_enricher` stays directly callable and independently
+    testable, and so the bound is visible at the call site rather than hidden inside the
+    enricher dispatch.
+    """
+    async with _enrichment_semaphore:
+        return await _run_enricher(source, ioc)
+
+
 async def enrich_ioc(
     session: AsyncSession,
     ioc: IOC,
@@ -49,9 +88,9 @@ async def enrich_ioc(
     if not pending_sources:
         return results
 
-    # Pass 2: run all pending enrichers in parallel.
+    # Pass 2: run all pending enrichers in parallel, but bounded.
     enrichment_results = await asyncio.gather(
-        *[_run_enricher(s, ioc) for s in pending_sources],
+        *[_run_enricher_bounded(s, ioc) for s in pending_sources],
         return_exceptions=True,
     )
 
