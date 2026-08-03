@@ -541,10 +541,11 @@ class TestAssessedContract:
 
         # malwarebazaar is not part of that equivalence — it had no branch at all
         # before 2026-07-31, so there is no previous total to reproduce. It is listed
-        # here so its source maximum is pinned like the rest: 3 + 2 + 1 = 6, matching
-        # nvd, which is the claim that it is the strongest source held.
+        # here so its source maximum is pinned like the rest. It is 3, not 6:
+        # family_attribution moved to the reputation term in Spec 5 section 6
+        # (design B-prime), leaving sample_present + vendor_detections.
         expected = {"geoip": 2, "whois": 3, "dns": 2, "reputation": 3,
-                    "nvd": 6, "cvedetails": 4, "yaraify": 4, "malwarebazaar": 6}
+                    "nvd": 6, "cvedetails": 4, "yaraify": 4, "malwarebazaar": 3}
         actual = {
             source: sum(points for points, _ in signals.values())
             for source, signals in RISK_SIGNALS.items()

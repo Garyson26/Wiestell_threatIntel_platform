@@ -187,6 +187,19 @@ DATABASE_URL="mysql+pymysql://u:p@localhost/db" SECRET_KEY="$(python -c 'import 
   is a defect that passes locally and breaks only in production, the same trap as the
   `DB_IMAGE`/MariaDB note above. India observes no DST, so `'+05:30'` is a fixed offset
   year-round and the offset form is not merely safer but fully correct.
+
+  **Better still, avoid the dependency entirely:** `DATE(col + INTERVAL 330 MINUTE)` is
+  pure arithmetic, needs no timezone tables, and behaves identically on MySQL and
+  MariaDB — which matters because `DB_IMAGE` may have to change if production turns out
+  to be MariaDB. Whichever form is used, **put the offset behind one named constant**
+  rather than repeating `330` or `'+05:30'` at each call site.
+
+  **Answer the prior question first: is IST-day bucketing actually required?** Nothing
+  labels the buckets today, so grouping by UTC day and formatting in Python is simpler
+  and needs no SQL timezone handling at all. Only reach for in-SQL conversion if the
+  buckets must align with IST calendar days for a stated reason. **Decide this before
+  Phase 5 writes the `GROUP BY`** — retrofitting a bucket timezone means rewriting the
+  query and invalidating any cached series.
 - IDs are `CHAR(36)` UUID **strings**, not UUID objects — path params are typed `str`.
 - `database.py` patches `aiomysql.Connection.ensure_closed` to swallow dead-transport errors from the shared host's `wait_timeout`; pool settings (`pool_recycle=280`, `pool_pre_ping`) are tuned around that. Don't "clean this up" without understanding the failure it prevents.
 

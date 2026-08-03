@@ -110,130 +110,191 @@ class TestYARAifySignals:
 
 
 class TestMalwareBazaarSignals:
-    """Added 2026-07-31 (Spec 5 §2). Previously MalwareBazaar had no branch at all.
+    """MalwareBazaar across both terms it now feeds (Spec 5 section 2, then 6 design B-prime).
 
-    A hash confirmed as a named malware family contributed *nothing* to the score, so
-    the earlier measurement of a confirmed-malicious hash at 39 was partly an artefact
-    of the enricher that confirmed it being unscored.
+    Family attribution is the **reputation** term; corroboration is the enrichment-risk
+    term. The split mirrors NVD - CVSS severity to reputation, KEV and exploit
+    availability to enrichment - so no signal is counted twice.
     """
 
-    def _mb(self, **data):
+    def _mb(self, found=True, signature=None, vendor=None, assessed=None):
         return {"source": "malwarebazaar",
-                "assessed": ["family_attribution", "sample_present",
-                             "vendor_detections"],
-                "data": data}
+                "assessed": (["sample_present", "vendor_detections"]
+                             if assessed is None else assessed),
+                "data": {"found": found, "signature": signature,
+                         "vendor_intel": vendor}}
 
-    def test_family_attribution_carries_the_most_weight(self):
-        """The specified ordering: a named family outweighs the other two combined."""
+    def _hash(self, **over):
+        ioc = {"type": "hash", "value": "a" * 64, "tags": ["malware"],
+               "mitre_techniques": [], "sighting_count": 1,
+               "last_seen": datetime.now(timezone.utc), "metadata": {}}
+        ioc.update(over)
+        return ioc
+
+    # -- Reputation: family attribution --------------------------------------
+
+    def test_a_named_family_is_the_reputation_term(self):
+        from app.services.scoring_engine import _reputation_from_malwarebazaar
+
+        assert _reputation_from_malwarebazaar([
+            self._mb(signature="AgentTesla", vendor={"CAPE": ["stealer"]})]) == 90.0
+        assert _reputation_from_malwarebazaar([
+            self._mb(signature="AgentTesla")]) == 80.0
+
+    def test_held_but_unattributed_stays_above_neutral(self):
+        """It is in a malware-only corpus, so it must not fall through to neutral."""
+        from app.services.scoring_engine import (
+            NEUTRAL_REPUTATION, _reputation_from_malwarebazaar,
+        )
+
+        value = _reputation_from_malwarebazaar([self._mb(signature=None)])
+        assert value == 55.0
+        assert value > NEUTRAL_REPUTATION
+
+    def test_a_sample_not_held_falls_through(self):
+        """None, not a number - otherwise silence would outrank a real verdict."""
+        from app.services.scoring_engine import _reputation_from_malwarebazaar
+
+        assert _reputation_from_malwarebazaar([self._mb(found=False)]) is None
+        assert _reputation_from_malwarebazaar([]) is None
+
+    def test_placeholder_signatures_are_not_attribution(self):
+        from app.services.scoring_engine import _reputation_from_malwarebazaar
+
+        for placeholder in ("", "  ", "unknown", "UNKNOWN", "n/a", "None", "null"):
+            assert _reputation_from_malwarebazaar([
+                self._mb(signature=placeholder)]) == 55.0, placeholder
+
+    def test_malwarebazaar_precedes_the_reputation_aggregate(self):
+        """Design B-prime. This ordering is the whole point of the section.
+
+        OTX's aggregate_score is pulse_count * 10, so one pulse reads 10. If
+        MalwareBazaar were a fallback rather than ahead of the aggregate, a single OTX
+        mention would override a named-family identification. Measured: 36 composite
+        against 60.
+        """
+        from app.services.scoring_engine import (
+            _base_reputation_score, calculate_threat_score,
+        )
+
+        thin_otx = {"source": "reputation", "assessed": ["aggregate_score"],
+                    "data": {"aggregate_score": 10, "sources_checked": 1, "providers": [
+                        {"name": "otx", "supports_type": True, "configured": True,
+                         "responded": True, "verdict": "malicious",
+                         "corroboration": 1}]}}
+        named = self._mb(signature="AgentTesla", vendor={"CAPE": ["x"]})
+
+        assert _base_reputation_score(self._hash(), [thin_otx, named], True) == 90.0, (
+            "a single OTX pulse overrode MalwareBazaar's family attribution - the "
+            "resolution order regressed to consulting the aggregate first"
+        )
+        score = calculate_threat_score(self._hash(), 1, [thin_otx, named],
+                                       has_enabled_feed_source=True)
+        assert get_score_category(score) == "high", (
+            f"a confirmed AgentTesla sample with one OTX pulse scores {score}"
+        )
+
+    def test_the_hash_path_does_not_leak_to_other_types(self):
+        """MalwareBazaar only supports hashes; the branch is type-gated like CVSS."""
+        from app.services.scoring_engine import (
+            NEUTRAL_REPUTATION, _base_reputation_score,
+        )
+
+        named = self._mb(signature="AgentTesla")
+        for ioc_type in ("ip", "domain", "url", "cve"):
+            assert _base_reputation_score(
+                self._hash(type=ioc_type), [named], True) == NEUTRAL_REPUTATION
+
+    # -- Enrichment risk: corroboration only ---------------------------------
+
+    def test_family_attribution_no_longer_enters_the_risk_denominator(self):
+        """It moved terms. Counting it in both would be the double-count to avoid."""
         from app.services.scoring_engine import RISK_SIGNALS
 
-        signals = RISK_SIGNALS["malwarebazaar"]
-        family = signals["family_attribution"][0]
-        others = sum(points for name, (points, _) in signals.items()
-                     if name != "family_attribution")
-        assert family > others - family, (
-            f"family_attribution is {family} against {others} for the rest — it is "
-            "specified as the highest-weighted signal in this source"
+        assert "family_attribution" not in RISK_SIGNALS["malwarebazaar"]
+        assert set(RISK_SIGNALS["malwarebazaar"]) == {
+            "sample_present", "vendor_detections"}
+        assert sum(p for p, _ in RISK_SIGNALS["malwarebazaar"].values()) == 3
+
+    def test_a_held_sample_still_outscores_one_never_checked(self):
+        """`sample_present` keeps carrying that, independent of attribution."""
+        from app.services.scoring_engine import _enrichment_risk_score
+
+        held = _enrichment_risk_score([self._mb(signature=None)])
+        never = _enrichment_risk_score([self._mb(found=False, assessed=[])])
+        assert held > never, (
+            f"held reads {held}, never-checked reads {never} - a sample MalwareBazaar "
+            "holds must not score below one it has never heard of"
         )
-        assert family == max(points for points, _ in signals.values())
+        # 2 of 3 assessed points, at MIN_ASSESSED_POINTS so the floor is a no-op.
+        assert held == pytest.approx(200 / 3, abs=0.05)
 
-    def test_a_held_but_unattributed_sample_is_not_low_risk(self):
-        """The absence-as-evidence trap this branch could easily have introduced.
-
-        MalwareBazaar's corpus is malware-only, so a hash it holds is malicious whether
-        or not a family was assigned. Without `sample_present` an unattributed sample
-        would score 0 against a non-zero denominator and read *lower* than a hash nobody
-        ever checked — the inversion the module docstring exists to prevent.
-        """
+    def test_vendor_corroboration_saturates_the_risk_term(self):
         from app.services.scoring_engine import _enrichment_risk_score
 
-        unattributed = self._mb(found=True, signature=None, vendor_intel=None)
-        never_checked = {"source": "malwarebazaar", "assessed": [],
-                         "data": {"found": False, "query_status": "hash_not_found"}}
-
-        # sample_present (2) scored, out of the source maximum of 6.
-        assert _enrichment_risk_score([unattributed]) == pytest.approx(100 * 2 / 6,
-                                                                      abs=0.05)
-        assert _enrichment_risk_score([unattributed]) > \
-            _enrichment_risk_score([never_checked]), (
-            "a sample MalwareBazaar actually holds scores no higher than one it has "
-            "never heard of"
-        )
-
-    def test_placeholder_signatures_do_not_count_as_attribution(self):
-        from app.services.scoring_engine import _enrichment_risk_score
-
-        attributed = _enrichment_risk_score([self._mb(found=True,
-                                                      signature="AgentTesla")])
-        for placeholder in ("", "  ", "unknown", "UNKNOWN", "n/a", "None"):
-            assert _enrichment_risk_score([
-                self._mb(found=True, signature=placeholder)
-            ]) < attributed, f"{placeholder!r} was treated as a family name"
-
-    def test_the_gradient_is_monotonic(self):
-        from app.services.scoring_engine import _enrichment_risk_score
-
-        miss = _enrichment_risk_score([{"source": "malwarebazaar", "assessed": [],
-                                        "data": {"found": False}}])
-        unattributed = _enrichment_risk_score([self._mb(found=True, signature=None)])
-        family = _enrichment_risk_score([self._mb(found=True, signature="AgentTesla")])
-        corroborated = _enrichment_risk_score([
-            self._mb(found=True, signature="AgentTesla",
-                     vendor_intel={"CAPE": ["stealer"]})])
-        assert miss < unattributed < family < corroborated == 100.0
+        assert _enrichment_risk_score([
+            self._mb(signature="AgentTesla", vendor={"CAPE": ["x"]})]) == 100.0
 
     def test_a_not_found_payload_declares_nothing(self):
         """`hash_not_found` is "we do not hold this", not "this is clean"."""
         from app.services.scoring_engine import _legacy_assessed
 
         assert _legacy_assessed("malwarebazaar", {"found": False}) == []
-        assert _legacy_assessed("malwarebazaar", {"found": False,
-                                                  "error": "401"}) == []
+        assert _legacy_assessed("malwarebazaar", {"found": False, "error": "401"}) == []
         assert _legacy_assessed("malwarebazaar", {
             "found": True, "signature": "AgentTesla"}) == [
-            "family_attribution", "sample_present", "vendor_detections"]
+            "sample_present", "vendor_detections"]
 
-    def test_a_confirmed_family_still_does_not_reach_high(self):
-        """The re-measurement Spec 5 §2 asked for, and it is the actionable half.
+    # -- The composite, which is what section 2 asked to be re-measured -------
 
-        The branch lifts the enrichment term for a confirmed hash from the 20.0
-        no-evidence default to 100.0, but the composite only moves 36 -> 44 and stays
-        `medium`, because for a hash:
+    def test_a_confirmed_family_now_reaches_high(self):
+        """The outcome of design B-prime, and the correction it carries.
 
-        * `diversity` (20%) cannot move — few hash feeds exist;
-        * `frequency` (15%) is re-sync noise, exactly as for a CVE;
-        * `reputation` (30%) is pinned at the 30.0 neutral, because OTX is the only
-          remaining hash provider and it has no corroboration channel, so it can return
-          `malicious` or `silent` and never a scored verdict below that.
+        Under design A - reputation left at neutral, family attribution weighted inside
+        enrichment - a hash confirmed as a named family reached only 44 (`medium`) even
+        with the enrichment term saturated, because 65% of a hash's composite could not
+        move. That measurement is what made a hash weight profile look necessary.
 
-        That is 65% of the composite structurally unable to reflect a confirmed malware
-        family — the same argument that justified the `cve` profile. So the answer to
-        "is a hash weight profile needed" is **yes**, and it is Spec 5 §6 work requiring
-        owner sign-off on the weights. Recorded in PROJECT_SUMMARY.md §8 item 11.
+        Under B-prime reputation carries the identification and the **default** profile
+        is enough: 62 at one feed, 72 at four. No hash weight profile is needed, which
+        supersedes the earlier PROJECT_SUMMARY item 11 conclusion.
         """
+        from app.services.scoring_engine import calculate_threat_score
+
         confirmed = [
             {"source": "reputation", "assessed": [],
              "data": {"aggregate_score": 0, "sources_checked": 1, "providers": [
                  {"name": "otx", "supports_type": True, "configured": True,
                   "responded": True, "verdict": "silent", "corroboration": 0}]}},
-            self._mb(found=True, signature="AgentTesla",
-                     vendor_intel={"CAPE": ["stealer"]}),
+            self._mb(signature="AgentTesla", vendor={"CAPE": ["stealer"]}),
             {"source": "yaraify",
              "assessed": ["yara_rules", "clamav", "malware_families"],
              "data": {"yaraify_yara_rules": ["r"], "yaraify_clamav": ["c"],
                       "yaraify_malware_families": ["AgentTesla"]}},
         ]
-        ioc = {"type": "hash", "value": "a" * 64, "tags": ["malware"],
-               "mitre_techniques": [], "sighting_count": 1,
-               "last_seen": datetime.now(timezone.utc), "metadata": {}}
-        score = calculate_threat_score(ioc, 1, confirmed,
-                                       has_enabled_feed_source=True)
-        assert get_score_category(score) == "medium", (
-            f"a hash confirmed as a named family now scores {score} "
-            f"({get_score_category(score)}). If this reached high, the hash weight "
-            "profile recommended in PROJECT_SUMMARY.md §8 item 11 has landed — update "
-            "this test and that item together."
+        one_feed = calculate_threat_score(self._hash(), 1, confirmed,
+                                          has_enabled_feed_source=True)
+        four_feeds = calculate_threat_score(self._hash(), 4, confirmed,
+                                            has_enabled_feed_source=True)
+        assert (one_feed, four_feeds) == (62, 72), (
+            f"measured {one_feed} / {four_feeds}, expected 62 / 72"
         )
+        assert get_score_category(one_feed) == "high"
+
+    def test_an_unknown_hash_stays_medium(self):
+        """The other end: B-prime must not lift indicators nothing has confirmed."""
+        from app.services.scoring_engine import calculate_threat_score
+
+        unknown = [
+            {"source": "reputation", "assessed": [],
+             "data": {"aggregate_score": 0, "sources_checked": 1, "providers": [
+                 {"name": "otx", "supports_type": True, "configured": True,
+                  "responded": True, "verdict": "silent", "corroboration": 0}]}},
+            self._mb(found=False, assessed=[]),
+        ]
+        score = calculate_threat_score(self._hash(), 1, unknown,
+                                       has_enabled_feed_source=True)
+        assert get_score_category(score) == "medium", score
 
 
 class TestCombinedWorstCase:
@@ -1490,7 +1551,8 @@ class TestScoringModelVersion:
         "_risk_high_risk_country", "_risk_privacy_protected", "_risk_domain_age",
         "_risk_fast_flux", "_risk_reputation_aggregate", "_risk_cvss",
         "_risk_kev_membership", "_risk_exploit_available", "_risk_exploit_references",
-        "_risk_family_attribution", "_risk_sample_present", "_risk_vendor_detections",
+        "_risk_sample_present", "_risk_vendor_detections",
+        "_reputation_from_malwarebazaar",
         "_risk_yara_rules", "_risk_clamav", "_risk_malware_families",
     )
 
