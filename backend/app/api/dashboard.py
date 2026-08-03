@@ -234,32 +234,69 @@ async def get_trends(
     days: int = Query(7, ge=1, le=90),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get IOC trend data over time."""
+    """Get IOC trend data over time.
+
+    One ``GROUP BY`` rather than two queries per day (Phase 5). At ``days=90`` that was
+    180 round trips; measured at 60 for ``days=30``. The cost is latency, not database
+    work — Render to Hostinger is 50-300 ms per statement against ~0.1 ms to a local
+    container, so the loop was nearly free in development and minutes in production.
+
+    **Bucket semantics are preserved exactly: UTC days, labelled with the UTC date.**
+    ``func.DATE`` reads the stored naive-UTC value, and the Python-side series is keyed
+    off ``datetime.now(timezone.utc)``, so bucket and label agree as they did before.
+    That is deliberate — audited 2026-07-31, the previous implementation was already
+    self-consistent, nothing in the UI labels these buckets, and ``/trends`` has no
+    frontend caller, so this rewrite changes performance and nothing else.
+
+    **Whether the buckets should be IST days instead is a separate product question**, and
+    a live trap if answered carelessly: this platform renders IST elsewhere via
+    ``to_ist_str``, so adding a date label would put a UTC date beside IST timestamps and
+    an indicator created 03:00 IST would land in the previous day's bucket — roughly 23%
+    of each day's ingests. If that is ever wanted, shift with
+    ``DATE(created_at + INTERVAL 330 MINUTE)`` behind a named constant rather than
+    ``CONVERT_TZ`` with a zone *name*: the named form needs the MySQL timezone tables,
+    which are populated in the `mysql:8.0` image and frequently are not on shared hosting,
+    and when they are absent it returns NULL silently and collapses every bucket into one
+    NULL group. See the caution in CLAUDE.md.
+    """
     now = datetime.now(timezone.utc)
+    # Inclusive lower bound at midnight UTC of the oldest requested day. Passing an
+    # aware value is safe: models.types.NaiveUTCDateTime coerces it at the boundary.
+    window_start = (now - timedelta(days=days - 1)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+
+    day_col = func.DATE(IOC.created_at).label("day")
+    rows = (await db.execute(
+        select(
+            day_col,
+            func.count(IOC.id).label("total"),
+            # A conditional sum keeps this to one pass rather than a second query per
+            # day for the critical count. 76 is the `critical` bucket threshold; it is
+            # duplicated from scoring_engine's bands and pinned by
+            # TestThresholdImmutability.
+            func.sum(case((IOC.threat_score >= 76, 1), else_=0)).label("critical"),
+        )
+        .where(IOC.created_at >= window_start)
+        .group_by(day_col)
+    )).all()
+
+    # str() because the driver may hand back a date object or a string depending on
+    # column type and version; the key format has to match strftime below either way.
+    by_day = {
+        str(row.day): (int(row.total or 0), int(row.critical or 0))
+        for row in rows
+    }
+
+    # Rebuilt from the requested range rather than from the rows, so days with no
+    # indicators appear as zeroes instead of gaps — the previous loop's behaviour, and
+    # what a chart needs to avoid a misleading x-axis.
     trends = []
-
     for i in range(days):
-        day = now - timedelta(days=days - 1 - i)
-        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
-        day_end = day_start + timedelta(days=1)
-
-        total = (await db.execute(
-            select(func.count(IOC.id)).where(
-                IOC.created_at >= day_start,
-                IOC.created_at < day_end,
-            )
-        )).scalar() or 0
-
-        critical = (await db.execute(
-            select(func.count(IOC.id)).where(
-                IOC.created_at >= day_start,
-                IOC.created_at < day_end,
-                IOC.threat_score >= 76,
-            )
-        )).scalar() or 0
-
+        day_key = (now - timedelta(days=days - 1 - i)).strftime("%Y-%m-%d")
+        total, critical = by_day.get(day_key, (0, 0))
         trends.append({
-            "date": day_start.strftime("%Y-%m-%d"),
+            "date": day_key,
             "total": total,
             "critical": critical,
         })
