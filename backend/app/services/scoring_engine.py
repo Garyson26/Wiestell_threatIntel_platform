@@ -131,13 +131,27 @@ NEUTRAL_REPUTATION = 30.0
 #      Also widened the fingerprint's scope in the same change: RISK_SIGNALS,
 #      MIN_ASSESSED_POINTS and every `_risk_*` scorer are now hashed. They were not,
 #      which is why this branch initially landed without tripping the guard.
-SCORING_MODEL_VERSION = 6
+#   7  2026-07-31  design B': hash reputation reads MalwareBazaar family attribution
+#      (named + vendor 90, named 80, held-unattributed 55) **ahead of** the reputation
+#      aggregate, and `family_attribution` moves OUT of RISK_SIGNALS, taking the
+#      MalwareBazaar source maximum from 6 to 3. Reputation takes identity, enrichment
+#      keeps corroboration — the same split as NVD (CVSS to reputation, KEV/exploit to
+#      enrichment), so nothing is counted twice.
+#      Affects hash IOCs only, and only where an abuse.ch key is configured. Measured on
+#      a sample named AgentTesla with vendor intel and a YARAify hit: 44 -> 62 at one
+#      feed and 54 -> 72 at four, medium -> high, under the UNCHANGED `default` profile.
+#      That supersedes the version-6 conclusion that a hash weight profile was needed;
+#      it was needed only under the rejected design where enrichment carried identity.
+#      Ordered ahead of the aggregate because OTX's `aggregate_score` is
+#      `pulse_count * 10`, so a single pulse reads 10 and would otherwise override a
+#      named-family identification: 36 composite against 60.
+SCORING_MODEL_VERSION = 7
 
 # SHA-256 over the score-determining code, docstrings and formatting excluded. Moves
 # together with SCORING_MODEL_VERSION in review; see
 # tests/test_scoring_and_export.py::TestScoringModelVersion for the guard and for why
 # it fails rather than auto-bumping.
-SCORING_MODEL_FINGERPRINT = "524f58317387c847c3ee2baad1611033"
+SCORING_MODEL_FINGERPRINT = "f0d5609f87c6ab8833c594f90332405d"
 
 
 def _weights_for(ioc_type: Optional[str]) -> Dict[str, float]:
@@ -403,6 +417,62 @@ def _reputation_from_cvss(enrichment_data: List[Dict]) -> Optional[float]:
     return None
 
 
+# MalwareBazaar `signature` values meaning "held, but no family assigned".
+_UNATTRIBUTED = {"", "unknown", "n/a", "none", "null", "unattributed"}
+
+# Reputation for a hash MalwareBazaar holds. Membership alone is evidence — the corpus
+# is malware-only — and a named family is the strongest identification available.
+_MB_NAMED_CORROBORATED = 90.0
+_MB_NAMED = 80.0
+_MB_HELD_UNATTRIBUTED = 55.0
+
+
+def _reputation_from_malwarebazaar(enrichment_data: List[Dict]) -> Optional[float]:
+    """Family attribution as the reputation term, for hashes only.
+
+    Mirrors :func:`_reputation_from_cvss`. For a vulnerability, severity *is* the
+    reputation signal because there is no blocklist consensus to draw on; for a file
+    hash, **identity** is — "this sample is AgentTesla" is a stronger statement about
+    the indicator than any pulse count.
+
+    This is the split that keeps the signal from landing twice. Reputation takes
+    *identity* (``signature``); enrichment risk keeps *corroboration*
+    (``sample_present``, ``vendor_detections``). Exactly as NVD splits: CVSS severity to
+    reputation, KEV membership and exploit availability to enrichment. So
+    ``family_attribution`` **moved** out of :data:`RISK_SIGNALS` rather than being
+    de-weighted inside it.
+
+    Returns ``None`` when MalwareBazaar does not hold the sample, so resolution falls
+    through to the reputation aggregate as before.
+
+    **Consulted ahead of the reputation aggregate**, unlike the CVSS path. Measured
+    2026-07-31: OTX's ``aggregate_score`` is ``pulse_count * 10``, so a single pulse
+    yields 10 — and a thin OTX verdict would otherwise override MalwareBazaar naming the
+    family, taking a confirmed sample from 60 composite to 36. See PROJECT_SUMMARY.md §8
+    item 15 for the underlying scale defect, which this ordering sidesteps for hashes but
+    does not fix for IPs.
+    """
+    for entry in enrichment_data:
+        if entry.get("source") != "malwarebazaar":
+            continue
+        data = entry.get("data") or {}
+        if not isinstance(data, Mapping) or not data.get("found"):
+            continue
+        signature = data.get("signature")
+        named = (
+            isinstance(signature, str)
+            and signature.strip().lower() not in _UNATTRIBUTED
+        )
+        if not named:
+            # Held but unattributed. Still malicious — it is in a malware corpus — so
+            # this must stay above NEUTRAL_REPUTATION, not fall through to it.
+            return _MB_HELD_UNATTRIBUTED
+        return (
+            _MB_NAMED_CORROBORATED if data.get("vendor_intel") else _MB_NAMED
+        )
+    return None
+
+
 def _base_reputation_score(
     ioc_data: Dict[str, Any],
     enrichment_data: Optional[List[Dict]] = None,
@@ -414,24 +484,40 @@ def _base_reputation_score(
       1. ``metadata.reputation_scores`` — a per-provider mapping written by a
          feed connector. Note that no connector populates this today; it is
          retained as the documented extension point.
-      2. the ``reputation`` enrichment payload's ``aggregate_score``
+      2. **for hashes**, MalwareBazaar family attribution — see
+         :func:`_reputation_from_malwarebazaar` for why this precedes the aggregate.
+      3. the ``reputation`` enrichment payload's ``aggregate_score``
          (AbuseIPDB / OTX), when a provider covering this IOC type responded.
-      3. for CVEs, the NVD CVSS v3.1 base score scaled to 0-100.
-      4. a neutral constant.
+      4. for CVEs, the NVD CVSS v3.1 base score scaled to 0-100.
+      5. a neutral constant.
 
-    A score of 0.0 requires positive evidence of harmlessness at step 2; every
+    A score of 0.0 requires positive evidence of harmlessness at step 3; every
     other absence resolves to the neutral constant. In practice that makes 0.0
     unreachable with the current provider set — see the module docstring.
+
+    **Why the hash path is at step 2 and the CVE path at step 4.** They are not
+    symmetric, deliberately. NVD and the reputation providers answer different
+    questions and rarely both respond for a CVE, so CVSS is a genuine fallback. For a
+    hash, MalwareBazaar and OTX both answer, and OTX answers *worse*: its
+    ``aggregate_score`` is ``pulse_count * 10``, so one pulse reads 10 — below the
+    no-evidence neutral. Leaving MalwareBazaar as a fallback would let a single OTX
+    mention override a named-family identification. Measured: 36 composite against 60.
 
     This function must not consult ``ioc_data["threat_score"]``.
     """
     enrichment_data = enrichment_data or []
     metadata = ioc_data.get("metadata") or {}
+    ioc_type = (ioc_data.get("type") or "").lower()
 
     if isinstance(metadata, Mapping) and "reputation_scores" in metadata:
         mean = _mean_reputation_scores(metadata["reputation_scores"])
         if mean is not None:
             return mean
+
+    if ioc_type == "hash":
+        from_malwarebazaar = _reputation_from_malwarebazaar(enrichment_data)
+        if from_malwarebazaar is not None:
+            return from_malwarebazaar
 
     from_enrichment = _reputation_from_enrichment(
         enrichment_data, has_enabled_feed_source
@@ -439,7 +525,7 @@ def _base_reputation_score(
     if from_enrichment is not None:
         return from_enrichment
 
-    if (ioc_data.get("type") or "").lower() == "cve":
+    if ioc_type == "cve":
         from_cvss = _reputation_from_cvss(enrichment_data)
         if from_cvss is not None:
             return from_cvss
@@ -618,18 +704,6 @@ def _risk_exploit_references(data: Mapping) -> int:
     return 1 if data.get("cvedetails_exploit_references") else 0
 
 
-# MalwareBazaar placeholders that mean "held but unattributed" rather than a family.
-_UNATTRIBUTED = {"", "unknown", "n/a", "none", "null", "unattributed"}
-
-
-def _risk_family_attribution(data: Mapping) -> int:
-    """A named malware family — the strongest single signal this platform holds."""
-    signature = data.get("signature")
-    if not isinstance(signature, str):
-        return 0
-    return 0 if signature.strip().lower() in _UNATTRIBUTED else 3
-
-
 def _risk_sample_present(data: Mapping) -> int:
     """MalwareBazaar's corpus is malware-only, so membership is itself evidence.
 
@@ -712,18 +786,12 @@ RISK_SIGNALS: Dict[str, Dict[str, Any]] = {
         "exploit_available": (3, _risk_exploit_available),
         "exploit_references": (1, _risk_exploit_references),
     },
-    # Added 2026-07-31 (Spec 5 §2). Source maximum 6, matching nvd — MalwareBazaar
-    # confirming a hash as a named family is the strongest single signal held here, and
-    # until now it contributed nothing at all to the score.
-    #
-    # `family_attribution` carries the highest weight, as specified. `sample_present` is
-    # an addition to that specification, with a reason: MalwareBazaar's corpus is
-    # malware-only, so without a signal for membership itself a held-but-unattributed
-    # sample would score 0/3 and read *lower* than an unchecked hash. Together an
-    # unattributed sample floors at 2/6 = 33.3, an attributed one reaches 5/6, and one
-    # with vendor corroboration 6/6.
+    # Added 2026-07-31 (Spec 5 §2); `family_attribution` MOVED OUT the same day
+    # (Spec 5 §6, design B'). Reputation now takes identity via
+    # `_reputation_from_malwarebazaar`; enrichment risk keeps corroboration only. Source
+    # maximum is therefore 3, not 6 — the same split as NVD, where CVSS severity is
+    # reputation and KEV/exploit are enrichment, so no signal lands in both terms.
     "malwarebazaar": {
-        "family_attribution": (3, _risk_family_attribution),
         "sample_present": (2, _risk_sample_present),
         "vendor_detections": (1, _risk_vendor_detections),
     },
@@ -791,7 +859,7 @@ def _legacy_assessed(source: str, data: Mapping) -> List[str]:
         # `found` is checked above, so reaching here means a sample record came back.
         # Cached rows predate Spec 5 §2 and carry no `assessed`; they are common,
         # because these rows are never refreshed (see this function's docstring).
-        return ["family_attribution", "sample_present", "vendor_detections"]
+        return ["sample_present", "vendor_detections"]
     if source == "cvedetails":
         return ["exploit_available", "exploit_references"]
     if source == "yaraify":
