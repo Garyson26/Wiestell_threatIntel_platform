@@ -472,7 +472,7 @@ class TestReputationFromEnrichment:
 
 
 class TestProviderAggregation:
-    """How `aggregate_score` combines providers. Audited 2026-07-31.
+    """How `aggregate_score` combines providers. Audited 2026-07-31, changed in §6b.
 
     Reproduces `reputation_enricher.enrich`'s aggregation exactly:
     `scores.append(...)` runs only inside the `> 0` branches, so the mean is over
@@ -481,12 +481,21 @@ class TestProviderAggregation:
 
     @staticmethod
     def _aggregate(abuse=None, pulses=None):
+        """Builds the score list the enricher would, then calls the REAL aggregator.
+
+        This used to reimplement the aggregation inline, and that copy silently kept
+        computing a mean when the enricher moved to max - the test failed for the right
+        reason but on the wrong code. Only the score-collection conditions are mirrored
+        here now; the combination itself is imported.
+        """
+        from app.enrichers.reputation_enricher import aggregate_provider_scores
+
         scores = []
         if abuse is not None and abuse > 0:
             scores.append(abuse)
         if pulses is not None and pulses > 0:
             scores.append(min(pulses * 10, 100))
-        return int(sum(scores) / len(scores)) if scores else 0
+        return aggregate_provider_scores(scores)
 
     def test_a_silent_provider_is_excluded_from_the_mean(self):
         """The correct half, pinned so it cannot regress.
@@ -500,23 +509,153 @@ class TestProviderAggregation:
         assert self._aggregate(abuse=100, pulses=0) == 100, "silence diluted"
         assert self._aggregate(abuse=0, pulses=0) == 0, "no positives -> 0"
 
-    @pytest.mark.xfail(strict=True, reason=(
-        "PROJECT_SUMMARY.md §8 item 15: the mean is taken over incommensurable "
-        "scales. AbuseIPDB reports calibrated 0-100 confidence; OTX reports "
-        "pulse_count*10, so one pulse is 10. mean(100, 10) = 55 — an IP AbuseIPDB "
-        "rates 100/100 loses a bucket (high -> medium, -21 composite) because OTX "
-        "also flagged it once. Corroboration lowers the score. Fixed by rescaling "
-        "OTX in Spec 5 §6, which also fixes the below-neutral inversion; k must come "
-        "from the pulse-count distribution, which needs owner data. Deleting this "
-        "marker is the signal that the rescale landed."
-    ))
     def test_a_weak_positive_does_not_drag_down_a_strong_one(self):
+        """Was xfail(strict) until 2026-07-31; the aggregator is now max, not mean.
+
+        Under the mean, an IP AbuseIPDB rated 100/100 read aggregate 55 because OTX had
+        also flagged it once - corroborating evidence lowering the score, and a lost
+        bucket (high -> medium, -21 composite) on the largest IOC population.
+        """
         strong_alone = self._aggregate(abuse=100, pulses=None)
         corroborated = self._aggregate(abuse=100, pulses=1)
         assert corroborated >= strong_alone, (
             f"AbuseIPDB 100 alone reads {strong_alone}, but with one corroborating "
             f"OTX pulse it reads {corroborated}"
         )
+        assert corroborated == 100
+
+    def test_max_and_mean_agree_when_only_one_provider_is_positive(self):
+        """Which is the common case, so the change is narrower than it sounds.
+
+        AbuseIPDB is IP-only and OTX is frequently silent, so most payloads carry a
+        single positive verdict. Max and mean are identical there; only the
+        both-positive-and-disagreeing case moves.
+        """
+        for abuse, pulses in [(100, None), (100, 0), (0, 4), (None, 4), (37, 0)]:
+            scores = []
+            if abuse:
+                scores.append(abuse)
+            if pulses:
+                scores.append(min(pulses * 10, 100))
+            if len(scores) != 1:
+                continue
+            mean = int(sum(scores) / len(scores))
+            assert self._aggregate(abuse, pulses) == mean
+
+    def test_the_scale_mismatch_is_still_open(self):
+        """Max fixes the dilution but NOT the below-neutral inversion.
+
+        Deliberately pinned as still-broken rather than left implicit: one OTX pulse
+        maps to 10, under the 30.0 no-evidence neutral, so a positive verdict still
+        reads safer than silence. That is the rescale in PROJECT_SUMMARY.md §8 item 15,
+        blocked on the pulse-count distribution, and it must cover *both* providers -
+        an AbuseIPDB confidence of 5 maps to 5 for the same reason.
+        """
+        from app.services.scoring_engine import NEUTRAL_REPUTATION
+
+        assert self._aggregate(abuse=None, pulses=1) < NEUTRAL_REPUTATION
+        assert self._aggregate(abuse=5, pulses=None) < NEUTRAL_REPUTATION
+
+    def test_provider_corroboration_is_measured_nowhere(self):
+        """An honest zero, recorded so it is not mistaken for coverage.
+
+        Adopting max makes this explicit rather than closing it. `source_count` counts
+        distinct `ioc_sources.feed_id` - feeds that reported the indicator - and
+        AbuseIPDB and OTX are enrichment providers, not feeds, so they never reach the
+        diversity term. `sources_flagged` is written into the payload and read by
+        nothing. Under max the reputation term is the strongest single verdict, so
+        two-provider agreement scores exactly like one.
+
+        Previously this gap was filled by an averaging artefact pointing the WRONG way -
+        agreement lowered the score - which is worse than an honest zero.
+
+        If it should count, it wants to be a declared signal (`multi_provider_agreement`
+        in RISK_SIGNALS, reading `sources_flagged >= 2`) rather than an emergent
+        property of the aggregator. Recorded as a §6 candidate, not built.
+        """
+        from app.services.scoring_engine import RISK_SIGNALS
+
+        assert "multi_provider_agreement" not in RISK_SIGNALS.get("reputation", {}), (
+            "a provider-agreement signal was added - update PROJECT_SUMMARY §8 item 15 "
+            "and this test together"
+        )
+        # Agreement is currently invisible to the composite: same score either way.
+        assert self._aggregate(abuse=90, pulses=9) == self._aggregate(abuse=90,
+                                                                     pulses=None)
+
+
+class TestCachedMeanRowsAreCorrectedOnRescore:
+    """The stored-field problem, which is why max also lives in the scorer.
+
+    `aggregate_score` is persisted, and enrichment rows are never refreshed on the cron
+    path, so every existing row keeps the mean it was written with. A rescore alone
+    would faithfully reuse it. `_strongest_provider_score` recomputes from `details`,
+    which is in the same stored JSON, so the correction reaches the existing corpus.
+    """
+
+    @staticmethod
+    def _legacy_row(abuse, pulses):
+        """A row as written BEFORE 2026-07-31: aggregate_score is the mean."""
+        scores = []
+        if abuse:
+            scores.append(abuse)
+        if pulses:
+            scores.append(min(pulses * 10, 100))
+        return {"source": "reputation", "assessed": ["aggregate_score"], "data": {
+            "aggregate_score": int(sum(scores) / len(scores)) if scores else 0,
+            "sources_checked": 2, "sources_flagged": len(scores),
+            "details": {"abuseipdb": {"score": abuse, "reports": 12},
+                        "otx": {"pulse_count": pulses}},
+            "providers": [
+                {"name": "abuseipdb", "supports_type": True, "configured": True,
+                 "responded": True, "verdict": "malicious", "corroboration": 12},
+                {"name": "otx", "supports_type": True, "configured": True,
+                 "responded": True,
+                 "verdict": "malicious" if pulses else "silent",
+                 "corroboration": pulses}]}}
+
+    def test_a_legacy_mean_row_is_recomputed_as_a_max(self):
+        from app.services.scoring_engine import _reputation_from_enrichment
+
+        row = self._legacy_row(abuse=100, pulses=1)
+        assert row["data"]["aggregate_score"] == 55, "fixture is not a legacy mean row"
+        assert _reputation_from_enrichment([row], True) == 100.0, (
+            "a row written with the mean was not corrected, so the fix will not reach "
+            "the existing corpus on rescore"
+        )
+
+    def test_the_recompute_never_lowers_a_stored_value(self):
+        """One-sided, so it cannot introduce a regression of its own."""
+        from app.services.scoring_engine import _reputation_from_enrichment
+
+        for abuse, pulses in [(100, 1), (100, 10), (40, 2), (0, 7), (90, 0)]:
+            row = self._legacy_row(abuse, pulses)
+            stored = row["data"]["aggregate_score"]
+            assert _reputation_from_enrichment([row], True) >= stored
+
+    def test_a_row_without_details_falls_back_to_the_stored_value(self):
+        """Nothing is invented when the detail is absent."""
+        from app.services.scoring_engine import _reputation_from_enrichment
+
+        row = self._legacy_row(abuse=100, pulses=1)
+        del row["data"]["details"]
+        assert _reputation_from_enrichment([row], True) == 55.0
+
+    def test_malformed_details_do_not_raise(self):
+        """Stored JSON is effectively untrusted input - it predates the current code."""
+        from app.services.scoring_engine import _strongest_provider_score
+
+        for details in ([], "nonsense", {"abuseipdb": "x"}, {"otx": {"pulse_count": None}},
+                        {"abuseipdb": {"score": True}}, {"otx": {}}, None):
+            assert _strongest_provider_score({"details": details}) is None
+        assert _strongest_provider_score({}) is None
+
+    def test_a_zero_reading_is_not_treated_as_a_verdict(self):
+        """Matches the enricher's flagged condition: zero is silence, not clean."""
+        from app.services.scoring_engine import _strongest_provider_score
+
+        assert _strongest_provider_score(
+            {"details": {"abuseipdb": {"score": 0}, "otx": {"pulse_count": 0}}}) is None
 
 
 class TestReputationEvidenceModel:
@@ -1552,7 +1691,7 @@ class TestScoringModelVersion:
         "_risk_fast_flux", "_risk_reputation_aggregate", "_risk_cvss",
         "_risk_kev_membership", "_risk_exploit_available", "_risk_exploit_references",
         "_risk_sample_present", "_risk_vendor_detections",
-        "_reputation_from_malwarebazaar",
+        "_reputation_from_malwarebazaar", "_strongest_provider_score",
         "_risk_yara_rules", "_risk_clamav", "_risk_malware_families",
     )
 

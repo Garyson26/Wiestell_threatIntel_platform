@@ -145,13 +145,29 @@ NEUTRAL_REPUTATION = 30.0
 #      Ordered ahead of the aggregate because OTX's `aggregate_score` is
 #      `pulse_count * 10`, so a single pulse reads 10 and would otherwise override a
 #      named-family identification: 36 composite against 60.
-SCORING_MODEL_VERSION = 7
+#   8  2026-07-31  reputation provider aggregation is MAX, not mean. Providers only
+#      enter the list on a positive reading, so a mean measured how loudly they agreed
+#      and dragged the strongest verdict toward the weakest. Measured: an IP AbuseIPDB
+#      rated 100/100 read aggregate 55 and composite 45 (medium) because OTX had also
+#      flagged it once — corroborating evidence LOWERING the score, on the largest IOC
+#      population. Under max it reads 100 / 58 (high).
+#      Identical whenever only one provider is positive, which is the common case, so
+#      only the both-positive-and-disagreeing case moves. Applies to every IOC type.
+#      Also recomputed scorer-side from `details` (`_strongest_provider_score`), because
+#      `aggregate_score` is a stored field and enrichment rows are never refreshed — so
+#      without that, a rescore would faithfully reuse the mean and the fix would never
+#      reach the existing corpus. One-sided: it can only raise a stored value.
+#      STILL OPEN and deliberately not in this version: the scale mismatch. One OTX
+#      pulse maps to 10, below NEUTRAL_REPUTATION, and an AbuseIPDB confidence of 5
+#      maps to 5 — so a positive verdict can still read safer than silence. Blocked on
+#      the pulse-count distribution; must cover both providers.
+SCORING_MODEL_VERSION = 8
 
 # SHA-256 over the score-determining code, docstrings and formatting excluded. Moves
 # together with SCORING_MODEL_VERSION in review; see
 # tests/test_scoring_and_export.py::TestScoringModelVersion for the guard and for why
 # it fails rather than auto-bumping.
-SCORING_MODEL_FINGERPRINT = "f0d5609f87c6ab8833c594f90332405d"
+SCORING_MODEL_FINGERPRINT = "af79e122d6cca89c91d975b412ac8ce5"
 
 
 def _weights_for(ioc_type: Optional[str]) -> Dict[str, float]:
@@ -352,6 +368,45 @@ def _is_corroborated_harmless(data: Mapping) -> bool:
     return False
 
 
+def _strongest_provider_score(data: Mapping) -> Optional[float]:
+    """Recompute the aggregate as a MAX over per-provider scores in ``details``.
+
+    Why this lives here as well as in the enricher. The enricher now stores a max, but
+    ``aggregate_score`` is a *stored* field and enrichment rows are never refreshed on
+    the cron path (``WHERE Enrichment.id IS NULL``), so every existing row keeps the
+    mean it was written with — permanently, and a rescore would faithfully reuse it.
+    Recomputing from ``details``, which is in the same stored JSON, is what makes the
+    fix reach the existing corpus when ``scripts/rescore_corpus.py`` runs instead of
+    waiting on the freeze trap being fixed.
+
+    Returns ``None`` when no per-provider value can be derived, so the caller falls back
+    to the stored ``aggregate_score`` and nothing is invented.
+
+    Mirrors the enricher's "flagged" condition exactly: only a provider with a positive
+    reading contributes, because a zero means silence rather than a clean verdict. It
+    does **not** rescale — one OTX pulse still reads 10. See §8 item 15.
+    """
+    details = data.get("details")
+    if not isinstance(details, Mapping):
+        return None
+
+    candidates: List[float] = []
+
+    abuseipdb = details.get("abuseipdb")
+    if isinstance(abuseipdb, Mapping):
+        score = abuseipdb.get("score")
+        if isinstance(score, (int, float)) and not isinstance(score, bool) and score > 0:
+            candidates.append(float(min(100.0, float(score))))
+
+    otx = details.get("otx")
+    if isinstance(otx, Mapping):
+        pulses = otx.get("pulse_count")
+        if isinstance(pulses, (int, float)) and not isinstance(pulses, bool) and pulses > 0:
+            candidates.append(float(min(float(pulses) * 10.0, 100.0)))
+
+    return max(candidates) if candidates else None
+
+
 def _reputation_from_enrichment(
     enrichment_data: List[Dict],
     has_enabled_feed_source: Optional[bool] = None,
@@ -381,6 +436,13 @@ def _reputation_from_enrichment(
         if not isinstance(score, (int, float)) or isinstance(score, bool):
             return None
         score = float(max(0.0, min(100.0, float(score))))
+
+        # Prefer a max recomputed from the per-provider detail, which corrects rows
+        # written when this was a mean without waiting for them to be re-enriched.
+        # Never *lowers* the stored value: max over the same providers is >= their mean.
+        strongest = _strongest_provider_score(data)
+        if strongest is not None:
+            score = max(score, strongest)
 
         if score == 0.0:
             # Presence in any curated feed is itself reputation evidence: all
