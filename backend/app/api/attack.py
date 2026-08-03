@@ -10,6 +10,18 @@ from app.models.ioc import IOC
 
 router = APIRouter()
 
+
+def _has_technique(technique_id: str):
+    """Filter IOCs whose mitre_techniques JSON array contains ``technique_id``.
+
+    ``mitre_techniques`` is a JSON column on MySQL, so the PostgreSQL ARRAY
+    operators (``.any()`` / ``.overlap()``) are unavailable — using them raised
+    at query build time. json_contains is the portable MySQL equivalent and
+    matches how app/api/ioc.py filters the same column.
+    """
+    return func.json_contains(IOC.mitre_techniques, func.json_quote(technique_id)) == 1
+
+
 MITRE_TACTICS_ORDER = [
     "Reconnaissance",
     "Resource Development",
@@ -40,9 +52,7 @@ async def get_attack_matrix(db: AsyncSession = Depends(get_db)):
 
     for tech in techniques:
         ioc_count_result = await db.execute(
-            select(func.count(IOC.id)).where(
-                IOC.mitre_techniques.any(tech.id)
-            )
+            select(func.count(IOC.id)).where(_has_technique(tech.id))
         )
         ioc_count = ioc_count_result.scalar() or 0
 
@@ -74,7 +84,7 @@ async def get_technique_detail(technique_id: str, db: AsyncSession = Depends(get
 
     iocs = await db.execute(
         select(IOC)
-        .where(IOC.mitre_techniques.any(technique_id))
+        .where(_has_technique(technique_id))
         .order_by(IOC.threat_score.desc())
         .limit(50)
     )
@@ -113,7 +123,7 @@ async def get_heatmap(
     for tech in techniques:
         ioc_count_result = await db.execute(
             select(func.count(IOC.id)).where(
-                IOC.mitre_techniques.any(tech.id),
+                _has_technique(tech.id),
                 IOC.threat_score >= min_score,
             )
         )

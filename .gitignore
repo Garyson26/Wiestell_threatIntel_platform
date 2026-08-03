@@ -32,6 +32,10 @@ Thumbs.db
 postgres_data/
 redis_data/
 
+# Generated artefacts. services/report_generator.py writes PDF reports; none has ever
+# been committed, and this keeps it that way.
+*.pdf
+
 # Logs
 *.log
 celerybeat-schedule

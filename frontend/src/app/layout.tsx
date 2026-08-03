@@ -93,53 +93,30 @@ export default function RootLayout({
     },
   };
 
+  // Analytics is deliberately NOT here. Google Tag Manager and gtag.js load only
+  // from app/(marketing)/layout.tsx, because gtag reports `page_location`
+  // including the query string and the signed-in app puts indicator values there:
+  // `/ioc-search?q=<indicator>` from the landing page and the global header
+  // search, and `/ioc?search=<url>`. Loading analytics on those routes sends an
+  // analyst's investigation targets to Google. Referrer-Policy does not help —
+  // gtag transmits the URL in its own payload, not as a referer.
+  //
+  // Scoping by route group rather than by a pathname allowlist is the point: a
+  // new route under (protected), (analytics) or (bare) cannot inherit analytics
+  // by anyone forgetting to update a list. Adding a tag here re-breaks that, so
+  // add it to the marketing layout instead.
+  //
+  // (bare) is excluded too — it holds the auth pages, where the password-reset
+  // flow handles email addresses.
   return (
     <html lang="en">
       <head>
-        {/* Google Tag Manager */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-})(window,document,'script','dataLayer','GTM-TXF68KRQ');`,
-          }}
-        />
-        {/* End Google Tag Manager */}
-        
-        {/* Google tag (gtag.js) */}
-        <script
-          async
-          src="https://www.googletagmanager.com/gtag/js?id=G-FG3RH76R6J"
-        />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              window.dataLayer = window.dataLayer || [];
-              function gtag(){dataLayer.push(arguments);}
-              gtag('js', new Date());
-              gtag('config', 'G-FG3RH76R6J');
-            `,
-          }}
-        />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </head>
       <body>
-        {/* Google Tag Manager (noscript) */}
-        <noscript>
-          <iframe
-            src="https://www.googletagmanager.com/ns.html?id=GTM-TXF68KRQ"
-            height="0"
-            width="0"
-            style={{ display: 'none', visibility: 'hidden' }}
-          />
-        </noscript>
-        {/* End Google Tag Manager (noscript) */}
-        
         <AuthProvider>
           {children}
         </AuthProvider>

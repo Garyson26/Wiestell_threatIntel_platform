@@ -38,7 +38,7 @@ Wiestell aggregates technical threat intelligence from multiple feeds, enriches 
 
   'how does sentinel work': `Wiestell is a Threat Intelligence Platform (TIP) that operates in several stages:
 
-1. INGESTION — Collects IOCs from multiple threat feeds (OTX, AbuseIPDB, PhishTank, etc.)
+1. INGESTION — Collects IOCs from multiple threat feeds (URLhaus, ThreatFox, OTX, AbuseIPDB, etc.)
 2. ENRICHMENT — Enriches IOCs with WHOIS, DNS, GeoIP, and reputation data
 3. SCORING — Assigns threat scores (0-100) based on multiple factors
 4. CORRELATION — Links related IOCs and maps to MITRE ATT&CK techniques
@@ -91,15 +91,21 @@ Pro tips:
   'what are threat feeds': `Threat feeds are continuous streams of IOC data from various sources. Wiestell supports multiple feed types:
 
 PUBLIC FEEDS (Free):
-- AlienVault OTX — Community-driven threat data
-- Abuse.ch — Malware and botnet tracking (URLhaus, MalwareBazaar)
-- PhishTank — Community-verified phishing URLs
+- Abuse.ch — Malware and botnet tracking (URLhaus, ThreatFox, MalwareBazaar, Feodo Tracker)
 - Emerging Threats — Snort/Suricata rule-based IOCs
+- Blocklist.de — Attack source IPs from honeypot networks
+- CISA KEV — Vulnerabilities with confirmed in-the-wild exploitation
+- eCrimeLabs — CVEs with a public Metasploit exploit module
+- MISP CERT-FR — Hashes from French government incident response cases
 
-COMMERCIAL FEEDS (API key required):
-- VirusTotal — Multi-engine malware scanning
+FEEDS REQUIRING AN API KEY:
+- AlienVault OTX — Community-driven threat data
 - AbuseIPDB — IP reputation database
+
+ENRICHMENT-ONLY SOURCES (not feeds):
 - Shodan — Internet-connected device intelligence
+- NVD / CVE Details — CVSS severity and exploit availability
+- YARAify — YARA and ClamAV matches for malware samples
 
 CUSTOM FEEDS:
 - CSV/STIX imports for internal or third-party data

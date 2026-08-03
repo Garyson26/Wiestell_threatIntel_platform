@@ -3,11 +3,22 @@
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 
-from sqlalchemy import select, and_, or_
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ioc import IOC
 from app.models.ioc_relationship import IOCRelationship
+
+
+def _json_overlaps(column, values: List[str]):
+    """Match rows whose JSON array column shares any value with ``values``.
+
+    ``tags`` and ``mitre_techniques`` are JSON columns on MySQL, so the
+    PostgreSQL-only ``.overlap()`` operator is not available on them.
+    """
+    if not values:
+        return None
+    return or_(*[func.json_contains(column, func.json_quote(v)) == 1 for v in values])
 
 
 async def find_correlations(
@@ -37,13 +48,12 @@ async def find_correlations(
 async def _correlate_domain_to_ips(session: AsyncSession, ioc: IOC) -> List[Dict]:
     """Find IPs that have been associated with a domain."""
     results = []
-    query = select(IOC).where(
-        and_(
-            IOC.type == "ip",
-            IOC.tags.overlap(ioc.tags) if ioc.tags else True,
-        )
-    ).limit(20)
-    
+    query = select(IOC).where(IOC.type == "ip").limit(20)
+    tag_filter = _json_overlaps(IOC.tags, ioc.tags or [])
+    if tag_filter is not None:
+        query = query.where(tag_filter)
+
+
     result = await session.execute(query)
     related_iocs = result.scalars().all()
     
@@ -63,13 +73,12 @@ async def _correlate_domain_to_ips(session: AsyncSession, ioc: IOC) -> List[Dict
 async def _correlate_ip_to_domains(session: AsyncSession, ioc: IOC) -> List[Dict]:
     """Find domains associated with an IP."""
     results = []
-    query = select(IOC).where(
-        and_(
-            IOC.type == "domain",
-            IOC.tags.overlap(ioc.tags) if ioc.tags else True,
-        )
-    ).limit(20)
-    
+    query = select(IOC).where(IOC.type == "domain").limit(20)
+    tag_filter = _json_overlaps(IOC.tags, ioc.tags or [])
+    if tag_filter is not None:
+        query = query.where(tag_filter)
+
+
     result = await session.execute(query)
     related_iocs = result.scalars().all()
     
@@ -96,10 +105,8 @@ async def _correlate_by_tags(session: AsyncSession, ioc: IOC) -> List[Dict]:
         return []
 
     query = select(IOC).where(
-        and_(
-            IOC.id != ioc.id,
-            IOC.tags.overlap(significant_tags),
-        )
+        IOC.id != ioc.id,
+        _json_overlaps(IOC.tags, significant_tags),
     ).order_by(IOC.threat_score.desc()).limit(10)
 
     result = await session.execute(query)
@@ -123,10 +130,8 @@ async def _correlate_by_mitre(session: AsyncSession, ioc: IOC) -> List[Dict]:
         return []
 
     query = select(IOC).where(
-        and_(
-            IOC.id != ioc.id,
-            IOC.mitre_techniques.overlap(ioc.mitre_techniques),
-        )
+        IOC.id != ioc.id,
+        _json_overlaps(IOC.mitre_techniques, ioc.mitre_techniques),
     ).order_by(IOC.threat_score.desc()).limit(10)
 
     result = await session.execute(query)

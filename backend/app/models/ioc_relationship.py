@@ -3,10 +3,11 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, String, Integer, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.database import Base
+from app.models.types import NaiveUTCDateTime
 
 
 class IOCRelationship(Base):
@@ -21,7 +22,7 @@ class IOCRelationship(Base):
     )
     relationship_type = Column(String(50))  # resolves_to, contains, communicates_with, drops, hosts
     confidence = Column(Integer, default=50)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    created_at = Column(NaiveUTCDateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     source_ioc = relationship("IOC", foreign_keys=[source_ioc_id], back_populates="outgoing_relationships")

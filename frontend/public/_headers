@@ -1,6 +1,44 @@
+# ═════════════════════════════════════════════════════════════════════════════
+# READ THIS BEFORE EDITING — THIS FILE DELIBERATELY DIVERGES FROM next.config.js
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# 1. `next.config.js::headers()` IS THE AUTHORITY. Not this file.
+#
+# 2. VERCEL IGNORES THIS FILE ENTIRELY. Vercel is the current deployment target,
+#    so nothing here affects production today. This file exists only for hosts
+#    that honour a `_headers` convention — Cloudflare Pages, Netlify.
+#
+# 3. THE DIVERGENCE. next.config.js serves TWO Content-Security-Policy variants:
+#      - marketing paths (/, /about, /contact) allow googletagmanager.com,
+#        because app/(marketing)/layout.tsx loads GTM and gtag there;
+#      - every other path allows no Google origin at all, because gtag reports
+#        `page_location` including the query string and the signed-in app puts
+#        indicator values there (/ioc-search?q=…, /ioc?search=…).
+#    This file has ONE rule, carrying the strict app policy for every path.
+#
+# 4. WHY NOT MIRROR THE SPLIT. A `/` or `/about` rule would overlap the `/*` rule
+#    below, and hosts honouring this file join duplicate header values with a
+#    comma. Two CSP policies in one header means the browser enforces the
+#    intersection of both, which is neither policy — a worse outcome than the
+#    divergence.
+#
+# 5. WHAT BREAKS on a host that DOES honour this file: GTM and gtag are blocked
+#    on the marketing pages, so web analytics silently stops collecting. Nothing
+#    else regresses, and no indicator data leaks. That is the correct direction
+#    to fail — if you deploy to Cloudflare Pages or Netlify and analytics goes
+#    quiet, this comment is why.
+#
+# 6. IF YOU CHANGE THE CSP IN next.config.js, mirror the *app* (strict) variant
+#    here. Do not add per-path rules.
+#
+# Kept rather than deleted on purpose: this is the only security-header
+# configuration for non-Vercel hosts, so deleting it would ship a deployment with
+# no CSP, no HSTS and no frame protection at all — a much worse failure than
+# analytics going quiet.
+# ═════════════════════════════════════════════════════════════════════════════
+
 /_next/static/*
   Cache-Control: public, max-age=31536000, immutable
-  Content-Type: application/javascript
 
 /_next/static/chunks/*.js
   Cache-Control: public, max-age=31536000, immutable
@@ -16,33 +54,55 @@
 /images/*
   Cache-Control: public, max-age=31536000, immutable
 
+# ── One CSP rule only, deliberately ──────────────────────────────────────────
+# next.config.js now serves two policies: a strict one for the app and a
+# GTM-permitting one for the three marketing paths (/, /about, /contact), because
+# gtag reports `page_location` including the query string and the signed-in app
+# puts indicator values there (/ioc-search?q=, /ioc?search=).
+#
+# That split is NOT mirrored here. A `/` or `/about` rule would overlap `/*`, and
+# hosts that honour this file join duplicate header values with a comma — two
+# CSP policies in one header, which is the exact failure this file's sync warning
+# is about. So the single rule below carries the *strict* app policy.
+#
+# Consequence on Cloudflare Pages or Netlify: GTM is blocked on the marketing
+# pages too, so analytics stops working there. That is the correct direction to
+# fail — analytics breaks loudly, no indicator data leaks. Vercel, the current
+# target, ignores this file entirely and gets the correct per-path split.
+
 /*
   # Strict Transport Security (HSTS) - 1 year minimum for preload eligibility
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
-  
-  # Content Security Policy - PHASE 1: REPORT-ONLY MODE (monitor for 7 days before enforcing)
-  # Monitor violations at /api/csp-report - switch to Content-Security-Policy after clean period
-  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' https:; connect-src 'self' https:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /api/csp-report
-  
+
+  # Content Security Policy — ENFORCED, and must mirror next.config.js::CSP_APP.
+  # Third-party origins are enumerated rather than allowing "https:" wholesale:
+  # script-src permits 'unsafe-inline' and the session token lives in
+  # localStorage, so a blanket connect-src/img-src is an exfiltration channel.
+  #   fonts.googleapis.com  - the @import in app/globals.css
+  #   fonts.gstatic.com     - the font files that stylesheet references
+  # No Google analytics origin appears here: this policy covers the signed-in app,
+  # whose URLs carry indicator values. CSP is the backstop for the route-group
+  # scoping, so a tag added to the wrong layout by mistake still cannot load.
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; frame-src 'none'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; report-uri /api/csp-report; report-to csp-endpoint
+  Reporting-Endpoints: csp-endpoint="/api/csp-report"
+
   # Prevent MIME type sniffing
   X-Content-Type-Options: nosniff
-  
+
   # Frame protection - DENY to prevent any iframe embedding
   X-Frame-Options: DENY
-  
-  # XSS Protection - Legacy browser coverage (redundant with CSP but kept for older browsers)
-  X-XSS-Protection: 1; mode=block
-  
+
   # Referrer Policy - Prevents IOC search terms from leaking in referrer logs
   Referrer-Policy: strict-origin-when-cross-origin
-  
+
   # Permissions Policy - Disable all unnecessary browser APIs
   Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=(), payment=(), usb=(), bluetooth=(), magnetometer=(), gyroscope=(), accelerometer=(), ambient-light-sensor=(), autoplay=(), encrypted-media=(), picture-in-picture=()
-  
-  # Cross-Origin Policies
+
+  # Cross-Origin Policies. same-origin (not cross-origin, which opts OUT of CORP)
+  # because this dashboard serves no assets to third parties.
   Cross-Origin-Opener-Policy: same-origin-allow-popups
-  Cross-Origin-Resource-Policy: cross-origin
-  
+  Cross-Origin-Resource-Policy: same-origin
+
   # Remove server/platform fingerprinting
-  X-Powered-By: 
+  X-Powered-By:
   Server:

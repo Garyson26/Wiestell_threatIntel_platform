@@ -16,21 +16,30 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
     headers['Authorization'] = `Bearer ${token}`;
   }
   
-  console.log('fetchAPI:', endpoint, 'with auth:', !!token, 'full URL:', url);
-  
   const res = await fetch(url, {
     ...options,
     headers,
   });
 
-  console.log('fetchAPI response status:', res.status, res.statusText);
-  console.log('fetchAPI response headers:', Object.fromEntries(res.headers.entries()));
-
   if (!res.ok) {
+    // A rejected token is dropped immediately so the UI cannot keep replaying it.
+    if (res.status === 401 && typeof window !== 'undefined') {
+      localStorage.removeItem('sentinel_token');
+    }
+
     let message = `API error: ${res.status} ${res.statusText}`;
     try {
       const body = await res.json();
-      if (body.detail) message = body.detail;
+      if (typeof body.detail === 'string') {
+        message = body.detail;
+      } else if (Array.isArray(body.detail)) {
+        // FastAPI validation errors: surface the reason (e.g. password policy).
+        const reasons = body.detail
+          .map((d: { msg?: string }) => d?.msg)
+          .filter(Boolean)
+          .map((m: string) => m.replace(/^Value error,\s*/, ''));
+        if (reasons.length) message = reasons.join('. ');
+      }
     } catch {
       // use default message
     }
@@ -38,17 +47,13 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
   }
 
   const text = await res.text();
-  console.log('fetchAPI response text:', text);
-  
-  let data;
+
   try {
-    data = JSON.parse(text);
-  } catch (e) {
-    console.error('fetchAPI JSON parse error:', e);
-    throw new Error(`Invalid JSON response: ${text.substring(0, 100)}`);
+    return JSON.parse(text) as T;
+  } catch {
+    // Response bodies can contain indicator data — never log them.
+    throw new Error('Received a malformed response from the server.');
   }
-  
-  return data;
 }
 
 // Dashboard
@@ -65,15 +70,11 @@ export const getIOCs = (params?: Record<string, string>) => {
   return fetchAPI<import('./types').PaginatedResponse<import('./types').IOC>>(`/api/v1/iocs${query}`);
 };
 export const getIOC = (id: string) => fetchAPI<import('./types').IOCDetail>(`/api/v1/iocs/${id}`);
-export const searchIOCs = async (filters: import('./types').SearchFilters) => {
-  console.log('searchIOCs API call with filters:', filters);
-  const result = await fetchAPI<import('./types').PaginatedResponse<import('./types').IOC>>('/api/v1/iocs/search', {
+export const searchIOCs = (filters: import('./types').SearchFilters) =>
+  fetchAPI<import('./types').PaginatedResponse<import('./types').IOC>>('/api/v1/iocs/search', {
     method: 'POST',
     body: JSON.stringify(filters),
   });
-  console.log('searchIOCs API response:', result);
-  return result;
-};
 export const bulkLookup = (values: string[]) =>
   fetchAPI<import('./types').IOC[]>('/api/v1/iocs/bulk', {
     method: 'POST',
@@ -192,6 +193,28 @@ export const updateUser = (id: string, data: { full_name?: string; email?: strin
   fetchAPI<import('./types').UserProfile>(`/api/v1/users/${id}`, {
     method: 'PUT',
     body: JSON.stringify(data),
+  });
+
+// Contact (admin inbox — requires an admin token)
+export const submitContact = (data: {
+  name: string;
+  email: string;
+  reason: string;
+  ioc?: string;
+  message: string;
+}) =>
+  fetchAPI<{ id: string }>('/api/v1/contact/submit', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+export const getContactMessages = (params?: Record<string, string>) => {
+  const query = params ? '?' + new URLSearchParams(params).toString() : '';
+  return fetchAPI<import('./types').ContactListResponse>(`/api/v1/contact/messages${query}`);
+};
+export const resolveContactMessage = (id: string, notes?: string) =>
+  fetchAPI<{ message: string }>(`/api/v1/contact/${id}/resolve`, {
+    method: 'PATCH',
+    body: JSON.stringify({ notes: notes ?? null }),
   });
 
 // AI

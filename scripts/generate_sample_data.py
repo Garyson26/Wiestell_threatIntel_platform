@@ -270,13 +270,38 @@ def generate():
                         "content_type": random.choice(["text/html", "application/octet-stream", "application/javascript"]),
                     },
                 ))
+                # Mirrors the real ReputationEnricher payload shape, including the
+                # per-provider `providers` records the scoring engine reads. A
+                # payload without them routes to "unknown" reputation, so demo
+                # scores would not resemble production ones.
+                pulse_count = random.randint(1, 12)
                 session.add(Enrichment(
                     ioc_id=ioc.id,
                     source="reputation",
                     data={
+                        "aggregate_score": min(pulse_count * 10, 100),
+                        "sources_checked": 1,
+                        "sources_flagged": 1,
+                        "providers": [
+                            {
+                                "name": "abuseipdb",
+                                "supports_type": False,
+                                "configured": False,
+                                "responded": False,
+                                "verdict": "unavailable",
+                                "corroboration": 0,
+                            },
+                            {
+                                "name": "otx",
+                                "supports_type": True,
+                                "configured": True,
+                                "responded": True,
+                                "verdict": "malicious",
+                                "corroboration": pulse_count,
+                            },
+                        ],
+                        "details": {"otx": {"pulse_count": pulse_count}},
                         "threat_label": random.choice(["malware_distribution", "phishing", "exploit_kit", "c2_communication"]),
-                        "blacklisted_by": random.sample(["Google Safe Browsing", "PhishTank", "URLhaus", "Spamhaus"], random.randint(1, 3)),
-                        "risk_score": random.randint(60, 100),
                     },
                 ))
         session.flush()

@@ -43,7 +43,6 @@ function IOCSearchContent() {
       sort_order: 'desc',
       ...overrides,
     };
-    console.log('doSearch called with filters:', f);
     search(f);
   }, [searchInput, selectedType, minScore, maxScore, search]);
 
@@ -53,7 +52,6 @@ function IOCSearchContent() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Search button clicked, searchInput:', searchInput);
     doSearch();
   };
 

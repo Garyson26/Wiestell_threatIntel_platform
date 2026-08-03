@@ -95,10 +95,10 @@ export default function SettingsPage() {
                   {[
                     { name: 'OTX_API_KEY', label: 'AlienVault OTX' },
                     { name: 'ABUSEIPDB_API_KEY', label: 'AbuseIPDB' },
-                    { name: 'VT_API_KEY', label: 'VirusTotal' },
                     { name: 'SHODAN_API_KEY', label: 'Shodan' },
-                    { name: 'PHISHTANK_API_KEY', label: 'PhishTank' },
                     { name: 'THREATFOX_API_KEY', label: 'ThreatFox' },
+                    { name: 'MALWAREBAZAAR_API_KEY', label: 'MalwareBazaar' },
+                    { name: 'NVD_API_KEY', label: 'NVD' },
                   ].map((key) => (
                     <div key={key.name} className="flex items-center justify-between p-3 rounded bg-sentinel-bg-primary border border-sentinel-border">
                       <div>

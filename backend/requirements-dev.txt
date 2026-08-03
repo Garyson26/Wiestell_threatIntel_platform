@@ -1,0 +1,16 @@
+# Development / test dependencies.
+#
+# This file pulls in requirements.txt, so ONE command bootstraps a fresh clone:
+#
+#   pip install -r requirements-dev.txt && python -m pytest
+#
+# The runtime requirements are not optional for the test suite even though no test
+# touches a database: importing `app` pulls in app.database, which calls
+# create_engine() at module scope and therefore needs the pymysql DBAPI present.
+# app.api.users needs passlib/bcrypt, app.api.deps needs pyjwt, and config needs
+# pydantic-settings. Without them `pytest` fails at conftest import with
+# ModuleNotFoundError rather than reporting a single test.
+-r requirements.txt
+
+pytest==8.3.4
+pytest-asyncio==0.25.0

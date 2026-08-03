@@ -3,9 +3,10 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, String, Text, DateTime
+from sqlalchemy import Column, String, Text
 
 from app.database import Base
+from app.models.types import NaiveUTCDateTime
 
 
 class Contact(Base):
@@ -18,10 +19,10 @@ class Contact(Base):
     reason = Column(String(50), nullable=False)  # feed-issue, api-access, feature-request, abuse-report
     ioc = Column(String(500), nullable=True)  # Optional IOC/Indicator field
     message = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    created_at = Column(NaiveUTCDateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     # Optional fields for tracking response
     is_resolved = Column(String(10), default="pending")  # pending, in-progress, resolved
-    resolved_at = Column(DateTime, nullable=True)
+    resolved_at = Column(NaiveUTCDateTime, nullable=True)
     notes = Column(Text, nullable=True)  # Internal notes for tracking
 
     def __repr__(self):

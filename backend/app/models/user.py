@@ -3,9 +3,10 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, String, Boolean, DateTime
+from sqlalchemy import Column, String, Boolean
 
 from app.database import Base
+from app.models.types import NaiveUTCDateTime
 
 
 class User(Base):
@@ -18,8 +19,8 @@ class User(Base):
     full_name = Column(String(200))
     role = Column(String(50), default="analyst")  # admin, analyst, viewer
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
-    last_login = Column(DateTime)
+    created_at = Column(NaiveUTCDateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    last_login = Column(NaiveUTCDateTime)
 
     def __repr__(self):
         return f"<User(username={self.username}, role={self.role})>"

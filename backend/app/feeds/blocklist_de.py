@@ -2,7 +2,7 @@
 
 from typing import Any, List, Dict
 
-from app.feeds.base import BaseFeed
+from app.feeds.base import FULL_LIST_CURRENT_STATE, BaseFeed
 
 
 class BlocklistDeFeed(BaseFeed):
@@ -12,6 +12,11 @@ class BlocklistDeFeed(BaseFeed):
     url = "https://lists.blocklist.de/lists/all.txt"
     description = "Blocklist.de collects IPs reported for attacks, spam, and abuse"
     requires_api_key = False
+    # Whole list republished every sync, no per-record timestamps.
+    # 23,112 IPs measured 2026-07-31. blocklist.de ages entries out, so remaining
+    # on the list is a live re-assertion.
+    # See BaseFeed.full_list_kind for what each kind does.
+    full_list_kind = FULL_LIST_CURRENT_STATE
     default_sync_frequency = 3600
 
     async def fetch(self) -> Any:

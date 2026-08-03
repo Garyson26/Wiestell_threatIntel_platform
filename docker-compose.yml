@@ -1,10 +1,12 @@
-version: '3.8'
-
+# `version:` is intentionally absent — obsolete in the Compose
+# specification, and Compose v2+ emits a warning when it is present.
 services:
   frontend:
     build: ./frontend
     ports:
-      - "3000:3000"
+      # Host ports are configurable so the harness can coexist with other local
+      # stacks; container-side ports are fixed.
+      - "${FRONTEND_PORT:-3000}:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
     depends_on:
@@ -15,27 +17,29 @@ services:
   backend:
     build: ./backend
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     environment:
-      - DATABASE_URL=mysql+pymysql://u433859718_wiest_tell:C9b%3E%3BxrFy@193.203.184.197/u433859718_intel_wies_tel
+      # Required — set in .env (never commit real credentials)
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL is required}
       - REDIS_URL=redis://redis:6379/0
       - OTX_API_KEY=${OTX_API_KEY:-}
       - ABUSEIPDB_API_KEY=${ABUSEIPDB_API_KEY:-}
-      - VT_API_KEY=${VT_API_KEY:-}
       - SHODAN_API_KEY=${SHODAN_API_KEY:-}
-      - PHISHTANK_API_KEY=${PHISHTANK_API_KEY:-}
       - THREATFOX_API_KEY=${THREATFOX_API_KEY:-}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required (min 32 random chars)}
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - FEED_SYNC_INTERVAL=${FEED_SYNC_INTERVAL:-3600}
       - EMAIL_SERVICE=${EMAIL_SERVICE:-smtp}
-      - EMAIL_USER=${EMAIL_USER:-noreply@foroceanfoundation.com}
+      - EMAIL_USER=${EMAIL_USER:-}
       - EMAIL_PASSWORD=${EMAIL_PASSWORD:-}
       - SMTP_HOST=${SMTP_HOST:-smtp.hostinger.com}
       - SMTP_PORT=${SMTP_PORT:-465}
       - SMTP_SECURE=${SMTP_SECURE:-true}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
+      - CRON_SECRET=${CRON_SECRET:-}
+      - ENABLE_API_DOCS=${ENABLE_API_DOCS:-false}
     depends_on:
       redis:
         condition: service_healthy
@@ -46,22 +50,38 @@ services:
       retries: 3
       start_period: 15s
     restart: unless-stopped
+    # Render free instance: 512 MB RAM, 0.1 CPU. Without a ceiling, local timings
+    # and memory headroom bear no relation to production and Phase 5's
+    # measurements are meaningless.
+    #
+    # Both syntaxes are present on purpose. `deploy.resources.limits` is the
+    # Compose-spec form but was historically Swarm-only and ignored by
+    # `docker compose up`; `mem_limit`/`cpus` are the legacy top-level form that
+    # plain Compose has always honoured. Verified with `docker stats` on Compose
+    # v5.1.2 / Docker 29.4 (cgroups v2) — see CLAUDE.md.
+    mem_limit: 512m
+    cpus: 0.1
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.1'
 
   celery-worker:
     build: ./backend
     command: celery -A app.tasks.celery_app worker -l info -c 4
     environment:
-      - DATABASE_URL=mysql+pymysql://u433859718_wiest_tell:C9b%3E%3BxrFy@193.203.184.197/u433859718_intel_wies_tel
+      # Required — set in .env (never commit real credentials)
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL is required}
       - REDIS_URL=redis://redis:6379/0
       - OTX_API_KEY=${OTX_API_KEY:-}
       - ABUSEIPDB_API_KEY=${ABUSEIPDB_API_KEY:-}
-      - VT_API_KEY=${VT_API_KEY:-}
       - SHODAN_API_KEY=${SHODAN_API_KEY:-}
       - THREATFOX_API_KEY=${THREATFOX_API_KEY:-}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required (min 32 random chars)}
       - EMAIL_SERVICE=${EMAIL_SERVICE:-smtp}
-      - EMAIL_USER=${EMAIL_USER:-noreply@foroceanfoundation.com}
+      - EMAIL_USER=${EMAIL_USER:-}
       - EMAIL_PASSWORD=${EMAIL_PASSWORD:-}
       - SMTP_HOST=${SMTP_HOST:-smtp.hostinger.com}
       - SMTP_PORT=${SMTP_PORT:-465}
@@ -75,37 +95,78 @@ services:
     build: ./backend
     command: celery -A app.tasks.celery_app beat -l info
     environment:
-      - DATABASE_URL=mysql+pymysql://u433859718_wiest_tell:C9b%3E%3BxrFy@193.203.184.197/u433859718_intel_wies_tel
+      # Required — set in .env (never commit real credentials)
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL is required}
       - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required (min 32 random chars)}
     depends_on:
       redis:
         condition: service_healthy
     restart: unless-stopped
 
-  # Commented out - using external MySQL database (Hostinger)
-  # Uncomment below for local PostgreSQL development
-  # db:
-  #   image: postgres:16-alpine
-  #   environment:
-  #     - POSTGRES_USER=sentinel
-  #     - POSTGRES_PASSWORD=sentinel
-  #     - POSTGRES_DB=sentinel
-  #   volumes:
-  #     - postgres_data:/var/lib/postgresql/data
-  #   ports:
-  #     - "5433:5432"
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U sentinel"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
-  #   restart: unless-stopped
+  # ── Local database for the `-m mysql` test tier ──────────────────────────
+  #
+  # The PostgreSQL service that used to sit here (commented out) has been deleted.
+  # Keeping it was an active hazard: this codebase targets MySQL — json_contains,
+  # naive-UTC DATETIME, INSERT ... IGNORE, CHAR(36) ids — and a Postgres container
+  # invites testing against the wrong dialect. That already cost the project two
+  # crash-on-call endpoints, where `/attack/*` and the correlation engine used the
+  # PostgreSQL-only ARRAY comparators `.any()` and `.overlap()` against MySQL JSON
+  # columns and raised on every request.
+  #
+  # IMAGE MUST MATCH PRODUCTION. Hostinger may be MySQL 8 or MariaDB, and their
+  # JSON function semantics differ — MariaDB implements JSON as LONGTEXT with a
+  # CHECK constraint and its json_contains argument handling is not identical.
+  # Testing MySQL 8 semantics against a MariaDB host produces false confidence,
+  # which is worse than not testing at all. Confirm with `SELECT VERSION();` on
+  # production, then pin DB_IMAGE in .env to the matching tag, e.g.
+  #     DB_IMAGE=mariadb:11.4
+  db:
+    image: ${DB_IMAGE:-mysql:8.0}
+    command: >
+      --wait-timeout=30
+      --interactive-timeout=30
+      --max-connections=50
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD:-sentinel}
+      - MYSQL_DATABASE=${DB_NAME:-sentinel_test}
+      - MYSQL_USER=${DB_USER:-sentinel}
+      - MYSQL_PASSWORD=${DB_PASSWORD:-sentinel}
+      # MariaDB reads the MARIADB_* names; setting both keeps one service
+      # definition working for either image.
+      - MARIADB_ROOT_PASSWORD=${DB_ROOT_PASSWORD:-sentinel}
+      - MARIADB_DATABASE=${DB_NAME:-sentinel_test}
+      - MARIADB_USER=${DB_USER:-sentinel}
+      - MARIADB_PASSWORD=${DB_PASSWORD:-sentinel}
+    # wait_timeout=30 is deliberate and is the point of this container.
+    #
+    # Production runs on a shared host that closes idle connections. The
+    # aiomysql.Connection.ensure_closed patch in app/database.py and the
+    # pool_recycle=280 / pool_pre_ping settings beside it exist to survive exactly
+    # that. At MySQL's default 28800s (8 hours) the failure never fires in a local
+    # session, so the patch is effectively untested — 30 seconds makes it fire
+    # within a minute of idling. Do not raise this to make a flaky test pass; the
+    # flakiness is the signal.
+    ports:
+      # Loopback only, same reasoning as redis below.
+      - "127.0.0.1:${DB_PORT:-3307}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      # mysqladmin ping ships in both the mysql and mariadb images.
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent || mysqladmin ping -h 127.0.0.1 -u root -p$$MARIADB_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
+    # Bound to loopback only: an unauthenticated Redis reachable from the LAN
+    # is a full read/write of the cache and Celery queue.
     ports:
-      - "6379:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -118,7 +179,7 @@ services:
   nginx:
     image: nginx:alpine
     ports:
-      - "80:80"
+      - "${NGINX_PORT:-80}:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
@@ -127,5 +188,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  postgres_data:
+  mysql_data:
   redis_data:

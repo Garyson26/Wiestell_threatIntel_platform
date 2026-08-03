@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import structlog
 
 from app.feeds.base import BaseFeed
+from app.utils.sanitize import redact_secrets
 
 logger = structlog.get_logger()
 
@@ -21,6 +22,11 @@ _CSV_FIELDNAMES = [
 
 # ── Payload CSV column names (confirmed from URLhaus API response structure) ─
 # API fields: md5_hash, sha256_hash, file_type, file_size, signature, firstseen
+#
+# NOTE: "virustotal" here is a *column name in URLhaus's own CSV export*, not a
+# reference to the removed VirusTotal integration. It must match the upstream
+# header exactly or csv.DictReader misaligns every subsequent field. Do not remove
+# it while cleaning up VirusTotal references.
 _PAYLOAD_FIELDNAMES = [
     "md5_hash", "sha256_hash", "file_type", "file_size",
     "signature", "firstseen", "urlhaus_download",
@@ -40,6 +46,25 @@ class URLhausFeed(BaseFeed):
     description = "URLhaus collects and shares malicious URLs used for malware distribution"
     requires_api_key = False  # Optional - works without key but provides more data with key
     api_key_env = "URLHAUS_API_KEY"
+    # csv_recent is a rolling window, so an interval longer than it loses URLs
+    # silently. Measured per sync rather than assumed — see BaseFeed.rolling_window.
+    rolling_window = True
+
+    # MEASURED 2026-07-30 from csv_recent itself: 15,524 URLs spanning
+    #   2026-06-30 00:00:15Z .. 2026-07-30 13:23:30Z  =  30d 13h  (733.39 hours)
+    # "Recent" means roughly the last month, NOT the last 48 hours that the name
+    # suggests. Against a 6-hour governing interval that is a ~122x margin, so this
+    # feed is in no danger; the check is here to notice if abuse.ch ever shortens it.
+    _MEASURED_WINDOW_HOURS = 733.39
+
+    # Only ONE of the four fetched sources is a time window, and the continuity
+    # check is only meaningful against that one:
+    #   recent_csv   rolling window of recently-added URLs   <- the window
+    #   online_csv   URLs *currently* online — a status selection, not a window. A
+    #                URL online for a year makes its minimum a year old, which
+    #                would mask every real gap.
+    #   payloads_csv / hostfile   keyed exports, present only with an Auth-Key
+    _WINDOW_SOURCE = "recent_csv"
     default_sync_frequency = 900        # 15 minutes
 
     # ── Free no-auth endpoints (confirmed live April 2026) ───────────────────
@@ -68,7 +93,7 @@ class URLhausFeed(BaseFeed):
             results["recent_csv"] = resp.text
             logger.info("urlhaus_recent_csv_fetched")
         except Exception as exc:
-            logger.warning("urlhaus_recent_csv_failed", error=str(exc))
+            logger.warning("urlhaus_recent_csv_failed", error=redact_secrets(exc))
             results["recent_csv"] = ""
 
         # 2. Online-only URLs CSV — no auth, active malware sites only
@@ -79,7 +104,7 @@ class URLhausFeed(BaseFeed):
             results["online_csv"] = resp.text
             logger.info("urlhaus_online_csv_fetched")
         except Exception as exc:
-            logger.warning("urlhaus_online_csv_failed", error=str(exc))
+            logger.warning("urlhaus_online_csv_failed", error=redact_secrets(exc))
             results["online_csv"] = ""
 
         # 3. Payloads CSV — Auth-Key in URL path — hash IOCs from malware downloads
@@ -93,7 +118,7 @@ class URLhausFeed(BaseFeed):
                 results["payloads_csv"] = resp.text
                 logger.info("urlhaus_payloads_csv_fetched")
             except Exception as exc:
-                logger.warning("urlhaus_payloads_csv_failed", error=str(exc))
+                logger.warning("urlhaus_payloads_csv_failed", error=redact_secrets(exc))
                 results["payloads_csv"] = ""
         else:
             results["payloads_csv"] = ""
@@ -109,7 +134,7 @@ class URLhausFeed(BaseFeed):
                 results["hostfile"] = resp.text
                 logger.info("urlhaus_hostfile_fetched")
             except Exception as exc:
-                logger.warning("urlhaus_hostfile_failed", error=str(exc))
+                logger.warning("urlhaus_hostfile_failed", error=redact_secrets(exc))
                 results["hostfile"] = ""
         else:
             results["hostfile"] = ""
@@ -124,11 +149,14 @@ class URLhausFeed(BaseFeed):
         seen_hashes: set = set()  # dedup hash IOCs from payloads CSV
         seen_domains: set = set() # dedup domain IOCs from hostfile
 
-        # recent_csv and online_csv use the same format — merge with dedup
+        # recent_csv and online_csv use the same format — merge with dedup.
+        # Only recent_csv contributes to the observed window; see _WINDOW_SOURCE.
         for key in ("recent_csv", "online_csv"):
             text = raw_data.get(key, "")
             if text:
-                iocs.extend(self._parse_url_csv(text, seen_urls))
+                iocs.extend(self._parse_url_csv(
+                    text, seen_urls, record_window=(key == self._WINDOW_SOURCE)
+                ))
 
         payloads_text = raw_data.get("payloads_csv", "")
         if payloads_text:
@@ -144,7 +172,7 @@ class URLhausFeed(BaseFeed):
     # ── source parsers ───────────────────────────────────────────────────────
 
     def _parse_url_csv(
-        self, raw_text: str, seen: set
+        self, raw_text: str, seen: set, record_window: bool = False
     ) -> List[Dict[str, Any]]:
         """
         Parse URLhaus recent/online CSV exports.
@@ -159,6 +187,7 @@ class URLhausFeed(BaseFeed):
         - We keep both online and offline URLs but score them differently.
         """
         iocs = []
+        window_timestamps: List[Optional[datetime]] = []
         # Strip comment lines, pass fieldnames manually (header is commented out)
         data_lines = [
             line for line in raw_text.splitlines()
@@ -210,6 +239,8 @@ class URLhausFeed(BaseFeed):
 
                 first_seen = _parse_ts(dateadded)
                 last_seen  = _parse_ts(last_online) if last_online else None
+                if record_window:
+                    window_timestamps.append(first_seen)
 
                 iocs.append(self._make_ioc(
                     ioc_type="url",
@@ -229,6 +260,10 @@ class URLhausFeed(BaseFeed):
                 ))
             except (IndexError, ValueError, Exception):
                 continue
+
+        if record_window:
+            self.record_observed_window(window_timestamps)
+
         return iocs
 
     def _parse_payloads_csv(

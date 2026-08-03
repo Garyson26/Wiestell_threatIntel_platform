@@ -32,11 +32,12 @@ services:
         value: 3600
       - key: GEOIP_DB_PATH
         value: /opt/render/project/src/backend/data/GeoLite2-City.mmdb
-      # Database - Use existing MySQL (Hostinger)
+      # Database — set manually in the Render dashboard. Connection strings
+      # contain credentials and must never be committed to the repository.
       - key: DATABASE_URL
-        value: mysql+pymysql://u433859718_wiest_tell:C9b%3E%3BxrFy@193.203.184.197/u433859718_intel_wies_tel
+        sync: false
       - key: DATABASE_ASYNC_URL
-        value: mysql+aiomysql://u433859718_wiest_tell:C9b%3E%3BxrFy@193.203.184.197/u433859718_intel_wies_tel
+        sync: false
       # Redis - Connected to Redis service below
       - key: REDIS_URL
         fromService:
@@ -46,9 +47,19 @@ services:
       # Security
       - key: SECRET_KEY
         generateValue: true  # Render auto-generates secure random value
-      # CORS - Frontend on Vercel
+      # CORS - Frontend on Vercel (explicit origins only, never "*")
       - key: CORS_ORIGINS
         value: https://wiestell.com,https://www.wiestell.com,https://wiestell.vercel.app
+      # Shared secret for scheduler-triggered maintenance endpoints
+      - key: CRON_SECRET
+        generateValue: true
+      # Interactive API docs stay closed in production
+      - key: ENABLE_API_DOCS
+        value: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ENABLE_ERROR_EMAILS
+        value: false
       # Email Configuration - Hostinger SMTP
       - key: EMAIL_SERVICE
         value: smtp
@@ -67,11 +78,7 @@ services:
         sync: false
       - key: ABUSEIPDB_API_KEY
         sync: false
-      - key: VT_API_KEY
-        sync: false
       - key: SHODAN_API_KEY
-        sync: false
-      - key: PHISHTANK_API_KEY
         sync: false
       - key: GROQ_API_KEY
         sync: false
@@ -129,9 +136,9 @@ services:
 # CRON JOBS - Scheduled Tasks
 # ============================================================================
 # Note: Render cron jobs require a paid plan. For free tier, use an external
-# service like cron-job.org pointing to your /api/v1/feeds/sync-all endpoint
-# with authentication.
-#gghgh test
+# service like cron-job.org pointing to your /api/v1/feeds/sync-all endpoint,
+# sending the CRON_SECRET value in an "X-Cron-Secret" header.
+#
 # Uncomment below if you have a paid plan:
 # jobs:
 #   - type: cron

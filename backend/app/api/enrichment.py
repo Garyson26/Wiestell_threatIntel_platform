@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import structlog
 
+from app.api.deps import get_current_user, require_admin_or_cron, require_analyst
 from app.database import AsyncSessionLocal, get_db
 from app.models.enrichment import Enrichment
 from app.models.ioc import IOC
@@ -70,7 +71,11 @@ class BackfillStartResponse(BaseModel):
 
 # ── Bulk backfill endpoints (registered BEFORE wildcard /{ioc_id} routes) ────
 
-@router.get("/backfill/status", response_model=BackfillStatusResponse)
+@router.get(
+    "/backfill/status",
+    response_model=BackfillStatusResponse,
+    dependencies=[Depends(get_current_user)],
+)
 async def backfill_status(
     ioc_type: Optional[str] = Query(
         None,
@@ -121,7 +126,12 @@ async def backfill_status(
     )
 
 
-@router.post("/backfill/start", status_code=202, response_model=BackfillStartResponse)
+@router.post(
+    "/backfill/start",
+    status_code=202,
+    response_model=BackfillStartResponse,
+    dependencies=[Depends(require_admin_or_cron)],
+)
 async def backfill_start(
     background_tasks: BackgroundTasks,
     limit: Optional[int] = Query(
@@ -426,7 +436,11 @@ async def _run_backfill(
 
 # ── Per-IOC endpoints (wildcard /{ioc_id} — must come AFTER literal routes) ──
 
-@router.get("/{ioc_id}", response_model=list[EnrichmentResponse])
+@router.get(
+    "/{ioc_id}",
+    response_model=list[EnrichmentResponse],
+    dependencies=[Depends(get_current_user)],
+)
 async def get_enrichments(ioc_id: str, db: AsyncSession = Depends(get_db)):
     """Get all enrichment data for an IOC."""
     result = await db.execute(
@@ -436,7 +450,7 @@ async def get_enrichments(ioc_id: str, db: AsyncSession = Depends(get_db)):
     return [EnrichmentResponse.model_validate(e) for e in enrichments]
 
 
-@router.post("/{ioc_id}/enrich")
+@router.post("/{ioc_id}/enrich", dependencies=[Depends(require_analyst)])
 async def trigger_enrichment(
     ioc_id: str,
     request: EnrichmentRequest = EnrichmentRequest(),

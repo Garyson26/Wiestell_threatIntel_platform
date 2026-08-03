@@ -5,7 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Globe, Link, Hash, ExternalLink, Mail, ShieldAlert, Tag, Clock, Activity, Database, Sparkles } from 'lucide-react';
 import { getIOC } from '@/lib/api';
 import ScoreBadge from '@/components/ioc/ScoreBadge';
-import { cn, formatDate, formatTimestamp, getScoreCategory, getScoreColor } from '@/lib/utils';
+import { cn, enrichmentEntries, formatDate, formatEnrichmentField, formatTimestamp, getScoreCategory, getScoreColor } from '@/lib/utils';
+import { VULN_ENRICHMENT_SOURCES, VulnerabilityEnrichmentPanel } from '@/components/ioc/VulnerabilityEnrichment';
 import { useAuth } from '@/lib/auth';
 import { trackView } from '@/lib/userActivity';
 import type { IOCDetail } from '@/lib/types';
@@ -420,8 +421,16 @@ export default function IOCDetailPage() {
                     </table>
                   )}
 
+                  {/* Vulnerability / malware sources get purpose-built panels */}
+                  {VULN_ENRICHMENT_SOURCES.includes(e.source as typeof VULN_ENRICHMENT_SOURCES[number]) && e.data && (
+                    <VulnerabilityEnrichmentPanel
+                      source={e.source}
+                      data={e.data as Record<string, unknown>}
+                    />
+                  )}
+
                   {/* Generic fallback for other sources */}
-                  {!['geoip', 'whois', 'dns', 'reputation', 'malwarebazaar'].includes(e.source) && e.data && (
+                  {!['geoip', 'whois', 'dns', 'reputation', 'malwarebazaar', ...VULN_ENRICHMENT_SOURCES].includes(e.source) && e.data && (
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-sentinel-border/50 bg-sentinel-bg-primary/30">
@@ -430,11 +439,29 @@ export default function IOCDetailPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {Object.entries(e.data).map(([key, value]) => (
+                        {enrichmentEntries(e.source, e.data as Record<string, unknown>).map(([key, value]) => (
                           <tr key={key} className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
-                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted capitalize">{key.replace(/_/g, ' ')}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted capitalize">{formatEnrichmentField(e.source, key)}</td>
                             <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">
-                              {typeof value === 'object' ? JSON.stringify(value) : String(value || 'N/A')}
+                              {Array.isArray(value) ? (
+                                value.length === 0 ? (
+                                  <span className="text-sentinel-text-muted italic">Empty</span>
+                                ) : (
+                                  <div className="flex flex-wrap gap-1">
+                                    {value.map((item, idx) => (
+                                      <span key={idx} className="px-2 py-0.5 bg-sentinel-bg-secondary/50 border border-sentinel-border/30 rounded text-[10px]">
+                                        {typeof item === 'object' && item !== null ? JSON.stringify(item) : String(item)}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )
+                              ) : typeof value === 'boolean' ? (
+                                <span className={value ? 'text-red-400' : 'text-sentinel-text-muted'}>{value ? 'Yes' : 'No'}</span>
+                              ) : typeof value === 'object' && value !== null ? (
+                                <pre className="text-[10px] overflow-x-auto">{JSON.stringify(value, null, 2)}</pre>
+                              ) : (
+                                String(value ?? 'N/A')
+                              )}
                             </td>
                           </tr>
                         ))}
