@@ -438,6 +438,10 @@ Accepted or out-of-scope items, in rough priority order:
 4. **CSP still allows `'unsafe-inline'` for scripts** — required by the Next.js App Router without nonce support. Revisit when nonce-based CSP is available.
 5. **Rate limiting is per-process when Redis is absent.** The in-memory fallback does not coordinate across workers or serverless instances; the nginx zone covers the containerised deployment, but a Vercel/Render deployment should have `REDIS_URL` configured for the limits to be global.
 
+   **Narrowed 2026-07-31: on the current deployment this cause is largely inert, which makes the other cause the live one.** Render's Hobby tier is **single-instance with no horizontal scaling**, so there is one process and one set of counters — the in-memory limiter is effectively correct here, and `REDIS_URL` buys coordination that nothing currently needs. A process restart still resets the window, which is a real but minor weakening.
+   
+   That matters for prioritisation rather than comfort: it means the per-process concern recorded above was **not** what made the limits ineffective. The `X-Forwarded-For` bypass below was, on its own, and provisioning Redis would not have touched it. Two causes were recorded as one outcome; one is now known to be small on this topology and the other is the whole of the problem.
+
    **Addendum 2026-07-31 — provisioning Redis does NOT close this, contrary to what the sentence above says.** `deps.py::_client_ip` derives the bucket key from `X-Forwarded-For` and trusts the first entry with no trusted-proxy allowlist and no hop count:
 
    ```python

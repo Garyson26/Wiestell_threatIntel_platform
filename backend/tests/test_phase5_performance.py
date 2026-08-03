@@ -126,6 +126,56 @@ class TestTrendsAggregation:
         assert "timezone.utc" in code, "the UTC anchor is gone from get_trends"
 
 
+class TestTheExportPathCannotLeakAStaleAggregate:
+    """Checked 2026-07-31 rather than assumed: does export bypass the normaliser?
+
+    The grep guard in test_scoring_and_export.py looks for `"data": e.data`, which would
+    miss an export format that assembles enrichment output differently. Result: all three
+    formats are safe, and two of them because they carry no enrichment payload at all.
+    Pinned because that is a property of the current converters, not a guarantee - adding
+    reputation detail to the STIX output would silently reintroduce the stale mean.
+    """
+
+    def test_the_export_handler_normalises_before_formatting(self):
+        """One shared `ioc_dicts` feeds STIX, CSV and JSON, and it is normalised."""
+        import inspect
+
+        from app.api import ioc as ioc_api
+
+        source = inspect.getsource(ioc_api.export_iocs)
+        assert "normalize_enrichment_for_display" in source, (
+            "export_iocs builds enrichment payloads without the normaliser, so exports "
+            "would carry the pre-2026-07-31 mean"
+        )
+
+    def test_csv_emits_source_names_only(self):
+        """So no payload field - including aggregate_score - can reach a CSV cell."""
+        import inspect
+
+        from app.api import ioc as ioc_api
+
+        source = inspect.getsource(ioc_api.export_iocs)
+        assert 'e["source"] for e in d.get("enrichments", [])' in source, (
+            "the CSV export changed shape; if it now emits payload fields, confirm they "
+            "come from the normalised copy"
+        )
+        assert "aggregate_score" not in source
+
+    def test_the_stix_converter_reads_no_enrichment_data(self):
+        """If this fails, STIX has started carrying payloads and needs the normaliser."""
+        import inspect
+
+        from app.utils import stix_converter
+
+        source = inspect.getsource(stix_converter)
+        for field in ("enrichments", "aggregate_score", "sources_flagged"):
+            assert field not in source, (
+                f"stix_converter now references {field!r}. STIX output is built from raw "
+                "IOC dicts, so any enrichment field added there must come from the "
+                "normalised copy or exports will carry a stale aggregate."
+            )
+
+
 class TestEnrichmentConcurrencyIsBounded:
     """Unbounded `asyncio.gather` across a 50,000-IOC backfill on 0.1 CPU."""
 
@@ -246,15 +296,15 @@ class TestPoolIsSizedForTheRealDeployment:
 
 
 class TestHeavyDependenciesAreUnused:
-    """`pandas` and `weasyprint` are declared and never imported.
+    """`pandas` and `weasyprint` are neither imported NOR declared, as of 2026-07-31.
 
-    The Phase 5 item was "lazy pandas and weasyprint imports", but there is nothing to
-    make lazy: neither package is imported anywhere in the codebase, and nothing generates
-    a PDF. So the actionable form is removal from requirements.txt, which is an owner
-    decision (weasyprint is presumably a placeholder for planned PDF export).
+    The Phase 5 item was "lazy pandas and weasyprint imports", but there was nothing to
+    make lazy: neither package was imported anywhere, and nothing generates a PDF. So the
+    actionable form was removal from requirements.txt, which the owner directed.
 
-    This test fails if either is ever imported, which is the moment the lazy-import
-    question becomes real rather than void.
+    Both halves are asserted. Failing on an *import* catches code that would now break at
+    runtime; failing on a *declaration* catches the dependency creeping back in without a
+    consumer. Together they mean re-adding either is a deliberate act with a paired import.
     """
 
     def test_neither_is_imported_anywhere(self):
@@ -277,14 +327,27 @@ class TestHeavyDependenciesAreUnused:
         )
 
     @pytest.mark.parametrize("package", ["pandas", "weasyprint"])
-    def test_they_are_still_declared(self, package):
-        """So the test above cannot pass merely because they were quietly dropped."""
+    def test_neither_is_declared_as_a_dependency(self, package):
+        """Removed 2026-07-31. Re-adding one needs a consumer, not just a line here.
+
+        Matched against uncommented lines only, so the comment recording the removal does
+        not itself read as a declaration - the same source-text trap that made two earlier
+        tests in this file fail on the prose describing their own fix.
+        """
         import pathlib
 
         root = pathlib.Path(__file__).resolve().parents[1]
-        requirements = (root / "requirements.txt").read_text(encoding="utf-8")
-        if package not in requirements:
-            pytest.skip(
-                f"{package} has been removed from requirements.txt  -  if that was "
-                "deliberate, delete this parametrised case"
-            )
+        declared = [
+            line.strip()
+            for line in (root / "requirements.txt").read_text(
+                encoding="utf-8").splitlines()
+            if line.strip() and not line.strip().startswith("#")
+            and package in line.split("#")[0]
+        ]
+        assert not declared, (
+            f"{package} is declared again: {declared}. It was removed because nothing "
+            "imported it: weasyprint pulls cairo and pango on every build for a PDF "
+            "feature that does not exist, and pandas pulls numpy with no usage at all. "
+            "If it is needed now, add the import in the same change so the test above "
+            "documents the consumer."
+        )
