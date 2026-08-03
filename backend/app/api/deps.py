@@ -158,10 +158,53 @@ async def require_admin_or_cron(
 # ── Rate limiting for unauthenticated endpoints ───────────────────────────────
 
 def _client_ip(request: Request) -> str:
+    """Caller identity for rate-limit bucketing, from trusted hops only.
+
+    ``X-Forwarded-For`` is entirely client-supplied. The previous implementation took
+    ``split(",")[0]`` — the **left-most** entry — which is whatever the client chose to
+    send, so rotating the header produced a fresh bucket per request and the per-IP
+    budget never bound. That defeated the limits on ``/login``, ``/verify-otp``,
+    ``/register``, ``contact-submit``, ``ioc-lookup`` and the three ``ai-*`` endpoints,
+    with or without Redis — see SECURITY_REVIEW.md residual risk #5, which previously
+    said provisioning Redis closed the gap. It did not.
+
+    **Count from the right.** Infrastructure *appends* as a request passes through, so the
+    right-most entries are the trustworthy ones and the left-most is unverifiable.
+    ``TRUSTED_PROXY_HOPS`` says how many proxies sit in front of this app; entry
+    ``-hops`` is therefore the address the outermost trusted proxy observed.
+
+    **Defaults to trusting nothing.** With ``TRUSTED_PROXY_HOPS = 0`` the header is
+    ignored entirely and the socket peer is used, so behaviour is unchanged from a
+    correctness standpoint until the value is configured — the fix ships inert and closes
+    the moment one environment variable is set. The default must stay 0: the container is
+    directly reachable in development, so trusting the header by default would be a
+    bypass in every dev environment.
+
+    Note this is *only* a rate-limit bucket key. It has one consumer (audited
+    2026-07-31) and reaches no audit or security log, so a forged header cannot poison
+    the audit trail.
+    """
+    peer = request.client.host if request.client else "unknown"
+
+    hops = getattr(settings, "TRUSTED_PROXY_HOPS", 0) or 0
+    if hops <= 0:
+        return peer
+
     forwarded = request.headers.get("X-Forwarded-For", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    if not forwarded:
+        return peer
+
+    entries = [part.strip() for part in forwarded.split(",") if part.strip()]
+    if not entries:
+        return peer
+
+    # Entry `-hops` counting from the right. A header shorter than the configured hop
+    # count means the request did not arrive through the expected chain, so fall back to
+    # the peer rather than reaching for the left-most entry — reaching would hand the
+    # choice back to the client, which is the bug.
+    if len(entries) < hops:
+        return peer
+    return entries[-hops]
 
 
 def rate_limit(bucket: str, max_requests: Optional[int] = None, window_seconds: Optional[int] = None):

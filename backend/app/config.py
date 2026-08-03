@@ -105,6 +105,23 @@ class Settings(BaseSettings):
     AUTH_RATE_LIMIT_MAX: int = 10
     AUTH_RATE_LIMIT_WINDOW: int = 300      # seconds
 
+    # Number of trusted reverse proxies in front of this app, counted from the RIGHT of
+    # `X-Forwarded-For`. Governs which entry `deps.py::_client_ip` believes.
+    #
+    # 0 (the default) means trust NOTHING: ignore the header entirely and use the socket
+    # peer. That is deliberate and must stay the default — the container is directly
+    # reachable in development, so a default that trusted the header would be a rate-limit
+    # bypass in every dev environment. Failing closed over-restricts; failing open is the
+    # defect being fixed.
+    #
+    # Production is Render, which terminates TLS at its own edge (nginx/nginx.conf is
+    # docker-compose only and is NOT in the production path), so this needs a non-zero
+    # value there. **Set it from a measured count, not from documentation** — log the raw
+    # header from a deployed instance and count the entries. Render may front with
+    # Cloudflare, but `CF-Connecting-IP` is undocumented on Render's side, so do not build
+    # on it. See SECURITY_REVIEW.md residual risk #5.
+    TRUSTED_PROXY_HOPS: int = 0
+
     # GeoIP
     GEOIP_DB_PATH: str = "/app/data/GeoLite2-City.mmdb"
 

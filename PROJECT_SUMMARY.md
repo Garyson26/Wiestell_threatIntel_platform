@@ -306,6 +306,26 @@ Password → OTP → JWT. After this review the flow enforces: purpose-bound sin
 12. **Feed cadence drifts by one cron period when `sync_frequency` is a multiple of the cron interval.** `last_sync_at` is stamped at ingest *completion*, so smart mode's `(now - last) >= freq` check falls short by the sync's own duration and skips the intended firing. Measured on a 6-hour cron with a 10-minute sync: a 12h feed runs every 18h, a 24h feed every 30h, a 72h feed every 78h. The penalty is a fixed one period, not accumulating. The fix is to stamp the attempt's *start* time, and it must land in Spec 2 Phase 4 — whose §4.3 currently specifies `next_due_at = now() + interval` after each attempt and so reproduces the defect exactly. Interim workaround for MalwareBazaar only: keep `sync_frequency` strictly below the cron interval so every firing syncs. Full analysis and the Phase 4 column reconciliation: [docs/superpowers/specs/2026-07-30-phase4-scheduling-design-notes.md](docs/superpowers/specs/2026-07-30-phase4-scheduling-design-notes.md).
 13. **`feed_sources.config` is written but never read.** `api/feeds.py:52` sets it on create; nothing consumes it. Dead JSON column. Relevant because it looks like a free home for machine-managed state such as `sync_cursor` — but `FeedUpdate` replaces it wholesale, so an operator editing config through the API would wipe that state silently. This is why the rolling-window watermark got a dedicated column.
 
+16. **THE RESCORE IS A UAT BLOCKER, NOT HOUSEKEEPING.** `scripts/rescore_corpus.py` has never been run. Every scoring change since 2026-07-28 alters how a score is *computed* and none of them touch what is *stored*, because nothing re-scores an existing row: ingestion skips rows whose evidence has not changed, and the enrichment cron selects only never-enriched IOCs.
+
+    `SCORING_MODEL_VERSION` is now **8**. Stored `threat_score` values were written under version 1 — or under whichever intermediate version happened to be live when a row was last touched — so **the corpus holds scores produced by at least four superseded models, and the dashboard ranks them against each other.** "Top threats", the critical-count tile, the ≥76 filter and every sort by `threat_score` are comparing numbers computed under different rules. That is not a stale-data inconvenience; it makes the primary triage surface unsound, and it cannot be demonstrated to a UAT audience as-is.
+
+    What changed between versions, so the scale of the discrepancy is on the record:
+
+    | Version | Effect on an unchanged indicator |
+    |---|---|
+    | 1 → 2 | reputation stopped reading back `threat_score`; a KEV CVE had been walking 46 → 51 → 53 to a fixed point describing its own history |
+    | 2 → 3 | `sighting_count` and `last_seen` stopped counting re-reads; `enrichment_data` reached the re-read path (−44 on KEV CVEs before the fix) |
+    | 3 → 4 | per-signal `assessed`: KEV-without-CVSS +15 composite, medium → high |
+    | 4 → 5 | `MIN_ASSESSED_POINTS`: thin-evidence payloads smoothed; geoip-only and dns-only capped at 200/3 |
+    | 5 → 6 | MalwareBazaar scored at all for the first time |
+    | 6 → 7 | hash reputation reads family attribution: 44 → 62 at one feed, medium → high |
+    | 7 → 8 | provider aggregation max not mean: a maximally-rated IP recovers 45 → 58, medium → high |
+
+    **One rescore covers all of them** — the script recomputes unconditionally rather than diffing versions — so this is one action, not seven. But it is sequenced behind two things: the `iocs.scoring_model_version` column (blocked on the migration-chain repair) is what lets the script target stale rows rather than the whole table, and the run must happen **before** any `manual_score_override` values are set, or those rows are skipped permanently.
+
+    **One caveat that a rescore alone does not fix.** The script recomputes from *stored* enrichment payloads, so anything baked into a stored field stays. `aggregate_score` was such a case — hence `_strongest_provider_score` recomputing the max from `details` so the version-8 fix does reach existing rows. Any future change to a stored enrichment field needs the same treatment or it will not land until the freeze trap (`WHERE Enrichment.id IS NULL`) is fixed and a full refresh cycle has run.
+
 15. **LIVE, found 2026-07-31 — one OTX pulse scores an indicator *lower* than no OTX pulse at all.** The reputation enricher maps OTX to `min(pulse_count * 10, 100)`, so a single pulse yields `aggregate_score = 10` and two yield 20 — both **below `NEUTRAL_REPUTATION = 30`**, the value used when there is no reputation evidence whatsoever. Measured identically across `domain`, `ip`, `url` and `hash`:
 
     | OTX pulses | reputation | composite | bucket |
@@ -325,7 +345,18 @@ Password → OTP → JWT. After this review the flow enforces: purpose-bound sin
 
     **Blast radius is larger than anything in Sections 1–2** — it moves reputation for *every* OTX-flagged indicator across all four types, at a 30% weight, so it must be measured before sign-off rather than argued.
 
-    **Aggregation checked at the same time, and it splits two ways (2026-07-31).** The question was whether `aggregate_score` averages a silent provider in as a zero.
+    **Aggregation FIXED 2026-07-31 (§6b): the aggregator is now max, not mean.** A mean over providers that each reached a *positive* verdict answers the wrong question — nobody is arguing the indicator is clean, so it only measured how loudly they agreed, and it dragged the strongest verdict toward the weakest. The maximally-rated IP below recovers from 45 (medium) to **58 (high)**. Max and mean are identical whenever only one provider is positive, which is the common case, so only the both-positive-and-disagreeing case moved. `SCORING_MODEL_VERSION` 8.
+
+    Two consequences worth carrying:
+
+    - **Rescaling would NOT have fixed this.** Measured with both providers rescaled to a comparable 30–100 scale at k=20, AbuseIPDB 100 with one OTX pulse still gave mean 75 → composite 50 (medium) against 100 → 58 (high) alone — still a lost bucket. The mean was an independent cause and the scale mismatch merely amplified it. An earlier note here claimed the rescale fixed both; it did not.
+    - **`aggregate_score` is a *stored* field**, and enrichment rows are never refreshed, so changing the enricher alone would have left every existing row holding a mean permanently — a rescore would faithfully reuse it. `scoring_engine._strongest_provider_score` therefore recomputes the max from `details`, which is in the same stored JSON, so the fix reaches the existing corpus on rescore. It is one-sided and can only raise a stored value. Any future change to a stored enrichment field needs the same treatment; see item 16.
+
+    **Provider corroboration is now measured nowhere in the composite, and that is an honest zero rather than a fix.** `source_count` counts distinct `ioc_sources.feed_id` — *feeds* that reported the indicator — and AbuseIPDB and OTX are enrichment providers, not feeds, so they never reach the diversity term. `sources_flagged` is written into the payload and read by nothing. Under max, two agreeing providers score exactly like one. Previously the gap was filled by an averaging artefact pointing the *wrong* way, so agreement lowered the score; an explicit zero is better than that. **§6 candidate, not built:** if agreement should count it wants to be a declared signal — `multi_provider_agreement` in `RISK_SIGNALS` reading `sources_flagged >= 2` — rather than an emergent property of the aggregator. Pinned by `TestProviderAggregation::test_provider_corroboration_is_measured_nowhere`, which fails if such a signal appears without this note being updated.
+
+    **Max raises single-provider false-positive sensitivity**, but only in the both-positive case, since mean and max are identical when one provider is silent. OTX pulses are user-contributed, so OTX is the FP vector: a single mistaken pulse can no longer be averaged down by AbuseIPDB. Bounded — one provider's error moves the reputation term, not the bucket, unless the indicator is already near a threshold — and accepted as the cost of not letting corroboration lower a score.
+
+    **The original question, for the record.** It was whether `aggregate_score` averaged a silent provider in as a zero.
 
     *Silence: already correct.* `scores.append(...)` executes only inside the `> 0` branches, so a silent or unconfigured provider contributes **nothing** to the list rather than a zero. AbuseIPDB at 100 with OTX silent reads **100**, not 50. Non-issue, and now pinned by a test so it cannot regress into a mean-over-all-providers.
 
