@@ -243,3 +243,80 @@ is provisioned, every IP already carrying an `error_city` row keeps it until tha
 selection is fixed *and* a full refresh has run. A `DELETE FROM enrichments WHERE
 source = 'geoip' AND JSON_EXTRACT(data, '$.error_city') IS NOT NULL` would let them
 re-enrich, but it is a write against production and needs its own sign-off.
+
+---
+
+## 6. Schema work that lands behind this repair
+
+Recorded here because it is blocked on the same four owner queries, and because it is the
+eventual right answer to a problem Phase 5 could only mitigate in application code.
+
+### 6.1 `ioc_techniques` — a normalised join table
+
+**Problem.** `iocs.mitre_techniques` is a JSON array, and `JSON_CONTAINS` cannot use an
+index. Counting IOCs per technique therefore has no efficient SQL form: the join
+
+```sql
+SELECT t.id, COUNT(i.id) FROM attack_techniques t
+LEFT JOIN iocs i ON JSON_CONTAINS(i.mitre_techniques, JSON_QUOTE(t.id))
+GROUP BY t.id
+```
+
+is one statement but degenerates to a cross product — hundreds of techniques × tens of
+thousands of IOCs, evaluated per pair, on a shared host. Phase 5 avoided that by fetching
+every tagged IOC's array in one scan and counting in Python, which fixed the statement
+count (41 → 2 on both `/attack/matrix` and `/attack/heatmap`) but moved the cost to
+transfer and CPU. Measured, uncached, per request:
+
+| Tagged IOCs | Wire | Parse + count, local | ≈ at 0.1 CPU |
+|---|---|---|---|
+| 10,000 | 176 KB | 44 ms | ~0.4 s |
+| 50,000 | 877 KB | 207 ms | ~2 s |
+| 200,000 | 3.5 MB | 1.15 s | ~11 s |
+
+Linear in corpus size, so comfortable now and not at scale.
+
+**Proposal.**
+
+```sql
+CREATE TABLE ioc_techniques (
+  ioc_id       CHAR(36)    NOT NULL,
+  technique_id VARCHAR(20) NOT NULL,
+  PRIMARY KEY (ioc_id, technique_id),
+  KEY idx_technique (technique_id),
+  CONSTRAINT fk_it_ioc FOREIGN KEY (ioc_id) REFERENCES iocs(id) ON DELETE CASCADE
+);
+```
+
+`SELECT technique_id, COUNT(*) FROM ioc_techniques GROUP BY technique_id` is then an
+index-only scan returning a few hundred rows. The `idx_technique` key also makes
+`/attack/techniques/{id}` an indexed lookup instead of the `JSON_CONTAINS` filter it uses
+today.
+
+**Alternative: an indexed generated column.** Cheaper to adopt but weaker — a
+`VARCHAR` generated from `mitre_techniques` can be indexed, but only usefully for a
+single-technique-per-IOC assumption, which is false here (1–3 is typical). The join table
+is the correct normalisation; the generated column is a shortcut that would need undoing.
+
+**Why it is blocked.** It needs a migration, and `alembic upgrade head` currently fails
+at error 1170 on `iocs.value`. It also needs a backfill from the existing JSON arrays,
+which must be idempotent and re-runnable, and a decision on whether `mitre_techniques`
+stays as the write path with the table derived, or the table becomes authoritative and the
+JSON column is dropped. Keeping both means keeping them consistent, which is a trigger or
+an application invariant — worth deciding deliberately rather than by default.
+
+**Sequencing.** After the chain repair and after `iocs.scoring_model_version`, since the
+rescore is the higher priority (it is a UAT blocker) and this is a latency improvement for
+a corpus size not yet reached.
+
+### 6.2 Also waiting on this repair
+
+- **`iocs.scoring_model_version`** — what lets `scripts/rescore_corpus.py` target stale
+  rows rather than the whole table. `SCORING_MODEL_VERSION` is at 9 and stored scores were
+  written under at least four superseded models. See PROJECT_SUMMARY.md §8 item 16.
+- **`iocs.manual_score_override`** — the hook exists in `calculate_threat_score` and is
+  inert until the column does. Must be populated *after* the first rescore, or those rows
+  are skipped permanently.
+- **`users.failed_login_attempts` / `users.locked_until`** — the per-account throttle in
+  SECURITY_REVIEW.md item 8, which no amount of correct `X-Forwarded-For` handling can
+  substitute for.
