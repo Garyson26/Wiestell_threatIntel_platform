@@ -4,7 +4,9 @@
 **Status:** **design only — blocked on four owner queries.** Nothing implemented.
 **Blocking on:** `SELECT VERSION();`, `SHOW CREATE TABLE iocs;`,
 `SHOW CREATE TABLE feed_sources;` and `SELECT * FROM alembic_version;` against the
-Hostinger instance. See §5. A fifth query (§5.5) is **not** a blocker for this
+Hostinger instance. See §5. Two further sets are **not** blockers for this design but
+should be run in the same sitting: the four corpus counts in §5.4 (which gate the
+rescore runtime estimate and the `/attack/*` sizing) and the GeoIP check in §5.5. A fifth query (§5.5) is **not** a blocker for this
 design — it settles the GeoIP/MaxMind question recorded as PROJECT_SUMMARY §8 item 14
 — but it is listed here so all five can be run in one sitting.
 
@@ -218,6 +220,50 @@ survivor with `INSERT ... IGNORE`, then delete the losers and rescore the surviv
 3. If a prefix index is present: is a re-sync to recover silently dropped indicators
    acceptable, and over what period?
 4. Maintenance window for a possible full table rebuild on `ALTER`.
+
+### 5.4 Corpus sizing — four counts that gate several other decisions
+
+Not blockers for the chain repair, but **nobody has measured the corpus**, and the same
+four numbers feed at least four separate open questions. Run them together with the rest.
+
+```sql
+SELECT COUNT(*) FROM iocs;
+SELECT type, COUNT(*) FROM iocs GROUP BY type;
+SELECT COUNT(*) FROM enrichments;
+SELECT COUNT(*) FROM iocs WHERE JSON_LENGTH(mitre_techniques) > 0;
+```
+
+| Number | What it decides |
+|---|---|
+| `COUNT(*) FROM iocs` | rescore runtime (below), and whether the §6.1 join table is urgent or merely correct |
+| per-type breakdown | whether the hash-population work and the `cve` profile are sized right, and where a per-type weight profile would actually matter |
+| `COUNT(*) FROM enrichments` | the size of the **frozen never-re-enriched population** — the freeze trap means every one of these rows is permanent until the selection is fixed, so this is the scale of the legacy-payload problem, including the `error_city` rows |
+| tagged-IOC count | **the actual input to the `/attack/*` curve** in PROJECT_SUMMARY.md §8 item 17, whose sizing table is a projection until this lands |
+
+The last one is the one that cannot be inferred from anything else: item 17's measured
+curve is real, but "comfortable at today's scale" is unevaluable without knowing where
+today sits on it.
+
+### 5.4.1 Rescore runtime, so it is scheduled rather than discovered
+
+`scripts/rescore_corpus.py` issues **four statements per 30-row chunk** (fetch the chunk,
+its feed evidence, its enrichments, then one `executemany` UPDATE), keyset-paginated. So
+the statement count is `ceil(rows / 30) * 4`, and the wall-clock is dominated by
+round-trip latency from wherever it is run to Hostinger:
+
+| Corpus rows | Statements | @150 ms | @300 ms |
+|---|---|---|---|
+| 20,000 | ~2,700 | ~7 min | ~13 min |
+| 50,000 | ~6,700 | ~17 min | ~33 min |
+| 100,000 | ~13,400 | ~33 min | ~67 min |
+| 200,000 | ~26,700 | **~1 h** | **~2 h 15 m** |
+
+Run from a laptop against a shared host, so it is a **scheduled job, not a quick one** —
+and the owner should know that before starting it rather than forty minutes in. It is
+resumable via `--start-after` and idempotent (scoring is a pure function of evidence), so
+an interrupted run is recoverable rather than restarting from zero. Recommended sequence:
+`--dry-run` first to get the distribution and a real timing sample from the first few
+chunks, then the write pass.
 
 ### 5.5 Not a blocker for this design — has the GeoIP database ever been present?
 
