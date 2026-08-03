@@ -91,6 +91,25 @@ export function formatNumber(n: number | null | undefined): string {
   return n.toString();
 }
 
+/**
+ * Enrichment payloads from the class-based enrichers (nvd, cvedetails, yaraify)
+ * namespace every field with their own name and repeat the source inside `data`.
+ * Strip both so the generic enrichment table reads "cvss v31 score" rather than
+ * "nvd cvss v31 score", and does not show a redundant "source" row.
+ */
+export function enrichmentEntries(
+  source: string,
+  data: Record<string, unknown>
+): [string, unknown][] {
+  return Object.entries(data ?? {}).filter(([key]) => key !== 'source');
+}
+
+export function formatEnrichmentField(source: string, key: string): string {
+  const prefix = `${source}_`;
+  const label = key.startsWith(prefix) ? key.slice(prefix.length) : key;
+  return label.replace(/_/g, ' ');
+}
+
 export function getHealthColor(health: string): string {
   switch (health) {
     case 'healthy': return '#10b981';

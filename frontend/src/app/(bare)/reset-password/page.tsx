@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Lock, KeyRound, ArrowLeft, CheckCircle2, Eye, EyeOff, LogOut } from 'lucide-react';
 import { resetPassword } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { consumeResetEmail } from '@/lib/passwordResetHandoff';
 import OTPInput from '@/components/OTPInput';
 
 function ResetPasswordForm() {
@@ -20,16 +21,17 @@ function ResetPasswordForm() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { user, logout } = useAuth();
 
   useEffect(() => {
-    // Get email from query params
-    const emailParam = searchParams.get('email');
-    if (emailParam) {
-      setEmail(emailParam);
+    // Handed over in sessionStorage by /forgot-password, not in the URL — see
+    // lib/passwordResetHandoff for why. Absent on a direct link or a new tab, in
+    // which case the email field below is simply filled in by the user.
+    const stored = consumeResetEmail();
+    if (stored) {
+      setEmail(stored);
     }
-  }, [searchParams]);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

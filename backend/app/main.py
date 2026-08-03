@@ -1,19 +1,19 @@
 """SENTINEL Threat Intelligence Platform — FastAPI Application Entry Point."""
 
-import asyncio
 import traceback
+import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, status
+import structlog
+from fastapi import Depends, FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-import structlog
-
-from app.config import settings
 from app.api import api_router
-from app.services.feed_scheduler import feed_scheduler_loop
+from app.api.deps import require_admin
+from app.config import settings
 from app.utils.email_service import send_error_alert_email
+from app.utils.sanitize import redact_headers, redact_secrets
 
 logger = structlog.get_logger()
 
@@ -22,15 +22,19 @@ logger = structlog.get_logger()
 async def lifespan(app: FastAPI):
     """Application startup and shutdown events."""
     logger.info("sentinel_starting", environment=settings.ENVIRONMENT, platform="vercel-serverless")
-    
+
     # Background scheduler disabled for Vercel serverless
     # Use Vercel Cron instead: /api/v1/feeds/sync-all (configured in vercel.json)
     logger.info("feed_scheduler_mode", mode="vercel_cron", endpoint="/api/v1/feeds/sync-all")
-    
+
     yield
-    
+
     logger.info("sentinel_shutting_down")
 
+
+# Interactive docs publish the full attack surface, so they are served only when
+# explicitly enabled (development, or ENABLE_API_DOCS=true).
+_docs = settings.docs_enabled
 
 app = FastAPI(
     title="SENTINEL — Threat Intelligence Platform",
@@ -39,76 +43,103 @@ app = FastAPI(
         "and scores IOCs from multiple feeds."
     ),
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url="/docs" if _docs else None,
+    redoc_url="/redoc" if _docs else None,
+    openapi_url="/openapi.json" if _docs else None,
     lifespan=lifespan,
 )
 
-# CORS middleware
-cors_origins = (
-    ["*"] if settings.CORS_ORIGINS == "*"
-    else [o.strip() for o in settings.CORS_ORIGINS.split(",")]
-)
+# ── CORS ──────────────────────────────────────────────────────────────────────
+# A wildcard origin combined with allow_credentials lets any site read
+# authenticated responses, so only an explicit origin list is ever installed.
+cors_origins = settings.cors_origin_list
+if not cors_origins:
+    logger.warning("cors_no_origins_configured", hint="Set CORS_ORIGINS to your frontend origin(s)")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Cron-Secret"],
+    max_age=600,
 )
 
 
-# Global exception handler middleware
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """Attach baseline hardening headers to every API response."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Cache-Control", "no-store")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+        if not _docs
+        # /docs needs to load its own bundle and inline bootstrap script.
+        else "default-src 'self' https://cdn.jsdelivr.net; img-src 'self' data: https://fastapi.tiangolo.com; "
+             "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+             "frame-ancestors 'none'; base-uri 'none'",
+    )
+    if settings.is_production:
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
+    return response
+
+
 @app.middleware("http")
 async def error_notification_middleware(request: Request, call_next):
-    """Catch unhandled exceptions and send email alerts."""
+    """Catch unhandled exceptions, alert the admin, and return an opaque error."""
     try:
-        response = await call_next(request)
-        return response
+        return await call_next(request)
     except Exception as exc:
-        # Get error details
+        error_id = uuid.uuid4().hex[:12]
         error_type = type(exc).__name__
-        error_message = str(exc)
         endpoint = str(request.url.path)
         method = request.method
-        traceback_info = traceback.format_exc()
-        
-        # Log the error
+
+        # Full detail goes to the log only — never to the HTTP response.
         logger.error(
             "unhandled_exception",
+            error_id=error_id,
             error_type=error_type,
-            error_message=error_message,
+            error_message=redact_secrets(exc),
             endpoint=endpoint,
             method=method,
+            exc_info=True,
         )
-        
-        # Send email alert (non-blocking, errors won't crash the app)
+
         try:
             request_data = {
                 "method": method,
-                "url": str(request.url),
+                "url": redact_secrets(request.url),
                 "client": request.client.host if request.client else "unknown",
-                "headers": dict(request.headers),
+                # Authorization/cookie values are masked so an alert email never
+                # carries a usable session token out of the platform.
+                "headers": redact_headers(dict(request.headers)),
+                "error_id": error_id,
             }
-            
             send_error_alert_email(
                 error_type=f"{status.HTTP_500_INTERNAL_SERVER_ERROR} {error_type}",
-                error_message=error_message,
+                error_message=redact_secrets(exc),
                 endpoint=endpoint,
                 method=method,
-                traceback_info=traceback_info,
+                traceback_info=redact_secrets(traceback.format_exc()),
                 request_data=request_data,
             )
         except Exception as email_error:
             logger.warning("failed_to_send_error_email", error=str(email_error))
-        
-        # Return error response to client
+
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
                 "detail": "Internal server error",
-                "error_type": error_type,
-                "message": error_message if settings.ENVIRONMENT == "development" else "An unexpected error occurred",
+                # Correlates the client report with the server log without
+                # disclosing the exception type, message or stack trace.
+                "error_id": error_id,
             },
         )
 
@@ -131,66 +162,68 @@ async def health_root():
 
 @app.api_route("/api/v1/health", methods=["GET", "HEAD"])
 async def health_check():
-    """Detailed health check endpoint for Docker and monitoring (supports GET and HEAD)."""
-    from datetime import datetime
-    
+    """Readiness probe for Docker and uptime monitoring.
+
+    Reports database reachability so an orchestrator can restart a broken
+    container, but does not disclose the environment name or any error text.
+    """
+    from datetime import datetime, timezone
+
+    from sqlalchemy import text
+
     health_status = {
         "status": "healthy",
         "service": "sentinel-api",
         "version": "1.0.0",
-        "timestamp": datetime.utcnow().isoformat(),
-        "environment": settings.ENVIRONMENT,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
-    
-    # Optional: Check database connectivity
+
     try:
         from app.database import AsyncSessionLocal
-        from sqlalchemy import text
-        
+
         async with AsyncSessionLocal() as session:
             await session.execute(text("SELECT 1"))
-            health_status["database"] = "connected"
+        health_status["database"] = "connected"
     except Exception as e:
-        logger.warning("health_check_db_error", error=str(e))
+        logger.warning("health_check_db_error", error=redact_secrets(e))
         health_status["database"] = "disconnected"
         health_status["status"] = "degraded"
-    
+
     return health_status
 
 
-@app.get("/api/v1/cron-status")
+@app.get("/api/v1/cron-status", dependencies=[Depends(require_admin)])
 async def cron_status():
-    """
-    Check feed sync status and cron configuration.
-    
-    Use this endpoint to verify:
-    - Which feeds are enabled
-    - When feeds were last synced
-    - Which feeds are overdue for sync
-    - Vercel Cron configuration status
+    """Feed sync status and cron configuration. Admin only.
+
+    Reports which feeds are enabled, when they last synced, and which are
+    overdue. Sync error text is redacted because driver errors can embed the
+    database connection URI.
     """
     from datetime import datetime
+
+    from sqlalchemy import select
+
     from app.database import AsyncSessionLocal
     from app.models.feed import FeedSource
-    from sqlalchemy import select
-    
+
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(FeedSource).order_by(FeedSource.is_enabled.desc(), FeedSource.name)
         )
         feeds = result.scalars().all()
-        
+
         now = datetime.utcnow()
         feed_status = []
-        
+
         for feed in feeds:
             freq = feed.sync_frequency or 3600
             last = feed.last_sync_at
             overdue = last is None or (now - last).total_seconds() >= freq
-            
+
             seconds_since = int((now - last).total_seconds()) if last else None
             next_sync_in = max(0, freq - seconds_since) if seconds_since is not None else 0
-            
+
             feed_status.append({
                 "name": feed.name,
                 "slug": feed.slug,
@@ -201,25 +234,25 @@ async def cron_status():
                 "next_sync_in_seconds": next_sync_in,
                 "overdue": overdue,
                 "last_status": feed.last_sync_status,
-                "last_error": feed.last_sync_error,
+                "last_error": redact_secrets(feed.last_sync_error) if feed.last_sync_error else None,
                 "ioc_count": feed.ioc_count,
             })
-    
+
     enabled_count = sum(1 for f in feed_status if f["enabled"])
     overdue_count = sum(1 for f in feed_status if f["enabled"] and f["overdue"])
-    
+
     return {
         "status": "ok",
         "timestamp": now.strftime("%Y-%m-%d %H:%M:%S UTC"),
-        "platform": "vercel-serverless",
-        "scheduler_mode": "vercel_cron",
-        "cron_enabled": True,
-        "cron_schedule": "0 * * * * (every hour)",
+        "scheduler_mode": "external_cron",
         "cron_endpoint": "/api/v1/feeds/sync-all",
         "background_scheduler": "disabled (serverless incompatible)",
-        "total_feeds": len(feeds),
+        "total_feeds": len(feed_status),
         "enabled_feeds": enabled_count,
         "overdue_feeds": overdue_count,
         "feeds": feed_status,
-        "note": "Feeds sync automatically every hour via Vercel Cron. Manual sync: POST /api/v1/feeds/sync-all",
+        "note": (
+            "Trigger a sync with POST /api/v1/feeds/sync-all using an admin token "
+            "or the X-Cron-Secret header."
+        ),
     }

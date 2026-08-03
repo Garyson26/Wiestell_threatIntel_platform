@@ -5,6 +5,7 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import require_analyst
 from app.database import get_db
 from app.models.report import Report
 from app.schemas.report import ReportCreate, ReportResponse, ReportListResponse
@@ -26,7 +27,7 @@ async def list_reports(db: AsyncSession = Depends(get_db)):
     )
 
 
-@router.post("/generate", response_model=ReportResponse)
+@router.post("/generate", response_model=ReportResponse, dependencies=[Depends(require_analyst)])
 async def generate_report(request: ReportCreate, db: AsyncSession = Depends(get_db)):
     """Generate a custom threat report."""
     content = await generate_custom_report(

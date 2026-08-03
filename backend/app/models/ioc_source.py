@@ -3,10 +3,11 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, String, DateTime, ForeignKey, UniqueConstraint, JSON
+from sqlalchemy import Column, String, ForeignKey, UniqueConstraint, JSON
 from sqlalchemy.orm import relationship
 
 from app.database import Base
+from app.models.types import NaiveUTCDateTime
 
 
 class IOCSource(Base):
@@ -16,7 +17,7 @@ class IOCSource(Base):
     ioc_id = Column(String(36), ForeignKey("iocs.id", ondelete="CASCADE"), nullable=False)
     feed_id = Column(String(36), ForeignKey("feed_sources.id", ondelete="CASCADE"), nullable=False)
     raw_data = Column(JSON)
-    ingested_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    ingested_at = Column(NaiveUTCDateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     ioc = relationship("IOC", back_populates="sources")

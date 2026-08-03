@@ -10,11 +10,11 @@ const threatSources: ThreatSource[] = [
   { name: 'URLhaus', url: 'https://urlhaus.abuse.ch' },
   { name: 'ThreatFox', url: 'https://threatfox.abuse.ch' },
   { name: 'AbuseIPDB', url: 'https://www.abuseipdb.com' },
-  { name: 'VirusTotal', url: 'https://www.virustotal.com' },
   { name: 'AlienVault OTX', url: 'https://otx.alienvault.com' },
   { name: 'MalwareBazaar', url: 'https://bazaar.abuse.ch' },
   { name: 'Feodo Tracker', url: 'https://feodotracker.abuse.ch' },
-  { name: 'PhishTank', url: 'https://www.phishtank.com' },
+  { name: 'CISA KEV', url: 'https://www.cisa.gov/known-exploited-vulnerabilities-catalog' },
+  { name: 'MISP CERT-FR', url: 'https://misp.cert.ssi.gouv.fr' },
 ];
 
 export function PoweredBy() {

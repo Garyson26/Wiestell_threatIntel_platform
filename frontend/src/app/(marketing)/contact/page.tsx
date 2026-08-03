@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { ArrowLeft, Bug, Database, Lightbulb, AlertTriangle, Mail, User, MessageSquare, Shield, CheckCircle, LogOut } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
+import { submitContact } from '@/lib/api';
 
 // Note: Metadata export is commented out because this is a client component
 // To use metadata, you'd need to create a separate layout.tsx or make this a server component
@@ -127,18 +128,7 @@ export default function ContactPage() {
 
     try {
       // Call the backend API to submit the contact form
-      const response = await fetch('/api/v1/contact/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to submit contact form');
-      }
-
-      const result = await response.json();
-      console.log('Contact submitted:', result);
+      await submitContact(formData);
 
       setIsSuccess(true);
       
@@ -154,8 +144,9 @@ export default function ContactPage() {
         message: '',
       });
     } catch (error) {
-      console.error('Error submitting form:', error);
-      setErrors({ message: 'Failed to send message. Please try again.' });
+      setErrors({
+        message: error instanceof Error ? error.message : 'Failed to send message. Please try again.',
+      });
     } finally {
       setIsSubmitting(false);
     }

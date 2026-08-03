@@ -10,6 +10,7 @@ from sqlalchemy import select, func, desc, asc, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.api.deps import rate_limit, require_analyst
 from app.database import get_db
 from app.models.ioc import IOC
 from app.models.enrichment import Enrichment
@@ -26,8 +27,28 @@ from app.utils.stix_converter import export_stix_json
 
 router = APIRouter()
 
+# Characters a spreadsheet treats as the start of a formula. IOC values arrive
+# from untrusted third-party feeds, so an exported cell such as
+# ``=cmd|'/c calc'!A1`` would execute on open in Excel/LibreOffice.
+_CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
-@router.get("/lookup", response_model=IOCDetailResponse)
+
+def _csv_safe(value):
+    """Neutralise spreadsheet formula injection in an exported CSV cell."""
+    if value is None or not isinstance(value, str):
+        return value
+    if value.startswith(_CSV_FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
+@router.get(
+    "/lookup",
+    response_model=IOCDetailResponse,
+    # Each miss triggers outbound WHOIS/DNS/reputation calls against third-party
+    # quotas, so the endpoint carries its own per-caller budget.
+    dependencies=[Depends(rate_limit("ioc-lookup", max_requests=60, window_seconds=60))],
+)
 async def lookup_ioc(
     value: str = Query(..., description="IOC value to look up (e.g. IP, domain, hash, URL)"),
     ioc_type: Optional[str] = Query(None, description="IOC type override (ip, domain, hash, url, email, cve)"),
@@ -301,7 +322,7 @@ async def get_ioc(ioc_id: str, db: AsyncSession = Depends(get_db)):
     return IOCDetailResponse.model_validate(ioc_data)
 
 
-@router.post("", response_model=IOCResponse)
+@router.post("", response_model=IOCResponse, dependencies=[Depends(require_analyst)])
 async def create_ioc(ioc_data: IOCCreate, db: AsyncSession = Depends(get_db)):
     """Submit a new IOC and automatically trigger enrichment."""
     from app.tasks.enrichment_tasks import enrich_ioc_task
@@ -479,7 +500,7 @@ async def bulk_lookup(request: IOCBulkRequest, db: AsyncSession = Depends(get_db
     return results
 
 
-@router.put("/{ioc_id}/tags", response_model=IOCResponse)
+@router.put("/{ioc_id}/tags", response_model=IOCResponse, dependencies=[Depends(require_analyst)])
 async def update_tags(ioc_id: str, tag_update: IOCTagUpdate, db: AsyncSession = Depends(get_db)):
     """Update IOC tags."""
     result = await db.execute(select(IOC).where(IOC.id == ioc_id))
@@ -511,7 +532,7 @@ async def get_enrichment(ioc_id: str, db: AsyncSession = Depends(get_db)):
     ]
 
 
-@router.post("/{ioc_id}/enrich")
+@router.post("/{ioc_id}/enrich", dependencies=[Depends(require_analyst)])
 async def trigger_enrichment(ioc_id: str, db: AsyncSession = Depends(get_db)):
     """Trigger re-enrichment for an IOC."""
     from app.services.enrichment_engine import enrich_ioc
@@ -670,7 +691,7 @@ async def export_iocs(request: IOCExportRequest, db: AsyncSession = Depends(get_
             # Add enrichment sources to CSV
             enrichment_sources = [e["source"] for e in d.get("enrichments", [])]
             d["enrichment_sources"] = "|".join(enrichment_sources) if enrichment_sources else ""
-            writer.writerow({k: d.get(k) for k in writer.fieldnames})
+            writer.writerow({k: _csv_safe(d.get(k)) for k in writer.fieldnames})
         return Response(
             content=output.getvalue(),
             media_type="text/csv",

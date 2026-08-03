@@ -22,10 +22,11 @@ export default function AboutPage() {
     { name: 'Feodo Tracker', description: 'Botnet command-and-control server indicators' },
     { name: 'AbuseIPDB', description: 'Crowdsourced IP abuse reports' },
     { name: 'AlienVault OTX', description: 'Open threat exchange indicators and pulses' },
-    { name: 'PhishTank', description: 'Verified phishing URLs' },
     { name: 'Emerging Threats', description: 'Community-maintained IP and domain blocklists' },
     { name: 'Blocklist.de', description: 'Attack source IPs from honeypot networks' },
-    { name: 'VirusTotal', description: 'Multi-engine file, URL, and domain reputation' },
+    { name: 'CISA KEV', description: 'Vulnerabilities with confirmed in-the-wild exploitation' },
+    { name: 'eCrimeLabs Metasploit', description: 'CVEs with a public Metasploit exploit module' },
+    { name: 'MISP CERT-FR', description: 'Hashes from French government incident response cases' },
   ];
 
   const userGroups = [

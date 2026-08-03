@@ -2,7 +2,7 @@
 
 import asyncio
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.models.ioc import IOC
 from app.models.enrichment import Enrichment
-from app.config import settings
+from app.services.scoring_engine import calculate_threat_score
 
 import structlog
 
@@ -107,22 +107,121 @@ async def enrich_ioc(
                 cached = await _get_cached_enrichment(session, ioc.id, source)
                 if cached:
                     cached_results.append(cached)
+            source_count, has_enabled_source = await _feed_source_evidence(session, ioc.id)
+            _rescore_from_enrichment(
+                ioc, cached_results, source_count, has_enabled_source
+            )
             return cached_results
-    
+
+    source_count, has_enabled_source = await _feed_source_evidence(session, ioc.id)
+    _rescore_from_enrichment(ioc, results, source_count, has_enabled_source)
     return results
 
 
+async def _feed_source_evidence(session: AsyncSession, ioc_id) -> Tuple[int, Optional[bool]]:
+    """Both feed-derived scoring inputs, from one statement.
+
+    Returns ``(distinct_feed_count, has_enabled_feed_source)``:
+
+    * the count drives source diversity and is deliberately **not**
+      ``sighting_count`` — a single feed re-publishing its catalogue must not read
+      as independent corroboration.
+    * the flag gates the 0.0 reputation floor. It is a separate value rather than
+      a filter on the count because filtering the count on
+      ``feed_sources.is_enabled`` would move the diversity term for every
+      indicator a since-disabled feed once reported.
+
+    On failure the flag is ``None`` — "unknown" — which the scoring engine treats
+    as "assume a feed source exists", so a failed query can never make an
+    indicator look clean.
+    """
+    from sqlalchemy import distinct, func
+
+    from app.models.feed import FeedSource
+    from app.models.ioc_source import IOCSource
+
+    try:
+        result = await session.execute(
+            select(
+                func.count(distinct(IOCSource.feed_id)),
+                func.max(func.coalesce(FeedSource.is_enabled, False)),
+            )
+            .select_from(IOCSource)
+            .outerjoin(FeedSource, FeedSource.id == IOCSource.feed_id)
+            .where(IOCSource.ioc_id == ioc_id)
+        )
+        row = result.one_or_none()
+        if row is None:
+            return 0, False
+        return int(row[0] or 0), bool(row[1])
+    except Exception as exc:
+        logger.warning("feed_source_evidence_failed", ioc_id=str(ioc_id), error=str(exc))
+        return 0, None
+
+
+def _rescore_from_enrichment(
+    ioc: IOC,
+    results: List[Dict[str, Any]],
+    source_count: int = 1,
+    has_enabled_feed_source: Optional[bool] = None,
+) -> None:
+    """Recompute the IOC's threat score now that enrichment data is available.
+
+    Enrichment feeds two terms: the risk signals (GeoIP country, domain age,
+    fast flux, CVSS, CISA KEV membership, public exploit availability, YARA
+    matches) and — via ``_base_reputation_score`` — the reputation term itself.
+    Ingestion scores an IOC before any enrichment exists, so without this step
+    both are evaluated against an empty list and the evidence is discarded.
+
+    Mutation only; the caller's transaction persists it.
+    """
+    if not results:
+        return
+
+    try:
+        new_score = calculate_threat_score(
+            {
+                "type": ioc.type,
+                "value": ioc.value,
+                "tags": ioc.tags or [],
+                "mitre_techniques": ioc.mitre_techniques or [],
+                "last_seen": ioc.last_seen,
+                "sighting_count": ioc.sighting_count or 1,
+                "metadata": ioc.metadata_,
+            },
+            source_count=max(source_count, 1),
+            enrichment_data=results,
+            has_enabled_feed_source=has_enabled_feed_source,
+        )
+    except Exception as exc:  # scoring must never break an enrichment pass
+        logger.warning("rescore_after_enrichment_failed", ioc_id=str(ioc.id), error=str(exc))
+        return
+
+    if new_score != ioc.threat_score:
+        logger.info(
+            "threat_score_updated_from_enrichment",
+            ioc_id=str(ioc.id),
+            old_score=ioc.threat_score,
+            new_score=new_score,
+        )
+        ioc.threat_score = new_score
+
+
 def _get_applicable_sources(ioc_type: str) -> List[str]:
-    """Determine which enrichment sources apply to an IOC type."""
-    source_map = {
-        "ip":     ["geoip", "whois", "dns", "reputation", "shodan"],
-        "domain": ["whois", "dns", "reputation"],
-        "url":    ["whois", "dns", "reputation"],
-        "hash":   ["malwarebazaar", "reputation"],
-        "email":  ["whois", "reputation"],
-        "cve":    ["reputation"],
-    }
-    return source_map.get(ioc_type, ["reputation"])
+    """Determine which enrichment sources apply to an IOC type.
+
+    Delegates entirely to the enricher registry: each enricher's ``supports()``
+    decides applicability, and registry order decides the order sources are
+    attempted. ``reputation`` supports every type, so an unrecognised IOC type
+    still receives it as a fallback.
+    """
+    from app.enrichers import applicable_sources as _registry_sources
+
+    try:
+        return _registry_sources(ioc_type)
+    except Exception as exc:  # a broken registry must not block enrichment
+        logger.error("enricher_registry_unavailable", error=str(exc))
+        return []
 
 
 async def _get_cached_enrichment(
@@ -148,384 +247,37 @@ async def _get_cached_enrichment(
 
 
 async def _run_enricher(source: str, ioc: IOC) -> Optional[Dict]:
-    """Dispatch to the correct enricher; catches all exceptions so gather never raises."""
+    """Dispatch to a registered enricher; never raises so gather stays clean.
+
+    A registered enricher may return None to signal "not applicable to this
+    particular value" — for example YARAify only handles SHA256 — in which case
+    no row is stored and nothing is cached.
+    """
+    from app.enrichers import get_enricher
+
+    enricher = get_enricher(source)
+    if enricher is None:
+        logger.warning("enricher_not_registered", source=source)
+        return None
+
     try:
-        if source == "geoip":
-            return await _enrich_geoip(ioc.value)
-        elif source == "whois":
-            return await _enrich_whois(ioc.value, ioc.type)
-        elif source == "dns":
-            return await _enrich_dns(ioc.value, ioc.type)
-        elif source == "reputation":
-            return await _enrich_reputation(ioc.value, ioc.type)
-        elif source == "shodan":
-            return await _enrich_shodan(ioc.value)
-        elif source == "malwarebazaar":
-            return await _enrich_malwarebazaar(ioc.value)
-        else:
-            return None
+        return await enricher.enrich(ioc.value, ioc.type)
     except Exception as e:
+        # BaseEnricher forbids raising, but a bug in one source must never take
+        # down the whole enrichment pass.
         logger.error("enricher_error", source=source, error=str(e))
         return None
 
 
-async def _enrich_geoip(value: str) -> Optional[Dict]:
-    """GeoIP enrichment — returns location + ASN data for an IP."""
-    result: Dict[str, Any] = {
-        "country": None, "country_code": None,
-        "city": None, "latitude": None, "longitude": None,
-        "asn": None, "asn_org": None,
-    }
-    try:
-        import geoip2.database
-
-        # City / location lookup
-        try:
-            reader = geoip2.database.Reader(settings.GEOIP_DB_PATH)
-            city_resp = reader.city(value)
-            reader.close()
-            result.update({
-                "country": city_resp.country.name,
-                "country_code": city_resp.country.iso_code,
-                "city": city_resp.city.name,
-                "latitude": city_resp.location.latitude,
-                "longitude": city_resp.location.longitude,
-            })
-        except Exception:
-            result["error_city"] = "GeoIP city database not available"
-
-        # ASN lookup — requires a separate MaxMind ASN database
-        asn_db = getattr(settings, "GEOIP_ASN_DB_PATH", None)
-        if asn_db:
-            try:
-                reader = geoip2.database.Reader(asn_db)
-                asn_resp = reader.asn(value)
-                reader.close()
-                result.update({
-                    "asn": asn_resp.autonomous_system_number,
-                    "asn_org": asn_resp.autonomous_system_organization,
-                })
-            except Exception:
-                pass
-
-    except Exception as e:
-        result["error"] = f"GeoIP lookup failed: {str(e)}"
-
-    return result
-
-
-async def _enrich_shodan(value: str) -> Optional[Dict]:
-    """Shodan enrichment for IPs."""
-    if not settings.SHODAN_API_KEY:
-        return {"error": "Shodan API key not configured"}
-    
-    try:
-        import shodan
-    except ImportError:
-        return {"error": "Shodan library not installed"}
-    
-    try:
-        api = shodan.Shodan(settings.SHODAN_API_KEY)
-        host = api.host(value)
-        return {
-            "ip": host.get("ip_str"),
-            "org": host.get("org"),
-            "os": host.get("os"),
-            "ports": host.get("ports", []),
-            "vulns": host.get("vulns", []),
-            "hostnames": host.get("hostnames", []),
-            "country": host.get("country_name"),
-            "city": host.get("city"),
-            "asn": host.get("asn"),
-            "last_update": host.get("last_update"),
-            "tags": host.get("tags", []),
-        }
-    except shodan.APIError as e:
-        error_msg = str(e)
-        # Handle specific Shodan API errors - return minimal error info
-        if "403" in error_msg or "Forbidden" in error_msg:
-            return {"error": "Shodan service unavailable"}
-        elif "401" in error_msg or "Unauthorized" in error_msg:
-            return {"error": "Shodan authentication failed"}
-        elif "No information available" in error_msg:
-            return {"error": "No Shodan data available"}
-        else:
-            return {"error": "Shodan lookup failed"}
-    except Exception as e:
-        return {"error": "Shodan lookup failed"}
-
-
-async def _enrich_whois(value: str, ioc_type: str) -> Optional[Dict]:
-    """WHOIS enrichment — offloaded to a thread pool to avoid blocking the event loop."""
-    def _blocking_whois(v: str) -> Dict:
-        try:
-            import whois
-            w = whois.whois(v)
-            return {
-                "registrar": w.registrar,
-                "creation_date": str(w.creation_date) if w.creation_date else None,
-                "expiration_date": str(w.expiration_date) if w.expiration_date else None,
-                "name_servers": list(w.name_servers) if w.name_servers else [],
-                "registrant": w.org,
-                "country": w.country,
-                "privacy_protected": (
-                    "privacy" in str(w.org or "").lower()
-                    or "redacted" in str(w.org or "").lower()
-                ),
-            }
-        except Exception as exc:
-            return {"error": f"WHOIS lookup failed: {str(exc)}"}
-
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _blocking_whois, value)
-
-
-async def _enrich_dns(value: str, ioc_type: str = "domain") -> Optional[Dict]:
-    """DNS enrichment.
-
-    For IP addresses performs a reverse PTR lookup (hostname resolution).
-    For domains/URLs resolves A/AAAA/MX/NS/TXT records.
-    """
-    try:
-        import dns.resolver
-        import dns.reversename
-
-        if ioc_type == "ip":
-            ptr_records: List[str] = []
-            try:
-                rev_name = dns.reversename.from_address(value)
-                answers = dns.resolver.resolve(rev_name, "PTR")
-                ptr_records = [str(r) for r in answers]
-            except Exception:
-                pass
-            return {
-                "type": "reverse",
-                "ptr": ptr_records,
-                "hostname": ptr_records[0].rstrip(".") if ptr_records else None,
-            }
-
-        # Domain / URL: forward DNS
-        records: Dict[str, list] = {}
-        for rtype in ["A", "AAAA", "MX", "NS", "TXT"]:
-            try:
-                answers = dns.resolver.resolve(value, rtype)
-                records[rtype] = [str(r) for r in answers]
-            except Exception:
-                records[rtype] = []
-
-        return {
-            "type": "forward",
-            "records": records,
-            "has_ipv6": bool(records.get("AAAA")),
-            "nameservers": records.get("NS", []),
-            "mail_servers": records.get("MX", []),
-            "fast_flux": len(records.get("A", [])) > 5,
-        }
-    except Exception as e:
-        return {"error": f"DNS lookup failed: {str(e)}"}
-
-
-async def _enrich_malwarebazaar(value: str) -> Optional[Dict]:
-    """Query MalwareBazaar for hash intelligence (MD5, SHA1, or SHA256)."""
-    try:
-        import httpx
-        api_key = settings.MALWAREBAZAAR_API_KEY
-        headers = {"Auth-Key": api_key} if api_key else {}
-        async with httpx.AsyncClient(timeout=15) as client:
-            response = await client.post(
-                "https://mb-api.abuse.ch/api/v1/",
-                data={"query": "get_info", "hash": value},
-                headers=headers,
-            )
-            response.raise_for_status()
-            data = response.json()
-
-        status = data.get("query_status", "")
-        if status != "ok" or not data.get("data"):
-            return {"found": False, "query_status": status}
-
-        entry = data["data"][0]
-        return {
-            "found": True,
-            "sha256": entry.get("sha256_hash"),
-            "sha1": entry.get("sha1_hash"),
-            "md5": entry.get("md5_hash"),
-            "file_name": entry.get("file_name"),
-            "file_type": entry.get("file_type"),
-            "file_type_mime": entry.get("file_type_mime"),
-            "file_size": entry.get("file_size"),
-            "signature": entry.get("signature"),
-            "tags": entry.get("tags") or [],
-            "reporter": entry.get("reporter"),
-            "origin_country": entry.get("origin_country"),
-            "first_seen": entry.get("first_seen"),
-            "last_seen": entry.get("last_seen"),
-            "delivery_method": entry.get("delivery_method"),
-            "intelligence": entry.get("intelligence"),
-            "vendor_intel": entry.get("vendor_intel"),
-        }
-    except Exception as e:
-        logger.warning("malwarebazaar_enrichment_failed", hash=value[:16], error=str(e))
-        return {"found": False, "error": str(e)}
-
-
-async def _enrich_reputation(value: str, ioc_type: str) -> Optional[Dict]:
-    """Aggregate reputation check across available sources (AbuseIPDB, VirusTotal, OTX)."""
-    import httpx
-    
-    sources_checked = 0
-    sources_flagged = 0
-    details = {}
-    scores = []
-    
-    # Check AbuseIPDB for IPs
-    if ioc_type == "ip" and settings.ABUSEIPDB_API_KEY:
-        try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                response = await client.get(
-                    "https://api.abuseipdb.com/api/v2/check",
-                    params={"ipAddress": value, "maxAgeInDays": 90},
-                    headers={"Key": settings.ABUSEIPDB_API_KEY, "Accept": "application/json"}
-                )
-                if response.status_code == 200:
-                    data = response.json().get("data", {})
-                    abuse_score = data.get("abuseConfidenceScore", 0)
-                    sources_checked += 1
-                    if abuse_score > 0:
-                        sources_flagged += 1
-                        scores.append(abuse_score)
-                    details["abuseipdb"] = {
-                        "score": abuse_score,
-                        "reports": data.get("totalReports", 0),
-                        "last_reported": data.get("lastReportedAt"),
-                        "is_whitelisted": data.get("isWhitelisted", False),
-                    }
-        except Exception as e:
-            logger.warning("abuseipdb_reputation_failed", error=str(e))
-    
-    # Check VirusTotal (works for IPs, domains, URLs, hashes)
-    if settings.VT_API_KEY and ioc_type in ["ip", "domain", "url", "hash"]:
-        try:
-            # Determine VT resource type
-            if ioc_type == "ip":
-                vt_url = f"https://www.virustotal.com/api/v3/ip_addresses/{value}"
-            elif ioc_type == "domain":
-                vt_url = f"https://www.virustotal.com/api/v3/domains/{value}"
-            elif ioc_type == "url":
-                import base64
-                url_id = base64.urlsafe_b64encode(value.encode()).decode().strip("=")
-                vt_url = f"https://www.virustotal.com/api/v3/urls/{url_id}"
-            elif ioc_type == "hash":
-                vt_url = f"https://www.virustotal.com/api/v3/files/{value}"
-            else:
-                vt_url = None
-            
-            if vt_url:
-                async with httpx.AsyncClient(timeout=15) as client:
-                    response = await client.get(
-                        vt_url,
-                        headers={"x-apikey": settings.VT_API_KEY}
-                    )
-                    if response.status_code == 200:
-                        data = response.json().get("data", {})
-                        attributes = data.get("attributes", {})
-                        last_analysis = attributes.get("last_analysis_stats", {})
-                        
-                        malicious = last_analysis.get("malicious", 0)
-                        suspicious = last_analysis.get("suspicious", 0)
-                        total_engines = sum(last_analysis.values())
-                        
-                        sources_checked += 1
-                        if malicious > 0 or suspicious > 0:
-                            sources_flagged += 1
-                            # Score: percentage of engines that flagged it as malicious
-                            vt_score = int((malicious / total_engines * 100)) if total_engines > 0 else 0
-                            scores.append(vt_score)
-                        
-                        details["virustotal"] = {
-                            "malicious": malicious,
-                            "suspicious": suspicious,
-                            "harmless": last_analysis.get("harmless", 0),
-                            "undetected": last_analysis.get("undetected", 0),
-                            "total_engines": total_engines,
-                            "reputation": attributes.get("reputation", 0),
-                        }
-        except Exception as e:
-            logger.warning("virustotal_reputation_failed", error=str(e))
-    
-    # Check OTX AlienVault (works for IPs, domains, URLs, hashes)
-    if settings.OTX_API_KEY and ioc_type in ["ip", "domain", "url", "hash"]:
-        try:
-            # Determine OTX indicator type
-            if ioc_type == "ip":
-                otx_type = "IPv4"
-            elif ioc_type == "domain":
-                otx_type = "domain"
-            elif ioc_type == "url":
-                otx_type = "url"
-            elif ioc_type == "hash":
-                otx_type = "file"
-            else:
-                otx_type = None
-            
-            if otx_type:
-                async with httpx.AsyncClient(timeout=15) as client:
-                    # Get general info
-                    response = await client.get(
-                        f"https://otx.alienvault.com/api/v1/indicators/{otx_type}/{value}/general",
-                        headers={"X-OTX-API-KEY": settings.OTX_API_KEY}
-                    )
-                    if response.status_code == 200:
-                        data = response.json()
-                        pulse_count = data.get("pulse_info", {}).get("count", 0)
-                        
-                        sources_checked += 1
-                        if pulse_count > 0:
-                            sources_flagged += 1
-                            # Score based on number of pulses (capped at 100)
-                            otx_score = min(pulse_count * 10, 100)
-                            scores.append(otx_score)
-                        
-                        details["otx"] = {
-                            "pulse_count": pulse_count,
-                            "validation": data.get("validation", []),
-                            "sections": list(data.get("sections", [])),
-                        }
-        except Exception as e:
-            logger.warning("otx_reputation_failed", error=str(e))
-    
-    # Calculate aggregate score (average of all scores, or 0 if no sources checked)
-    if scores:
-        aggregate_score = int(sum(scores) / len(scores))
-    else:
-        aggregate_score = 0
-    
-    # Add note if no sources were checked
-    note = None
-    if sources_checked == 0:
-        note = "No API keys configured for reputation checks (AbuseIPDB, VirusTotal, OTX)"
-    
-    result = {
-        "aggregate_score": aggregate_score,
-        "sources_checked": sources_checked,
-        "sources_flagged": sources_flagged,
-        "details": details,
-    }
-    
-    if note:
-        result["note"] = note
-    
-    return result
-
-
 def _get_ttl(source: str) -> int:
-    """Get cache TTL in seconds for an enrichment source."""
-    ttl_map = {
-        "whois":         settings.CACHE_TTL_WHOIS,
-        "dns":           settings.CACHE_TTL_DNS,
-        "geoip":         settings.CACHE_TTL_GEOIP,
-        "reputation":    settings.CACHE_TTL_REPUTATION,
-        "shodan":        21600,  # 6 hours — port scans and vuln data change moderately
-        "malwarebazaar": 43200,  # 12 hours — hash intel changes infrequently
-    }
-    return ttl_map.get(source, 3600)
+    """Cache TTL in seconds for an enrichment source.
+
+    Each enricher declares its own ``cache_ttl``; the config-backed values
+    (WHOIS/DNS/GeoIP/reputation) are exposed as properties on those classes.
+    """
+    from app.enrichers import get_enricher
+
+    enricher = get_enricher(source)
+    if enricher is not None:
+        return enricher.cache_ttl
+    return 3600

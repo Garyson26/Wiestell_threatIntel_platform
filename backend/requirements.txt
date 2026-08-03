@@ -1,54 +1,55 @@
 # FastAPI & ASGI
-fastapi==0.109.2
-uvicorn[standard]==0.27.1
-python-multipart==0.0.9
+fastapi==0.115.6          # >=0.115.3 fixes starlette multipart DoS (CVE-2024-47874)
+uvicorn[standard]==0.34.0
+python-multipart==0.0.18  # fixes DoS on malformed multipart (CVE-2024-53981)
 
 # Database
-sqlalchemy==2.0.27
+sqlalchemy==2.0.36
 aiomysql==0.2.0
-pymysql==1.1.0
-cryptography==42.0.2
-alembic==1.13.1
+pymysql==1.1.1            # fixes SQL injection via crafted dates (CVE-2024-36039)
+cryptography==44.0.0
+alembic==1.14.0
 
 # Redis
-redis==5.0.1
-aioredis==2.0.1
+redis==5.2.1
+# aioredis removed — merged into redis-py 4.2+ and unmaintained since 2022
 
 # Celery
-celery==5.3.6
+celery==5.4.0
 
 # Validation & Serialization
-pydantic==2.6.1
-pydantic-settings==2.1.0
+pydantic==2.10.4
+pydantic-settings==2.7.0
+email-validator==2.2.0    # backs pydantic EmailStr
 
 # HTTP Client
-httpx==0.27.0
-aiohttp==3.9.3
+httpx==0.28.1
+aiohttp==3.11.11          # fixes request smuggling / DoS in <3.10.11
 
 # Enrichment
-python-whois==0.9.4
-dnspython==2.6.1
+python-whois==0.9.5
+dnspython==2.7.0
 geoip2==4.8.0
 # shodan==1.31.0  # Optional - not compatible with Vercel serverless (no binary wheels)
 
 # Security
-python-jose[cryptography]==3.3.0
+pyjwt==2.10.1             # replaces python-jose (unmaintained; CVE-2024-33663/33664)
 passlib[bcrypt]==1.7.4
-bcrypt==3.2.2
+bcrypt==4.2.1
 
 # STIX
 stix2==3.0.1
 
 # Utilities
 python-dotenv==1.0.1
-structlog==24.1.0
-tenacity==8.2.3
-croniter==2.0.1
-jinja2==3.1.3
-weasyprint==61.2
+structlog==24.4.0
+tenacity==9.0.0
+croniter==6.0.0
+jinja2==3.1.5             # fixes sandbox breakouts in <3.1.5
+weasyprint==63.1
 
 # AI
-groq>=0.12.0
+groq>=0.13.0
 
 # CSV parsing
-pandas==2.2.0
+pandas==2.2.3
