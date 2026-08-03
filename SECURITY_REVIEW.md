@@ -437,6 +437,28 @@ Accepted or out-of-scope items, in rough priority order:
 3. **No token revocation.** Logout is client-side only; a stolen JWT stays valid until `exp` (now 12 h). Add a `token_version` column on `users` (bumped on logout/password change) and check it in `get_current_user`.
 4. **CSP still allows `'unsafe-inline'` for scripts** — required by the Next.js App Router without nonce support. Revisit when nonce-based CSP is available.
 5. **Rate limiting is per-process when Redis is absent.** The in-memory fallback does not coordinate across workers or serverless instances; the nginx zone covers the containerised deployment, but a Vercel/Render deployment should have `REDIS_URL` configured for the limits to be global.
+
+   **Addendum 2026-07-31 — provisioning Redis does NOT close this, contrary to what the sentence above says.** `deps.py::_client_ip` derives the bucket key from `X-Forwarded-For` and trusts the first entry with no trusted-proxy allowlist and no hop count:
+
+   ```python
+   forwarded = request.headers.get("X-Forwarded-For", "")
+   if forwarded:
+       return forwarded.split(",")[0].strip()
+   ```
+
+   The header is entirely client-supplied, so an attacker rotating it gets a fresh bucket per request and the per-IP budget never binds — with or without Redis. Two independent causes, one outcome; only the first was recorded.
+
+   **Scope.** Every `rate_limit()` call site: `register`, `login`, `verify-otp`, `forgot-password`, `reset-password`, `contact-submit`, `ioc-lookup`, and the three `ai-*` endpoints.
+
+   **What this is not.** It is *not* an authentication or privilege bypass. `get_current_user` loads the user from the database and `require_roles` reads `user.role` from that row, so the JWT's `role` claim is never consulted for authorization and cannot be forged into privilege. The `X-Cron-Secret` path uses `hmac.compare_digest` and is gated on a non-empty configured secret. A background review characterised this as a "spoofable-field auth bypass"; that framing is wrong, and the narrower reading is the correct one.
+
+   **What it actually costs**, in severity order:
+   - **Password guessing at `/login` is unthrottled.** This is the sharpest residual, because there is no per-account failure counter to fall back on — the finding on line 177 already notes password login has no effective limit, and this is a second reason it does not.
+   - **AI endpoint spend is unbounded** (`ai-chat` 30/5 min, `ai-analyze` 20/5 min, `ai-report` 5/10 min), which is a direct cost-of-service exposure rather than a data one.
+   - **`contact-submit` spam protection is nominal.**
+   - **OTP brute force remains bounded**, by the per-code `attempts` counter in the database (`users.py:136`, capped at `OTP_MAX_ATTEMPTS`). That control is neither IP-based nor per-process, so it holds. Defence in depth works here — which is exactly why line 170 identifies it as the control that actually defeats the scenario.
+
+   **Fix, not yet applied — blocked on a topology fact.** Honour `X-Forwarded-For` only when the immediate peer is a trusted proxy, otherwise use `request.client.host`. Getting that right requires knowing what terminates TLS in production and how many hops sit in front of the app: under `nginx/nginx.conf` the trusted peer is nginx and the client is the last-but-one entry, whereas on Render the edge appends the real client and a fixed hop count is the usual approach. Choosing wrong fails in one of two bad directions — trusting too much leaves this open, trusting too little buckets every caller together and turns the limiter into a global cap that a single noisy client can exhaust for everyone. **Owner input needed: which topology is live, nginx or Render's edge?**
 6. **Registration still enumerates emails** via `409 Username or email already registered`. This is a deliberate usability trade-off; rate limiting is the mitigation.
 7. **No audit log.** Privileged actions (feed deletion, user creation, role changes) are logged with structlog but not persisted to a tamper-evident store.
 8. **`postcss` and `sharp` high-severity advisories remain.** Both are transitive dependencies pinned inside Next.js itself, so the only fix npm offers is downgrading Next to v9 — rejected. They clear when Next ships updated transitives. Exposure is limited: postcss runs at build time, and `sharp`/libvips only handles images passing through `next/image`, which this app uses for a local logo and favicon.
