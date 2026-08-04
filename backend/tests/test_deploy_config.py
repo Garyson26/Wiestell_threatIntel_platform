@@ -36,28 +36,65 @@ def _cron_expressions(text):
     return found
 
 
-def _cron_interval_hours(expression):
-    """Hours between firings for the `M H/N * * *` and `M H * * *` forms.
+def _cron_firing_hours(hour_field):
+    """The set of hours a cron hour-field fires at. Handles `*`, `*/N` and `a,b,c`."""
+    if hour_field == "*":
+        return list(range(24))
+    if hour_field.startswith("*/"):
+        step = int(hour_field[2:])
+        return list(range(0, 24, step))
+    hours = []
+    for part in hour_field.split(","):
+        part = part.strip()
+        if not part.isdigit():
+            raise AssertionError(
+                f"cron hour field {hour_field!r} contains {part!r}, which this parser "
+                "does not understand (ranges like 9-17 are not handled). Extend it or "
+                "simplify the schedule."
+            )
+        hours.append(int(part))
+    return sorted(set(hours))
 
-    Only the shapes this project uses. A cron expression is not generally reducible to an
-    interval - `0 9,17 * * *` fires twice a day at uneven spacing - so this raises rather
-    than guessing, which is the right failure for a test whose whole point is that the
-    interval is knowable.
+
+def _cron_interval_hours(expression):
+    """Hours between firings, for any evenly-spaced schedule.
+
+    **Widened 2026-07-31.** The first version only understood `*/N` and raised on the
+    enumerated form, which made it stricter than the constraint it was enforcing:
+    `17 0,6,12,18 * * *` is evenly spaced and perfectly correct, and it was rejected. The
+    fix is the worst-case-gap comparison that was the right shape all along - derive the
+    firing hours, diff them **including the midnight wraparound**, and require the gaps to
+    be equal.
+
+    Still raises on a genuinely uneven schedule (`0 9,17,21,23 * * *`), because such a
+    schedule has no single interval to compare against the governing constant. That is the
+    correct failure for a test whose whole premise is that the interval is knowable - but
+    the message now says what to do about it rather than just refusing.
     """
     fields = expression.split()
     assert len(fields) == 5, f"expected 5 cron fields, got {expression!r}"
-    hour = fields[1]
-    if hour.startswith("*/"):
-        return int(hour[2:])
-    if hour == "*":
-        return 1
-    if hour.isdigit():
+
+    hours = _cron_firing_hours(fields[1])
+    assert hours, f"cron expression {expression!r} never fires"
+    if len(hours) == 1:
         return 24
-    raise AssertionError(
-        f"cron hour field {hour!r} does not reduce to a single interval. If the schedule "
-        "is now uneven, this test needs to compare worst-case spacing against the "
-        "governing constant rather than a single number."
-    )
+
+    # The wraparound gap matters: 0,6,12,18 has gaps 6,6,6 within the day and a further 6
+    # from 18 back to 00 the next day. Omitting it would accept 0,6,12 as "every 6 hours"
+    # when the real worst case is the 12-hour overnight gap.
+    gaps = [b - a for a, b in zip(hours, hours[1:])]
+    gaps.append(24 - hours[-1] + hours[0])
+
+    if len(set(gaps)) != 1:
+        raise AssertionError(
+            f"cron expression {expression!r} fires at hours {hours} with uneven gaps "
+            f"{gaps}, so it has no single interval to compare against "
+            "_GOVERNING_SYNC_INTERVAL_SECONDS. Either even out the schedule, or change "
+            "the constant to describe the WORST-CASE gap "
+            f"({max(gaps)}h here) and compare against that instead - the worst case is "
+            "what rolling-window gap detection actually needs to survive."
+        )
+    return gaps[0]
 
 
 class TestFeedSyncCronMatchesTheGoverningInterval:
@@ -298,3 +335,61 @@ class TestTheWorkflowDistinguishesEndpointFromFeedFailure:
             f"timeout-minutes is {match.group(1)}; the sync window is ~15 minutes, so "
             "anything much above that is waiting on a hang rather than on work"
         )
+
+
+class TestTheCronParserAcceptsEverythingCorrect:
+    """The parser must not be stricter than the constraint it enforces.
+
+    Its first version understood only `*/N` and raised on `17 0,6,12,18 * * *`, which is
+    evenly spaced and correct. Rejecting a valid schedule pushes people toward a workaround
+    rather than the right answer.
+    """
+
+    @pytest.mark.parametrize("expression,expected", [
+        ("17 */6 * * *", 6),
+        ("17 0,6,12,18 * * *", 6),
+        ("0 */12 * * *", 12),
+        ("0 0,12 * * *", 12),
+        ("30 */4 * * *", 4),
+        ("0 * * * *", 1),
+        ("0 3 * * *", 24),
+    ], ids=["step-6", "enumerated-6", "step-12", "enumerated-12", "step-4",
+            "hourly", "once-daily"])
+    def test_evenly_spaced_schedules_reduce(self, expression, expected):
+        assert _cron_interval_hours(expression) == expected
+
+    def test_enumerated_and_step_forms_agree(self):
+        """They describe the same schedule, so they must reduce identically."""
+        assert _cron_interval_hours("17 0,6,12,18 * * *") == \
+            _cron_interval_hours("17 */6 * * *")
+
+    def test_the_midnight_wraparound_is_counted(self):
+        """`0,6,12` looks like every 6 hours within the day and is not.
+
+        The real worst case is the 12-hour overnight gap from 12:00 to 00:00. Omitting the
+        wraparound would accept it as a 6-hour schedule and the window check would then be
+        calibrated against a gap half the true size - silently under-reporting exactly what
+        it exists to catch.
+        """
+        with pytest.raises(AssertionError, match="uneven gaps"):
+            _cron_interval_hours("0 0,6,12 * * *")
+
+    def test_a_genuinely_uneven_schedule_still_raises(self):
+        with pytest.raises(AssertionError, match="uneven gaps"):
+            _cron_interval_hours("0 9,17,21,23 * * *")
+
+    def test_the_uneven_message_names_the_worst_case_gap(self):
+        """So the reader can act on it rather than only being refused."""
+        with pytest.raises(AssertionError) as excinfo:
+            _cron_interval_hours("0 9,17,21,23 * * *")
+        message = str(excinfo.value)
+        assert "worst-case" in message.lower()
+        assert "10h" in message, f"the largest gap (9->17 next day is 10h) is not named: {message}"
+
+    def test_an_unparseable_hour_field_says_so(self):
+        with pytest.raises(AssertionError, match="does not understand"):
+            _cron_interval_hours("0 9-17 * * *")
+
+    def test_a_malformed_expression_is_rejected(self):
+        with pytest.raises(AssertionError, match="expected 5 cron fields"):
+            _cron_interval_hours("*/6 * * *")

@@ -77,16 +77,23 @@ whatever happens first.
 
       | Expression | Result |
       |---|---|
-      | `17 */6 * * *` | fine — the `*/N` form is what the test reads |
-      | `17 0,6,12,18 * * *` | fine — evenly spaced, but see below |
-      | `0 9,17,21,23 * * *` | **fails the test** — uneven spacing has no single interval |
+      | `17 */6 * * *` | fine |
+      | `17 0,6,12,18 * * *` | fine — the enumerated form is accepted too |
+      | `0 0,6,12 * * *` | **fails** — looks 6-hourly but the overnight gap is 12h |
+      | `0 9,17,21,23 * * *` | **fails** — genuinely uneven, no single interval |
 
-      Stated here so the times are chosen knowing the constraint rather than discovered
-      from a red build. If uneven spacing is ever genuinely wanted (aligning each sync to a
-      different feed's publish time, say), the test must change to compare the **worst-case
-      gap** against the constant — which is the correct comparison anyway, just harder to
-      write. Note the enumerated form `0,6,12,18` is evenly spaced but is not the `*/N`
-      shape the parser currently reduces; prefer `*/6` unless there is a reason not to.
+      The check derives the firing hours, diffs them **including the midnight wraparound**,
+      and requires the gaps to be equal — so it is the worst-case-gap comparison, and both
+      the `*/N` and enumerated forms reduce identically. The `0,6,12` row is why the
+      wraparound matters: within the day its gaps look like 6h, but 12:00 → 00:00 is 12h,
+      and calibrating the window check against half the true gap would silently
+      under-report exactly what it exists to catch.
+
+      Stated here so the times are chosen knowing the constraint rather than discovered from
+      a red build. If uneven spacing is ever genuinely wanted (aligning each sync to a
+      different feed's publish time, say), change `_GOVERNING_SYNC_INTERVAL_SECONDS` to
+      describe the **worst-case** gap and compare against that — the failure message names
+      the largest gap so the value is to hand.
 
 ## 2. Schema
 
@@ -129,20 +136,29 @@ whatever happens first.
       count the entries, then set `TRUSTED_PROXY_HOPS`. Until it is set, the per-IP rate
       limits do not bind — the header is ignored and every caller buckets under the socket
       peer, which on Render is the edge.
-- [ ] **`GET /api/v1/health` and read the `degradations` array.** It is empty on a correct
-      deployment. It reports the two states where the app runs but is not doing what the
-      design assumes — both settable in Render's dashboard, invisible in the repository, and
-      otherwise evidenced only by a boot log line that scrolls away:
+- [ ] `GET /api/v1/health` — expect 200. Deliberately **minimal**: it must stay
+      unauthenticated for Render's health checker, so anything on it is world-readable.
+      (Render reads only the status *code*, not the body.)
+- [ ] **`GET /api/v1/cron-status` with an admin token, and read the `degradations` array.**
+      Empty on a correct deployment. It reports the two states where the app runs but is not
+      doing what the design assumes — both settable in Render's dashboard, invisible in the
+      repository, and otherwise evidenced only by a boot log line that scrolls away:
 
       | `id` | Means |
       |---|---|
       | `geoip_database_missing` | the `.mmdb` is absent, so **every** IP indicator is enriched with no country or ASN data |
       | `multiple_workers_allowed` | `ALLOW_MULTIPLE_WORKERS` is set, so rate limits, the DB pool, enrichment concurrency and any cache are all per worker |
 
-      Note `status` stays `"healthy"` for both. That is deliberate: `"degraded"` drives
-      orchestrator restarts and neither of these is fixed by restarting, so flipping it
-      would train uptime monitoring to ignore the field. These need a human, not a reboot.
-- [ ] `GET /api/v1/cron-status` with an admin token.
+      **Admin-gated on purpose.** This was briefly on the public `/health` payload, which
+      was a poor trade: `multiple_workers_allowed` tells an unauthenticated reader that the
+      login rate limit is N times weaker than it appears — precisely the fact worth having
+      before starting a credential-stuffing run. Publishing one's own mitigation gap for
+      post-deploy convenience is not worth it, so it moved here, where operational state
+      already lives behind admin auth.
+
+      Note `/health`'s `status` stays `"healthy"` even when a degradation is present. That
+      is deliberate: `"degraded"` drives orchestrator restarts and neither of these is fixed
+      by restarting, so flipping it would train uptime monitoring to ignore the field.
 
 ## 5. Wire the cron
 
