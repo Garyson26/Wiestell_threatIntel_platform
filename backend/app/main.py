@@ -18,6 +18,80 @@ from app.utils.sanitize import redact_headers, redact_secrets
 logger = structlog.get_logger()
 
 
+def _assert_single_worker() -> None:
+    """Refuse to start under multiple uvicorn workers unless explicitly overridden.
+
+    **Why this is a runtime check and not only a test.** `tests/test_process_model.py`
+    asserts that `render.yaml` and `start.sh` pass `--workers 1`, but that guards the
+    *repository*, not the *deployment*. Render's dashboard allows a start-command override
+    that lives in no file; so does `docker run` with different arguments, or a developer
+    debugging with `--workers 4` and carrying the command forward. None of those touch a
+    file the test can read.
+
+    Four subsystems assume one process per instance, and each breaks quietly rather than
+    loudly at N workers:
+
+      1. `utils/rate_limiter` falls back to per-process state without ``REDIS_URL``, so N
+         workers give N independent budgets and the effective limit is
+         N x ``AUTH_RATE_LIMIT_MAX`` (SECURITY_REVIEW.md residual risk #5);
+      2. `database.py`'s pool is per process, so ``pool_size=2 + max_overflow=3`` becomes
+         5N connections against a **shared** MySQL account allowance;
+      3. `enrichment_engine`'s semaphore is module-level, so the real in-flight ceiling
+         becomes 5N third-party calls;
+      4. any in-process cache would become N caches serving inconsistent reads.
+
+    Failing closed is deliberate: every one of those degrades silently, and (2) can exhaust
+    an allowance shared with other clients — a failure that lands outside this application.
+    ``ALLOW_MULTIPLE_WORKERS=true`` opens the door for someone who has actually revisited
+    all four, and says so in the logs when they do.
+
+    Worker children **do** inherit ``sys.argv`` — verified empirically 2026-07-31 against
+    uvicorn on Windows (spawn, the harder case: each worker re-executes and still sees the
+    parent's argv), so this fires in every worker rather than only the supervisor.
+    """
+    import os
+    import sys
+
+    requested = None
+    argv = sys.argv
+    for i, arg in enumerate(argv):
+        if arg == "--workers" and i + 1 < len(argv):
+            requested = argv[i + 1]
+        elif arg.startswith("--workers="):
+            requested = arg.split("=", 1)[1]
+
+    try:
+        count = int(requested) if requested is not None else 1
+    except ValueError:
+        return  # Not our business to validate uvicorn's own argument parsing.
+
+    if count <= 1:
+        return
+
+    override = (os.getenv("ALLOW_MULTIPLE_WORKERS") or "").strip().lower() in {
+        "1", "true", "yes",
+    }
+    detail = (
+        f"{count} uvicorn workers requested. Four subsystems assume one process per "
+        "instance: the in-memory rate limiter (N independent budgets), the database pool "
+        "(5N connections against a shared account allowance), the enrichment semaphore "
+        "(5N third-party calls in flight), and any in-process cache. See "
+        "app/main.py::_assert_single_worker and SECURITY_REVIEW.md residual risk #5."
+    )
+    if override:
+        logger.warning("multiple_workers_allowed", workers=count, detail=detail)
+        return
+    logger.error("multiple_workers_refused", workers=count, detail=detail)
+    raise RuntimeError(
+        detail + " Set ALLOW_MULTIPLE_WORKERS=true to override once all four have been "
+        "revisited."
+    )
+
+
+_assert_single_worker()
+
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup and shutdown events."""

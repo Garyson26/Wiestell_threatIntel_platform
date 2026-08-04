@@ -210,6 +210,13 @@ def _client_ip(request: Request) -> str:
 def rate_limit(bucket: str, max_requests: Optional[int] = None, window_seconds: Optional[int] = None):
     """Dependency factory applying a per-IP request budget to an endpoint.
 
+    **SINGLE-PROCESS ASSUMPTION.** Without ``REDIS_URL`` the limiter keeps counters in a
+    process-local dict, so this budget is per worker. It is correct only because the app
+    runs one uvicorn worker per instance — enforced in ``render.yaml``, ``start.sh`` and
+    ``main.py::_assert_single_worker``, and pinned by ``tests/test_process_model.py``. At N
+    workers the effective limit is N x ``max_requests`` and no test would notice. Three
+    other subsystems share this assumption; see that function's docstring.
+
     A rate limit is **not** an authorization control. The returned callable is
     named distinctly from :func:`require_roles`'s so the route-guard audit
     cannot mistake a rate-limited public endpoint for an authenticated one.
