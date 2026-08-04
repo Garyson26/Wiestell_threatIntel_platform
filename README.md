@@ -1,5 +1,5 @@
 
-**Opensource free threat intelligence platform that aggregates, enriches, and scores IOCs from multiple feeds.**
+**Wiestell Opensource free threat intelligence platform that aggregates, enriches, and scores IOCs from multiple feeds.**
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi)
