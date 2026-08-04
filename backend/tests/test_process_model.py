@@ -108,6 +108,94 @@ class TestTheWorkerCountIsPinnedToOne:
         )
 
 
+class TestTheRuntimeRefusal:
+    """The file tests above guard the repo; this guards the deployment.
+
+    Render's dashboard allows a start-command override that lives in no file, and so does
+    `docker run` with different arguments, or a developer carrying `--workers 4` forward
+    from a debugging session. None of those touch anything a grep can read, so the check
+    has to exist at startup as well.
+
+    Worker children **do** inherit `sys.argv` - verified empirically 2026-07-31 against
+    uvicorn on Windows, which uses spawn and therefore re-executes each worker: all three
+    processes reported the parent's full argv including `--workers 2`. So the refusal fires
+    in every worker rather than only the supervisor.
+    """
+
+    @staticmethod
+    def _check(argv, env=None, monkeypatch=None):
+        import sys
+
+        from app.main import _assert_single_worker
+
+        monkeypatch.setattr(sys, "argv", argv)
+        monkeypatch.delenv("ALLOW_MULTIPLE_WORKERS", raising=False)
+        for key, value in (env or {}).items():
+            monkeypatch.setenv(key, value)
+        return _assert_single_worker()
+
+    def test_a_single_worker_passes(self, monkeypatch):
+        assert self._check(
+            ["uvicorn", "app.main:app", "--workers", "1"], monkeypatch=monkeypatch
+        ) is None
+
+    def test_an_absent_flag_passes(self, monkeypatch):
+        """uvicorn's default is 1, so no flag is the same as one worker."""
+        assert self._check(
+            ["uvicorn", "app.main:app", "--port", "8000"], monkeypatch=monkeypatch
+        ) is None
+
+    @pytest.mark.parametrize("argv", [
+        ["uvicorn", "app.main:app", "--workers", "2"],
+        ["uvicorn", "app.main:app", "--workers", "4", "--port", "8000"],
+        ["uvicorn", "app.main:app", "--workers=8"],
+    ], ids=["two", "four", "equals-form"])
+    def test_multiple_workers_are_refused(self, argv, monkeypatch):
+        with pytest.raises(RuntimeError, match="uvicorn workers requested"):
+            self._check(argv, monkeypatch=monkeypatch)
+
+    def test_the_override_env_var_opens_the_door(self, monkeypatch):
+        """For someone who has actually revisited all four assumptions."""
+        assert self._check(
+            ["uvicorn", "app.main:app", "--workers", "4"],
+            env={"ALLOW_MULTIPLE_WORKERS": "true"},
+            monkeypatch=monkeypatch,
+        ) is None
+
+    @pytest.mark.parametrize("value", ["1", "yes", "TRUE", " true "])
+    def test_the_override_accepts_the_usual_truthy_spellings(self, value, monkeypatch):
+        assert self._check(
+            ["uvicorn", "app.main:app", "--workers", "3"],
+            env={"ALLOW_MULTIPLE_WORKERS": value},
+            monkeypatch=monkeypatch,
+        ) is None
+
+    @pytest.mark.parametrize("value", ["0", "false", "no", ""])
+    def test_a_falsy_override_still_refuses(self, value, monkeypatch):
+        with pytest.raises(RuntimeError):
+            self._check(
+                ["uvicorn", "app.main:app", "--workers", "3"],
+                env={"ALLOW_MULTIPLE_WORKERS": value},
+                monkeypatch=monkeypatch,
+            )
+
+    def test_a_malformed_worker_value_is_not_our_problem(self, monkeypatch):
+        """uvicorn validates its own arguments; this must not raise on nonsense."""
+        assert self._check(
+            ["uvicorn", "app.main:app", "--workers", "many"], monkeypatch=monkeypatch
+        ) is None
+
+    def test_the_refusal_names_all_four_consequences(self, monkeypatch):
+        """The message is the only thing an operator will read at 2am."""
+        with pytest.raises(RuntimeError) as excinfo:
+            self._check(["uvicorn", "app.main:app", "--workers", "4"],
+                        monkeypatch=monkeypatch)
+        message = str(excinfo.value)
+        for expected in ("rate limiter", "pool", "semaphore", "cache",
+                        "ALLOW_MULTIPLE_WORKERS"):
+            assert expected in message, f"the refusal does not mention {expected!r}"
+
+
 class TestTheAssumptionsThatDependOnIt:
     """Pins the per-process values, so the coupling is visible from this file too.
 

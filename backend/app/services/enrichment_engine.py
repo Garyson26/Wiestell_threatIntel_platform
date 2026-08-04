@@ -24,6 +24,13 @@ def _utcnow() -> datetime:
 
 # Ceiling on enrichers running at once, process-wide (Phase 5).
 #
+# SINGLE-PROCESS ASSUMPTION. "Process-wide" is the whole point (see below), but it also
+# means the real in-flight total is workers x this. The app runs one uvicorn worker per
+# instance — enforced in render.yaml, start.sh and main.py::_assert_single_worker, pinned
+# by tests/test_process_model.py — so raising the worker count multiplies third-party
+# concurrency and reintroduces the 429s this exists to prevent. Three other subsystems
+# share the assumption.
+#
 # `asyncio.gather` over the applicable sources was unbounded. Per IOC that is at most
 # five or six calls, which is fine — but the bulk backfill enriches up to 50,000 IOCs and
 # `POST /feeds/sync-all` drives enrichment behind a single request, so the in-flight total

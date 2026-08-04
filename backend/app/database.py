@@ -123,6 +123,13 @@ if IS_SERVERLESS:
 else:
     # Production pool — sized for the deployment that actually exists.
     #
+    # SINGLE-PROCESS ASSUMPTION. These numbers are PER PROCESS, so the account-wide total
+    # is workers x instances x (pool_size + max_overflow). The app runs one uvicorn worker
+    # per instance — enforced in render.yaml, start.sh and main.py::_assert_single_worker,
+    # pinned by tests/test_process_model.py. Raising the worker count multiplies this
+    # against a SHARED MySQL allowance: four workers puts it back at the 20-30 connections
+    # this resize existed to avoid. Three other subsystems share the assumption.
+    #
     # RESIZED 2026-07-31 (Phase 5) from pool_size=10 / max_overflow=20. That allowed 30
     # simultaneous connections *per process* and its comment claimed it stayed "within
     # typical shared-host limits", which was the wrong reading of this deployment:

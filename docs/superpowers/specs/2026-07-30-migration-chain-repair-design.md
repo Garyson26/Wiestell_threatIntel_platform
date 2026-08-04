@@ -5,10 +5,13 @@
 **Blocking on:** `SELECT VERSION();`, `SHOW CREATE TABLE iocs;`,
 `SHOW CREATE TABLE feed_sources;` and `SELECT * FROM alembic_version;` against the
 Hostinger instance. See §5. Two further sets are **not** blockers for this design but
-should be run in the same sitting: the four corpus counts in §5.4 (which gate the
-rescore runtime estimate and the `/attack/*` sizing) and the GeoIP check in §5.5. A fifth query (§5.5) is **not** a blocker for this
-design — it settles the GeoIP/MaxMind question recorded as PROJECT_SUMMARY §8 item 14
-— but it is listed here so all five can be run in one sitting.
+should be run in the same sitting:
+
+- **§5.4** — four corpus counts, which gate the rescore runtime estimate (§5.4.1), the
+  rescore-now-versus-after-Phase-4 decision (§5.4.2) and the `/attack/*` sizing in
+  PROJECT_SUMMARY §8 item 17;
+- **§5.5** — the GeoIP `error_city` check, which settles whether PROJECT_SUMMARY §8 item 14
+  is a latent risk or the live state.
 
 ---
 
@@ -261,9 +264,55 @@ round-trip latency from wherever it is run to Hostinger:
 Run from a laptop against a shared host, so it is a **scheduled job, not a quick one** —
 and the owner should know that before starting it rather than forty minutes in. It is
 resumable via `--start-after` and idempotent (scoring is a pure function of evidence), so
-an interrupted run is recoverable rather than restarting from zero. Recommended sequence:
-`--dry-run` first to get the distribution and a real timing sample from the first few
-chunks, then the write pass.
+an interrupted run is recoverable rather than restarting from zero.
+
+**A `--dry-run` timing sample will UNDERESTIMATE — scale it by at least 1.33×.** The dry
+run skips the UPDATE, so it issues **three** statements per chunk against the write pass's
+four. That alone is a 1.33× factor, and it is a floor rather than the whole gap: on a
+shared host a write costs more than a read (redo logging, row locks, and the commit per
+chunk), and the write pass contends with live ingestion for the same locks. Treat a dry-run
+number as a lower bound, not a calibration — otherwise it reads as precise when it is
+optimistic. Recommended sequence: `--dry-run` for the score distribution and a floor on
+timing, multiply by 1.33× and add margin, then the write pass.
+
+### 5.4.2 The rescore is necessary but NOT sufficient — decide this rather than default it
+
+A rescore fixes the model-version mismatch. It **cannot** fix enrichment-payload staleness,
+because it recomputes from *stored* enrichment rows and those rows are frozen: the cron
+path selects `WHERE Enrichment.id IS NULL`, so anything already enriched is never
+refreshed.
+
+The consequence is specific. Rows written before the `assessed` contract carry no
+`assessed` key, so they fall through to `scoring_engine._legacy_assessed`, which is
+**deliberately conservative** — where it cannot tell whether a signal was evaluated, it
+assesses nothing. So a rescore today computes the Section 1 improvement against payloads
+that cannot express it, and bakes in conservatively-low enrichment terms for however many
+rows are affected. When Phase 4 fixes the selection and those rows refresh with `assessed`
+present, **their scores change again.**
+
+So the real choice is:
+
+| Option | Cost |
+|---|---|
+| **Rescore now** | Fixes the unsound triage surface immediately (§8 item 16). Costs a **second full rescore** after Phase 4 — at 200,000 rows that is another 1–2 hours. |
+| **Wait for Phase 4** | One rescore instead of two. Leaves the dashboard ranking rows scored under at least four superseded models for however long Phase 4 takes. |
+
+`SELECT COUNT(*) FROM enrichments` (§5.4) **sizes this**, which is why that count matters
+more than it first appears: it is the number of rows carrying a legacy payload, and
+therefore how much of the corpus would be scored conservatively by a rescore run today.
+
+**Owner lean, recorded 2026-07-31: run now.** An unsound triage surface during UAT is worse
+than a repeated job, and the second pass is a scheduled cost rather than a risk. Stated
+here so it is a decision with a reason attached rather than whatever happens to occur
+first — and so that if it changes, what changed is visible.
+
+**Two things follow from choosing "run now":**
+
+1. The second rescore is a **planned** item, not a discovery. It belongs on the Phase 4
+   checklist alongside the selection fix, in the same change set.
+2. `manual_score_override` must still be populated only **after the final** rescore — the
+   script skips those rows, so setting overrides between the two passes would leave them
+   holding first-pass values permanently.
 
 ### 5.5 Not a blocker for this design — has the GeoIP database ever been present?
 
