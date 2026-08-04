@@ -19,7 +19,9 @@ alembic revision -m "description"          # new migration (autogenerate is NOT 
 python -m compileall -q app alembic        # fast syntax check
 
 # Frontend (from frontend/)
-npm install          # NOT `npm ci` — the lockfile is out of sync and ci fails with EUSAGE
+npm ci               # works again as of 2026-08-03; `npm audit fix` regenerated a
+                     # lockfile consistent with package.json, clearing the EUSAGE
+                     # failure that previously forced `npm install` here
 npm run dev
 npm run build
 npm run lint
