@@ -393,3 +393,97 @@ class TestTheCronParserAcceptsEverythingCorrect:
     def test_a_malformed_expression_is_rejected(self):
         with pytest.raises(AssertionError, match="expected 5 cron fields"):
             _cron_interval_hours("*/6 * * *")
+
+
+class TestDependabotConfig:
+    """Grouping is the point, so the config's shape is worth asserting.
+
+    Unconfigured, Dependabot opens one PR per advisory - dozens at this repository's alert
+    volume. The risk being managed is alert fatigue: once the feed is ignored, the next
+    genuinely serious advisory lands in a stream nobody reads. If this file were deleted or
+    its grouping removed, that would revert silently, so it is pinned.
+    """
+
+    CONFIG = ROOT / ".github" / "dependabot.yml"
+
+    def test_the_config_exists(self):
+        assert self.CONFIG.exists(), (
+            "no .github/dependabot.yml. Without it Dependabot opens one PR per advisory, "
+            "which at this alert volume trains reviewers to ignore the feed."
+        )
+
+    def test_both_ecosystems_are_rooted_where_the_manifests_are(self):
+        """A root-level entry would find no manifest and report nothing, silently."""
+        text = self.CONFIG.read_text(encoding="utf-8")
+        assert "package-ecosystem: pip" in text
+        assert "package-ecosystem: npm" in text
+        assert "directory: /backend" in text, "pip must be rooted at /backend"
+        assert "directory: /frontend" in text, "npm must be rooted at /frontend"
+        # And those really are the manifest locations.
+        assert (ROOT / "backend" / "requirements.txt").exists()
+        assert (ROOT / "frontend" / "package.json").exists()
+
+    def test_patch_and_minor_updates_are_grouped(self):
+        text = self.CONFIG.read_text(encoding="utf-8")
+        assert "groups:" in text, "grouping removed - see this class's docstring"
+        assert text.count("groups:") >= 2, (
+            "only one ecosystem groups its updates; both should"
+        )
+        for update_type in ("minor", "patch"):
+            assert f"- {update_type}" in text, f"{update_type} updates are not grouped"
+
+    def test_the_schedule_is_not_daily(self):
+        """Daily becomes background noise, and no advisory here has an exposure window
+        that differs meaningfully at 1 day versus 7."""
+        text = self.CONFIG.read_text(encoding="utf-8")
+        assert "interval: daily" not in text, (
+            "a daily schedule reintroduces the noise the grouping exists to prevent"
+        )
+        assert "interval: weekly" in text
+
+    def test_the_framework_majors_stay_out_of_the_grouped_pr(self):
+        """A framework bump beside a security bump makes a regression unattributable.
+
+        That is why Spec 6 §1 upgraded six packages and left these alone; the config
+        should not undo it by sweeping a major into a grouped merge.
+        """
+        text = self.CONFIG.read_text(encoding="utf-8")
+        for name in ("fastapi", "starlette", "sqlalchemy", "pydantic", "aiomysql", "next"):
+            assert f"dependency-name: {name}" in text, (
+                f"{name} major updates are not held out of the grouped PR"
+            )
+
+    def test_the_comment_explains_the_duplicate_pip_alerts(self):
+        """Otherwise the next reader removes the `-r` include to "fix" the duplication.
+
+        That include is what makes a fresh clone bootstrap in one command (Spec 4,
+        re-verified Spec 6 §1), and duplicate alerts are the cheaper problem.
+        """
+        text = self.CONFIG.read_text(encoding="utf-8")
+        assert "requirements-dev.txt" in text and "-r requirements.txt" in text, (
+            "the config does not explain why pip advisories appear twice, so someone will "
+            "eventually remove the include to suppress them"
+        )
+        assert "intentional" in text.lower() or "INTENTIONAL" in text
+
+    def test_the_dev_include_is_still_present(self):
+        """The property the comment above is protecting.
+
+        Matched against UNCOMMENTED lines only. The first version of this test searched the
+        raw text, so commenting the include out - `# -r requirements.txt` - still satisfied
+        it. Found by mutation-testing this very guard, which is the eighth time that trap
+        has appeared in this project and the reason for the standing rule in CLAUDE.md.
+        The file also *documents* the include in its header comment, so raw matching was
+        guaranteed to pass here no matter what the directive said.
+        """
+        dev = (ROOT / "backend" / "requirements-dev.txt").read_text(encoding="utf-8")
+        directives = [
+            line.strip()
+            for line in dev.splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        ]
+        assert any(d.startswith("-r requirements.txt") for d in directives), (
+            "requirements-dev.txt no longer includes requirements.txt as an active "
+            "directive, so `pip install -r requirements-dev.txt && python -m pytest` no "
+            f"longer bootstraps a fresh clone in one command. Active lines: {directives}"
+        )

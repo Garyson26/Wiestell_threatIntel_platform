@@ -1,0 +1,124 @@
+# Dependabot configuration.
+#
+# WHY GROUPING IS DELIBERATE, AND WHAT IT IS PROTECTING AGAINST.
+#
+# Unconfigured, Dependabot opens one pull request per advisory. This repository fired
+# roughly 44 alerts on its first push, so the default behaviour produces dozens of PRs at
+# once. The predictable outcome is that nobody reads them — and the real cost is not the
+# unread PRs themselves but what happens next: the following genuinely serious advisory
+# arrives into a stream that has already been trained to be ignored. ALERT FATIGUE IS THE
+# RISK BEING MANAGED HERE, not any individual CVE in the current list.
+#
+# So patch and minor updates are grouped into ONE PR per ecosystem per week. Majors stay
+# ungrouped, because a major is where behaviour changes and it deserves to be looked at on
+# its own. Weekly rather than daily for the same reason: a feed that updates every morning
+# becomes background noise, and there is no advisory in this project's dependency set whose
+# exposure window is meaningfully different at 1 day versus 7.
+#
+# PIP ADVISORIES WILL APPEAR TWICE REGARDLESS OF THIS FILE. `requirements-dev.txt` begins
+# with `-r requirements.txt`, so Dependabot resolves the include and reports every pip
+# advisory against BOTH manifests — every pairing in the alert list (#181/#21, #236/#224,
+# #172/#62, #182/#63) is one vulnerability counted twice, and the real distinct pip count is
+# around 11 across 6 packages. THE INCLUDE IS INTENTIONAL: it is what makes
+# `pip install -r requirements-dev.txt && python -m pytest` bootstrap a fresh clone in one
+# command, a property established in Spec 4 and re-verified in Spec 6 §1. Duplicate alerts
+# are the cheaper problem, so do not remove the include to suppress them. Grouping reduces
+# the PR count; it does not and cannot deduplicate the alert count.
+#
+# Directory note: `pip` is rooted at /backend and `npm` at /frontend. There is no manifest
+# at the repository root, so a single root-level entry would find nothing and report
+# nothing — silently, which is the failure mode worth naming.
+
+version: 2
+
+updates:
+  # ── Backend: pip ────────────────────────────────────────────────────────────
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      backend-patch-and-minor:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    # Majors are excluded from the group above and so arrive as individual PRs.
+    #
+    # These four are called out because a framework bump landing alongside a security
+    # bump makes any regression impossible to attribute — the reason Spec 6 §1 upgraded six
+    # packages and deliberately left these alone. They are not blocked here, only kept out
+    # of the grouped PR so they cannot ride along unnoticed.
+    ignore:
+      - dependency-name: fastapi
+        update-types: ["version-update:semver-major"]
+      - dependency-name: starlette
+        update-types: ["version-update:semver-major"]
+      - dependency-name: sqlalchemy
+        update-types: ["version-update:semver-major"]
+      - dependency-name: pydantic
+        update-types: ["version-update:semver-major"]
+      # aiomysql carries the ensure_closed monkeypatch in app/database.py. A major bump
+      # needs that patch re-verified against the new upstream signature — which
+      # tests/test_aiomysql_patch.py now does automatically, but the review should be
+      # deliberate rather than a grouped merge.
+      - dependency-name: aiomysql
+        update-types: ["version-update:semver-major"]
+    labels:
+      - dependencies
+      - backend
+    commit-message:
+      prefix: "deps(backend)"
+
+  # ── Frontend: npm ───────────────────────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      frontend-patch-and-minor:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # Next majors change build and routing behaviour, and every previous
+      # postcss/sharp/brace-expansion/picomatch advisory in this project was a transitive
+      # of Next rather than a direct dependency — so a Next major moves several things at
+      # once and must be reviewed on its own. NEVER DOWNGRADE NEXT to clear an advisory;
+      # that was offered once and correctly rejected.
+      - dependency-name: next
+        update-types: ["version-update:semver-major"]
+      - dependency-name: react
+        update-types: ["version-update:semver-major"]
+      - dependency-name: react-dom
+        update-types: ["version-update:semver-major"]
+    labels:
+      - dependencies
+      - frontend
+    commit-message:
+      prefix: "deps(frontend)"
+
+  # ── GitHub Actions ──────────────────────────────────────────────────────────
+  # .github/workflows/feed-sync.yml drives the only live background path, so its action
+  # versions are worth keeping current. Grouped and monthly: there are two actions and
+  # neither is on a fast release cadence.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns:
+          - "*"
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: "deps(ci)"
