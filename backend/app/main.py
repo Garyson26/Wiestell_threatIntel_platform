@@ -263,6 +263,56 @@ async def health_check():
         health_status["database"] = "disconnected"
         health_status["status"] = "degraded"
 
+    # ── States where the app runs but is not doing what the design assumes ────
+    #
+    # Both of these are settable in Render's dashboard and invisible in the repository,
+    # so no test can see them and the only other evidence is a boot log line that
+    # scrolls away. A health endpoint is the one place to check them after a deploy
+    # rather than reconstructing them from logs.
+    #
+    # Reported under `degradations` rather than flipping `status` to "degraded":
+    # "degraded" drives orchestrator restarts, and neither of these is fixed by a
+    # restart. They need a human. `status` stays "healthy" so uptime monitoring is not
+    # trained to ignore it.
+    degradations = []
+
+    # GeoIP: the .mmdb is fetched by a build step that cannot fail the build
+    # (`|| echo "...continuing"`), so its absence is silent and costs country/ASN
+    # enrichment for the ENTIRE IP population. See PROJECT_SUMMARY.md §8 item 14.
+    try:
+        from app.enrichers import _geoip_database_available
+
+        if not _geoip_database_available():
+            degradations.append({
+                "id": "geoip_database_missing",
+                "impact": "IP indicators are enriched without country or ASN data",
+                "fix": "set MAXMIND_ACCOUNT_ID and MAXMIND_LICENSE_KEY, then redeploy",
+            })
+    except Exception as e:  # pragma: no cover - never let a probe break the probe
+        logger.warning("health_check_geoip_error", error=redact_secrets(e))
+
+    # Multiple workers: the override exists for someone who has revisited all four
+    # single-process assumptions. If it was set merely to get past a refused boot, the
+    # rate limiter, connection pool, enrichment bound and any cache are all degraded and
+    # nothing else says so. See main.py::_assert_single_worker.
+    import os
+
+    if (os.getenv("ALLOW_MULTIPLE_WORKERS") or "").strip().lower() in {"1", "true", "yes"}:
+        degradations.append({
+            "id": "multiple_workers_allowed",
+            "impact": (
+                "rate limits are per worker, the DB pool is 5 connections per worker "
+                "against a shared allowance, enrichment concurrency is 5 per worker, "
+                "and any in-process cache is per worker"
+            ),
+            "fix": (
+                "unset ALLOW_MULTIPLE_WORKERS and run one worker, or provision Redis "
+                "and re-tune pool_size and ENRICHMENT_CONCURRENCY"
+            ),
+        })
+
+    health_status["degradations"] = degradations
+
     return health_status
 
 

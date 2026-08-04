@@ -182,3 +182,119 @@ class TestRenderConfigDeclaresWhatTheBuildNeeds:
                 assert "--workers 1" in code, code.strip()
                 return
         pytest.fail("no uvicorn start command found in render.yaml")
+
+
+class TestTheWorkflowDistinguishesEndpointFromFeedFailure:
+    """A badge that is red most days is a badge nobody reads.
+
+    `--fail-with-body` correctly fails the step on a non-2xx from our own endpoint. But a
+    200 carrying `status: failed` for ONE feed is the normal path - third-party sources
+    rate-limit, move URLs and go down, which is what `feed_sources.consecutive_failures`
+    and its backoff exist to absorb. The classifier step must therefore fail on a non-2xx,
+    a timeout or an unparseable body, and NOT on a partial feed failure - while still
+    failing when EVERY feed failed, because that is systemic rather than flaky.
+
+    The classifier is extracted from the workflow and executed here, so this tests the
+    shipped code rather than a copy of it. A copy would drift the moment the workflow
+    changed, which is the mistake already made once in this project with
+    `aggregate_provider_scores`.
+    """
+
+    @staticmethod
+    def _classifier_source():
+        import re
+
+        text = WORKFLOW.read_text(encoding="utf-8")
+        match = re.search(r"python3 - <<'PY'\n(.*?)\n          PY", text, re.S)
+        assert match, (
+            "the classifier heredoc was not found in the workflow. If the step was "
+            "restructured, update this extraction - otherwise the failure semantics below "
+            "are no longer being tested at all."
+        )
+        return "\n".join(
+            line[10:] if line.startswith(" " * 10) else line
+            for line in match.group(1).splitlines()
+        )
+
+    def _run(self, tmp_path, body):
+        import subprocess
+        import sys
+
+        script = tmp_path / "classify.py"
+        script.write_text(self._classifier_source(), encoding="utf-8")
+        response = tmp_path / "response.json"
+        if body is not None:
+            response.write_text(body, encoding="utf-8")
+        return subprocess.run(
+            [sys.executable, str(script)], cwd=tmp_path,
+            capture_output=True, text=True,
+        )
+
+    def test_all_feeds_healthy_passes(self, tmp_path):
+        result = self._run(tmp_path, '[{"slug":"urlhaus","status":"success"}]')
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    def test_one_failed_feed_does_NOT_fail_the_workflow(self, tmp_path):
+        """The whole point. This is the normal path, not an incident."""
+        body = ('[{"slug":"a","status":"success"},'
+                '{"slug":"b","status":"failed","error":"429 Too Many Requests"},'
+                '{"slug":"c","status":"success"}]')
+        result = self._run(tmp_path, body)
+        assert result.returncode == 0, (
+            "a single failing feed turned the workflow red. That happens routinely and "
+            "would make the badge useless:\n" + result.stdout + result.stderr
+        )
+        assert "warning" in result.stdout.lower(), (
+            "the failing feed was not surfaced as a warning, so it is invisible"
+        )
+
+    def test_every_feed_failing_DOES_fail_the_workflow(self, tmp_path):
+        """Systemic: an expired cron secret, a dead database, a bad deploy."""
+        result = self._run(
+            tmp_path, '[{"slug":"a","status":"failed"},{"slug":"b","status":"error"}]')
+        assert result.returncode == 1, (
+            "every feed reported failure and the workflow stayed green:\n" + result.stdout
+        )
+
+    def test_a_wrapped_response_is_understood(self, tmp_path):
+        """The response shape is not pinned by a schema, so both forms are accepted."""
+        assert self._run(
+            tmp_path, '{"feeds":[{"slug":"a","status":"failed"},'
+                      '{"slug":"b","status":"success"}]}').returncode == 0
+        assert self._run(
+            tmp_path, '{"results":[{"slug":"a","status":"failed"}]}').returncode == 1
+
+    def test_an_unrecognised_shape_is_reported_but_not_failed(self, tmp_path):
+        """The endpoint answered 2xx. Guessing its meaning would be worse than saying so."""
+        result = self._run(tmp_path, '{"ok":true,"count":5}')
+        assert result.returncode == 0
+        assert "notice" in result.stdout.lower()
+
+    def test_a_malformed_body_fails(self, tmp_path):
+        assert self._run(tmp_path, "not json at all").returncode == 1
+
+    def test_a_missing_body_fails(self, tmp_path):
+        """curl wrote no file, which means the request did not complete."""
+        assert self._run(tmp_path, None).returncode == 1
+
+    def test_an_empty_feed_list_does_not_fail(self, tmp_path):
+        """0 of 0 failed is not "every feed failed" - guard against a divide-by-zero
+        style off-by-one in the systemic check."""
+        assert self._run(tmp_path, "[]").returncode == 0
+
+    def test_no_data_is_not_treated_as_failure(self, tmp_path):
+        """`BaseFeed.run()` distinguishes these deliberately, so the workflow must too."""
+        assert self._run(tmp_path, '[{"slug":"a","status":"no_data"}]').returncode == 0
+
+    def test_the_job_has_a_timeout(self):
+        """GitHub's default is 360 minutes - a hung curl against a spun-down instance
+        could sit for hours, and on a private repo that eats the monthly allowance."""
+        import re
+
+        text = WORKFLOW.read_text(encoding="utf-8")
+        match = re.search(r"timeout-minutes:\s*(\d+)", text)
+        assert match, "the sync job has no timeout-minutes, so it inherits GitHub's 360"
+        assert int(match.group(1)) <= 30, (
+            f"timeout-minutes is {match.group(1)}; the sync window is ~15 minutes, so "
+            "anything much above that is waiting on a hang rather than on work"
+        )

@@ -236,3 +236,84 @@ class TestTheAssumptionsThatDependOnIt:
             "the limiter did not enforce its budget within one process, which is the "
             "only place it can enforce anything without Redis"
         )
+
+
+class TestDegradedStatesAreSurfacedInHealth:
+    """`ALLOW_MULTIPLE_WORKERS` is the same class of problem as a start-command override.
+
+    Both are settable in Render's dashboard, invisible in the repository, and evidenced
+    otherwise only by a boot log line that scrolls away. If someone sets the override
+    merely to get past a refused boot, all four couplings degrade silently — so /health is
+    the one place to check after a deploy rather than reconstructing it from logs.
+    """
+
+    @staticmethod
+    def _health(monkeypatch, allow=None, geoip_present=False, tmp_path=None):
+        import asyncio
+
+        from app.config import settings
+        from app.enrichers import reset_registry
+        from app.main import health_check
+
+        monkeypatch.delenv("ALLOW_MULTIPLE_WORKERS", raising=False)
+        if allow is not None:
+            monkeypatch.setenv("ALLOW_MULTIPLE_WORKERS", allow)
+        if geoip_present:
+            db = tmp_path / "GeoLite2-City.mmdb"
+            db.write_bytes(b"stub")
+            monkeypatch.setattr(settings, "GEOIP_DB_PATH", str(db))
+        else:
+            monkeypatch.setattr(settings, "GEOIP_DB_PATH", "/nonexistent/x.mmdb")
+        reset_registry()
+        return asyncio.run(health_check())
+
+    @staticmethod
+    def _ids(payload):
+        return {d["id"] for d in payload.get("degradations", [])}
+
+    def test_the_field_always_exists(self, monkeypatch, tmp_path):
+        """An absent key reads as "no problem" to a consumer that does not know better."""
+        payload = self._health(monkeypatch, geoip_present=True, tmp_path=tmp_path)
+        assert "degradations" in payload
+        assert isinstance(payload["degradations"], list)
+
+    def test_a_correct_deployment_reports_nothing(self, monkeypatch, tmp_path):
+        assert self._ids(
+            self._health(monkeypatch, geoip_present=True, tmp_path=tmp_path)) == set()
+
+    def test_a_missing_geoip_database_is_reported(self, monkeypatch, tmp_path):
+        assert "geoip_database_missing" in self._ids(
+            self._health(monkeypatch, geoip_present=False, tmp_path=tmp_path))
+
+    def test_the_worker_override_is_reported(self, monkeypatch, tmp_path):
+        assert "multiple_workers_allowed" in self._ids(
+            self._health(monkeypatch, allow="true", geoip_present=True, tmp_path=tmp_path))
+
+    def test_both_can_be_reported_at_once(self, monkeypatch, tmp_path):
+        assert self._ids(self._health(monkeypatch, allow="1", geoip_present=False,
+                                      tmp_path=tmp_path)) == {
+            "geoip_database_missing", "multiple_workers_allowed"}
+
+    def test_status_stays_healthy_for_both(self, monkeypatch, tmp_path):
+        """Deliberate: "degraded" drives orchestrator restarts, and neither is fixed by one.
+
+        Flipping status would train uptime monitoring to ignore the field. These need a
+        human. The database branch is what legitimately sets "degraded".
+        """
+        payload = self._health(monkeypatch, allow="true", geoip_present=False,
+                               tmp_path=tmp_path)
+        assert payload["degradations"], "fixture produced no degradations"
+        assert payload["status"] in {"healthy", "degraded"}
+        if payload.get("database") == "connected":
+            assert payload["status"] == "healthy", (
+                "a non-restartable degradation flipped status to degraded, which will "
+                "make an orchestrator restart the service pointlessly"
+            )
+
+    def test_each_entry_says_what_it_costs_and_how_to_fix_it(self, monkeypatch, tmp_path):
+        """The payload is read by a human post-deploy, so an id alone is not enough."""
+        payload = self._health(monkeypatch, allow="true", geoip_present=False,
+                               tmp_path=tmp_path)
+        for entry in payload["degradations"]:
+            assert entry.get("impact"), f"{entry['id']} does not say what it costs"
+            assert entry.get("fix"), f"{entry['id']} does not say how to fix it"

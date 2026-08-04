@@ -90,6 +90,73 @@ jobs:
           cat response.json || true
           echo
 
+      - name: Classify the outcome
+        run: |
+          set -euo pipefail
+
+          # WHY THIS STEP EXISTS. A non-2xx from our own endpoint is a real failure and
+          # the curl above already fails on it. But a 200 carrying `status: failed` for
+          # ONE feed is the NORMAL path — third-party feeds rate-limit, move URLs and go
+          # down, which is exactly what feed_sources.consecutive_failures and its backoff
+          # exist to absorb. Turning that red gives a red badge most days, and a badge
+          # that is usually red is a badge nobody reads.
+          #
+          # So: fail on a non-2xx (curl), a timeout (curl), or a response we cannot parse
+          # (here). Do NOT fail on a partial feed failure. DO fail when EVERY feed in the
+          # run failed, because that is systemic — an expired cron secret, a dead
+          # database, a bad deploy — rather than flaky.
+          python3 - <<'PY'
+          import json, os, sys
+
+          try:
+              with open("response.json", encoding="utf-8") as fh:
+                  payload = json.load(fh)
+          except (OSError, ValueError) as exc:
+              print(f"::error::sync-all returned a body that is not valid JSON: {exc}")
+              sys.exit(1)
+
+          # Tolerate either a top-level list of feed results or a dict wrapping one, since
+          # the response shape is not pinned by a schema. Unknown shape is reported, not
+          # guessed at, and is NOT treated as a failure on its own — the endpoint answered.
+          results = None
+          if isinstance(payload, list):
+              results = payload
+          elif isinstance(payload, dict):
+              for key in ("feeds", "results", "synced"):
+                  if isinstance(payload.get(key), list):
+                      results = payload[key]
+                      break
+
+          if results is None:
+              print("::notice::sync-all responded 2xx but its shape was not recognised; "
+                    "not treating that as a failure. Update this step if the contract changed.")
+              sys.exit(0)
+
+          def failed(entry):
+              if not isinstance(entry, dict):
+                  return False
+              status = str(entry.get("status", "")).lower()
+              return status in {"failed", "error"}
+
+          total = len(results)
+          bad = [e for e in results if failed(e)]
+
+          def name(entry):
+              return entry.get("slug") or entry.get("name") or entry.get("feed") or "?"
+
+          for entry in bad:
+              print(f"::warning::feed reported failure: {name(entry)} — "
+                    f"{str(entry.get('error') or entry.get('message') or '')[:200]}")
+
+          print(f"{total - len(bad)}/{total} feeds healthy")
+
+          if total and len(bad) == total:
+              print("::error::EVERY feed in this run reported failure. That is systemic "
+                    "rather than flaky — check the cron secret, the database and the last "
+                    "deploy before assuming the sources are all down simultaneously.")
+              sys.exit(1)
+          PY
+
       - name: Summarise into the run page
         if: always()
         run: |
