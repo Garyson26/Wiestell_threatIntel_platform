@@ -237,23 +237,23 @@ class TestTheAssumptionsThatDependOnIt:
             "only place it can enforce anything without Redis"
         )
 
+class TestDegradedStatesAreSurfacedButNotPublished:
+    """Both states are reported to an admin, and NEITHER leaks to an anonymous caller.
 
-class TestDegradedStatesAreSurfacedInHealth:
-    """`ALLOW_MULTIPLE_WORKERS` is the same class of problem as a start-command override.
-
-    Both are settable in Render's dashboard, invisible in the repository, and evidenced
-    otherwise only by a boot log line that scrolls away. If someone sets the override
-    merely to get past a refused boot, all four couplings degrade silently — so /health is
-    the one place to check after a deploy rather than reconstructing it from logs.
+    They were briefly on the public `/health` payload. That was a poor trade:
+    `/health` has to stay unauthenticated for Render's health checker, so anything on it is
+    world-readable - and `multiple_workers_allowed` tells an unauthenticated reader that the
+    login rate limit is N times weaker than it appears, which is precisely the fact worth
+    having before starting a credential-stuffing run. Publishing one's own mitigation gap
+    for post-deploy convenience is not worth it. Moved to `/cron-status`, which is already
+    admin-gated and already exists to report operational state.
     """
 
     @staticmethod
-    def _health(monkeypatch, allow=None, geoip_present=False, tmp_path=None):
-        import asyncio
-
+    def _degradations(monkeypatch, allow=None, geoip_present=False, tmp_path=None):
         from app.config import settings
         from app.enrichers import reset_registry
-        from app.main import health_check
+        from app.main import _deployment_degradations
 
         monkeypatch.delenv("ALLOW_MULTIPLE_WORKERS", raising=False)
         if allow is not None:
@@ -265,55 +265,92 @@ class TestDegradedStatesAreSurfacedInHealth:
         else:
             monkeypatch.setattr(settings, "GEOIP_DB_PATH", "/nonexistent/x.mmdb")
         reset_registry()
-        return asyncio.run(health_check())
-
-    @staticmethod
-    def _ids(payload):
-        return {d["id"] for d in payload.get("degradations", [])}
-
-    def test_the_field_always_exists(self, monkeypatch, tmp_path):
-        """An absent key reads as "no problem" to a consumer that does not know better."""
-        payload = self._health(monkeypatch, geoip_present=True, tmp_path=tmp_path)
-        assert "degradations" in payload
-        assert isinstance(payload["degradations"], list)
+        return {d["id"] for d in _deployment_degradations()}
 
     def test_a_correct_deployment_reports_nothing(self, monkeypatch, tmp_path):
-        assert self._ids(
-            self._health(monkeypatch, geoip_present=True, tmp_path=tmp_path)) == set()
+        assert self._degradations(
+            monkeypatch, geoip_present=True, tmp_path=tmp_path) == set()
 
     def test_a_missing_geoip_database_is_reported(self, monkeypatch, tmp_path):
-        assert "geoip_database_missing" in self._ids(
-            self._health(monkeypatch, geoip_present=False, tmp_path=tmp_path))
+        assert "geoip_database_missing" in self._degradations(
+            monkeypatch, geoip_present=False, tmp_path=tmp_path)
 
     def test_the_worker_override_is_reported(self, monkeypatch, tmp_path):
-        assert "multiple_workers_allowed" in self._ids(
-            self._health(monkeypatch, allow="true", geoip_present=True, tmp_path=tmp_path))
+        assert "multiple_workers_allowed" in self._degradations(
+            monkeypatch, allow="true", geoip_present=True, tmp_path=tmp_path)
 
     def test_both_can_be_reported_at_once(self, monkeypatch, tmp_path):
-        assert self._ids(self._health(monkeypatch, allow="1", geoip_present=False,
-                                      tmp_path=tmp_path)) == {
+        assert self._degradations(
+            monkeypatch, allow="1", geoip_present=False, tmp_path=tmp_path) == {
             "geoip_database_missing", "multiple_workers_allowed"}
 
-    def test_status_stays_healthy_for_both(self, monkeypatch, tmp_path):
-        """Deliberate: "degraded" drives orchestrator restarts, and neither is fixed by one.
-
-        Flipping status would train uptime monitoring to ignore the field. These need a
-        human. The database branch is what legitimately sets "degraded".
-        """
-        payload = self._health(monkeypatch, allow="true", geoip_present=False,
-                               tmp_path=tmp_path)
-        assert payload["degradations"], "fixture produced no degradations"
-        assert payload["status"] in {"healthy", "degraded"}
-        if payload.get("database") == "connected":
-            assert payload["status"] == "healthy", (
-                "a non-restartable degradation flipped status to degraded, which will "
-                "make an orchestrator restart the service pointlessly"
-            )
-
     def test_each_entry_says_what_it_costs_and_how_to_fix_it(self, monkeypatch, tmp_path):
-        """The payload is read by a human post-deploy, so an id alone is not enough."""
-        payload = self._health(monkeypatch, allow="true", geoip_present=False,
-                               tmp_path=tmp_path)
-        for entry in payload["degradations"]:
+        """The payload is read post-deploy by a person, so an id alone is not actionable."""
+        from app.main import _deployment_degradations
+
+        self._degradations(monkeypatch, allow="true", geoip_present=False,
+                          tmp_path=tmp_path)
+        entries = _deployment_degradations()
+        assert entries, "fixture produced no degradations"
+        for entry in entries:
             assert entry.get("impact"), f"{entry['id']} does not say what it costs"
             assert entry.get("fix"), f"{entry['id']} does not say how to fix it"
+
+    def test_the_public_health_payload_does_NOT_carry_them(self, monkeypatch, tmp_path):
+        """The disclosure guard. /health is unauthenticated by necessity.
+
+        Asserts on the worst case - both degradations active - so the test cannot pass
+        merely because there was nothing to leak.
+        """
+        import asyncio
+
+        from app.config import settings
+        from app.enrichers import reset_registry
+        from app.main import health_check
+
+        monkeypatch.setenv("ALLOW_MULTIPLE_WORKERS", "true")
+        monkeypatch.setattr(settings, "GEOIP_DB_PATH", "/nonexistent/x.mmdb")
+        reset_registry()
+
+        payload = asyncio.run(health_check())
+        serialised = repr(payload)
+
+        assert "degradations" not in payload, (
+            "the public health payload carries the degradations array. "
+            "multiple_workers_allowed tells an unauthenticated reader the login rate "
+            "limit is weaker than it appears; move it to /cron-status."
+        )
+        for leaked in ("multiple_workers", "ALLOW_MULTIPLE_WORKERS", "geoip_database",
+                       "rate limits are per worker"):
+            assert leaked not in serialised, (
+                f"{leaked!r} appears in the public /health payload: {serialised}"
+            )
+
+    def test_health_still_reports_enough_to_be_a_probe(self):
+        """Minimal is the goal, not empty. Render reads only the status CODE, so the body
+        matters for future uptime monitoring rather than for current behaviour."""
+        import asyncio
+
+        from app.main import health_check
+
+        payload = asyncio.run(health_check())
+        assert payload.get("status") in {"healthy", "degraded"}
+        assert "service" in payload
+
+    def test_cron_status_is_admin_gated(self):
+        """The move is only a fix if the destination is actually guarded."""
+        from app.api.deps import require_admin
+        from app.main import app
+
+        for route in app.routes:
+            if getattr(route, "path", None) == "/api/v1/cron-status":
+                names = [
+                    getattr(d.dependency, "__name__", "")
+                    for d in getattr(route, "dependencies", [])
+                ]
+                assert any("role_checker" in n or "admin" in n for n in names), (
+                    f"/cron-status dependencies are {names}; the degradations array is "
+                    "only protected if this route requires admin"
+                )
+                return
+        raise AssertionError("/api/v1/cron-status is not registered")
