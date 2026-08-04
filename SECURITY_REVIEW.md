@@ -9,6 +9,63 @@ Companion document: [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md).
 
 ---
 
+## ⚠️ Amendments — read before relying on anything below (2026-08-04)
+
+This document described the codebase as it stood on 2026-07-28. Roughly thirty files have
+been added or substantially rewritten since, across Specs 1–6, and **none of that work is
+reflected in the findings below.** A stale security document is worse than none, so every
+claim known to be wrong is listed here with its correction. The 23 original findings remain
+fixed; what follows corrects the *surrounding* claims and adds what is missing.
+
+### Corrected claims
+
+| Where | Claim as written | Correction |
+|---|---|---|
+| **H-01**, rate-limit layers | Presents three layers (nginx zone, per-IP limiter, per-OTP counter) as defence in depth | **`nginx/nginx.conf` is not in the production request path** — it belongs to the `docker-compose` stack; Render terminates TLS at its own edge. So that layer does not exist in production. And the per-IP limiter is defeated by the `X-Forwarded-For` bypass **independently of Redis** (see residual #5). Of the three, only the per-OTP counter actually holds. |
+| **Residual #5** | "Configuring `REDIS_URL` closes it" | Narrowed twice. Render's Hobby tier is single-instance **and** the start command now declares `--workers 1`, so the per-process concern is largely inert; the live cause is the XFF bypass, which Redis does not touch. See the addendum in that entry. |
+| **C-02 / SMTP** | STARTTLS hardening described as shipped | **Spec 2 Phase 3 removes this code path.** Treat the hardening description as historical; re-review whatever replaces it. |
+| **PhishTank / VirusTotal** findings | Written against live feed connectors | **Both connectors are deleted.** VirusTotal is also gone as a reputation provider (Spec 3). Their `feed_sources` rows are *soft-disabled* by revision `e5f6a7b80002`, not removed, because `ioc_sources` still links them to indicators — so the findings are unreachable but the rows remain. |
+| **Next.js SSRF** | Listed as an exposure | **Assessed as inapplicable** to this deployment. |
+| Route counts (§ verified, and the checklist table) | 62 routes = 53 guarded + 9 public; 66 including Starlette internals | **Re-measured 2026-08-04: `len(app.routes)` is 66, and all 66 are `Route` instances.** The 62/66 split as written no longer matches the live table — the audit still passes, but the numbers in this document are stale and should be re-derived from the test rather than quoted from here. |
+
+### Missing entirely — added since this review
+
+1. **`/login` has no per-account attempt counter.** Now recorded as **item 8** below. No amount of correct `X-Forwarded-For` handling substitutes for it: an attacker rotating source IPs defeats a per-IP bucket even with a perfectly measured hop count.
+2. **`TRUSTED_PROXY_HOPS` is unset (0).** The trusted-hop helper ships **inert** — the header is ignored and the socket peer is used — so the per-IP rate limits do not currently bind at all on Render, where every caller presents as the edge address. This is a deliberate fail-closed default pending measurement at Phase 6, but it means the limits are not a control today.
+3. **Two silent-degradation states**, reported by `/api/v1/cron-status` (admin-gated) via `_deployment_degradations()`: `geoip_database_missing` (the MaxMind file is absent, so every IP indicator is enriched with no country or ASN data) and `multiple_workers_allowed` (the single-process assumption has been overridden, so rate limits, the DB pool, enrichment concurrency and any cache are all per worker). Both are settable in Render's dashboard and invisible in the repository.
+
+### Independent verification of the credential purge — IT HAS NOT HAPPENED
+
+The rotation notice below states that the committed secrets "remain in git history". **That is still
+true**, and was verified independently on 2026-08-04 rather than assumed. A `git filter-repo
+--replace-text` rewrite was believed to have been performed; **no such rewrite has taken effect on
+this clone.**
+
+`gitleaks` (official image, full history, no ignore file, 176 commits with patches across all
+261 reachable commits — `origin/Staging` and `origin/IOC-chages` add zero unique commits) plus
+direct `git log -S` confirmation:
+
+| Secret | Status | Retrievable at |
+|---|---|---|
+| MySQL password `C9b>;xrFy` (C-01), url-encoded form | **PRESENT** | `1b918be:backend/app/config.py` — full DSN with user, host and database |
+| SMTP password (C-02) | **PRESENT** | `9107d1c:.env.example` and `9107d1c:backend/app/config.py` |
+| **`OTX_API_KEY`** — 64-hex, never documented in this review | **PRESENT** | `f66e6ef:backend/.env.example` |
+| **`VT_API_KEY`** — 64-hex, never documented in this review | **PRESENT** | `f66e6ef:backend/.env.example` |
+
+The two API keys are the important part: **they were not on the hand-assembled replacement list**,
+so no purge targeting that list would ever have removed them. Any future purge must be driven by a
+scanner over full history, not by a list assembled from this document — this document did not know
+about them.
+
+The MySQL and SMTP values sit in 248 and 255 commit *trees* respectively, so they are reachable
+from almost any commit, not just the two that introduced them.
+
+**Operational consequence:** this clone's history still contains every secret. If the remote *was*
+rewritten and this clone was not re-cloned, **pushing from here would re-introduce them.** That is a
+second, independent reason for the standing "never push" rule.
+
+---
+
 ## Executive summary
 
 The platform was **effectively unauthenticated and unauthorized**. Authentication existed on paper — password + email OTP + JWT — but it was enforced only by React route guards in the browser. Every one of the 53 non-public API endpoints could be called with `curl` and no credentials, including `POST /api/v1/users`, which minted an **admin** account for anyone who asked. In parallel, live production database credentials and an SMTP password were committed in plaintext to a repository with a public GitHub origin.
@@ -542,3 +599,147 @@ Accepted or out-of-scope items, in rough priority order:
 - `render.yaml` (DB credentials to dashboard, generated cron secret, docs off)
 - `nginx/nginx.conf` (rate-limit zones, headers, body cap, docs 404, `server_tokens off`)
 - `.env.example` (placeholders only, documented requirements)
+
+---
+
+## Findings from the scoped re-review (2026-08-04)
+
+Four findings against the ~30 files added or rewritten since 2026-07-28. Ordered by
+**reachability** — how likely an attacker can actually reach the code — not by scanner
+severity. **None is fixed**: several of these files were deliberately shaped by Specs 1–5
+and a plausible-looking fix could undo that, so each is reported with a recommendation and
+left alone pending review.
+
+Every claim below was verified empirically in this environment, not inferred.
+
+### R-01 — A non-ASCII `X-Cron-Secret` turns a 401 into an unauthenticated 500
+
+**`backend/app/api/deps.py:149`** — reachability: **immediate, unauthenticated, today**
+
+`hmac.compare_digest` refuses two `str` operands when either holds a non-ASCII character,
+and Starlette decodes header values as **latin-1**, so any byte in `0x80`–`0xFF` produces
+one. Verified in this environment:
+
+    >>> hmac.compare_digest('\xff', 'secretsecretsecret')
+    TypeError: comparing strings with non-ASCII characters is not supported
+
+`CRON_SECRET` is `generateValue: true` on Render, so `expected` is non-empty and the guard
+reaches `compare_digest` with attacker-controlled `provided`. One request with a `0xFF` byte
+in that header yields a 500 where 401 is correct, on both `POST /feeds/sync-all` and
+`POST /enrichment/backfill/start`.
+
+No authentication is bypassed — the failure is closed. What is wrong is that the one auth
+dependency an unauthenticated caller is *invited* to exercise has a reachable crash path.
+Encode both sides to bytes and treat a decode failure as a mismatch.
+
+### R-02 — `_client_ip` reads only the *first* `X-Forwarded-For` header line
+
+**`backend/app/api/deps.py:193`** — reachability: **conditional on `TRUSTED_PROXY_HOPS > 0`**
+
+Starlette's `.get()` returns the first matching header line; `.getlist()` returns all.
+Verified against the installed `starlette==0.41.3` with two raw `x-forwarded-for` tuples:
+`.get()` returned only the first, `.getlist()` returned both.
+
+HTTP permits repeated field lines, and proxies differ: nginx and Envoy merge into one
+comma-joined value, whereas HAProxy-style `option forwardfor` appends a **separate line**. If
+the edge appends rather than merges, an attacker sending `X-Forwarded-For: 9.9.9.9` makes
+`entries == ["9.9.9.9"]`, so `entries[-1]` is fully attacker-chosen — reinstating exactly the
+`split(",")[0]` defect the helper was written to remove.
+
+`tests/test_client_ip.py` cannot catch this: its request stub models headers as a `dict`, so
+the repeated-field case is unrepresentable. One-line fix —
+`",".join(request.headers.getlist("X-Forwarded-For"))` — makes the parse independent of merge
+behaviour, plus a test built from two raw header tuples.
+
+### R-03 — The hop-count guidance states the risk backwards
+
+**`render.yaml:65-66`, `backend/app/config.py`, and this document's residual-risk #5** —
+reachability: **conditional, but it misdirects the operator toward the exploitable setting**
+
+All three say: *"too low reads an attacker-supplied entry; too high buckets every caller under
+the edge address."* With `entries[-hops]` that is inverted. Indices count from the right, and
+the right-hand entries are the ones infrastructure appended:
+
+- **too high** indexes further **left**, into the client-supplied portion — attacker-chosen;
+- **too low** indexes right, onto a trusted proxy's own address — over-restrictive (a shared
+  bucket) but not spoofable.
+
+So an operator following the current comment errs *high*, toward the spoofable direction.
+
+There is also a live path even with the count measured correctly. If Cloudflare fronts the app
+and the operator measures through it (`hops=2`), Render origins stay publicly reachable, so an
+attacker connecting **direct to origin** presents a one-hop chain: Render appends their
+address, giving `["1.2.3.4", "<attacker>"]`, `len == 2 >= hops`, and `entries[-2] == "1.2.3.4"`.
+Measure on the *shortest reachable* chain rather than the intended one, and block direct origin
+access if a CDN is in front.
+
+### R-04 — `_assert_single_worker` misses `WEB_CONCURRENCY`
+
+**`backend/app/main.py:52-66`** — reachability: **needs an operator misstep, but the guard is
+silent when it happens**
+
+The guard parses `--workers` from `sys.argv` and treats absence as one worker. uvicorn also
+takes the count from the environment — verified in the installed `uvicorn==0.34.0`:
+
+    uvicorn/config.py:  if workers is None and "WEB_CONCURRENCY" in os.environ:
+    uvicorn/config.py:      self.workers = int(os.environ["WEB_CONCURRENCY"])
+
+An operator who overrides the start command (dropping `--workers 1`) and sets
+`WEB_CONCURRENCY=4` gets four workers, a silent pass from the guard, **and** an empty
+`degradations` array — `_deployment_degradations()` only checks `ALLOW_MULTIPLE_WORKERS`. All
+four single-process assumptions then degrade unannounced, including `AUTH_RATE_LIMIT_MAX × 4`
+on `/login` and 20 pool connections against the shared Hostinger allowance.
+
+This is precisely the "guard whose failure mode is silence" class the CLAUDE.md standing rule
+names, and it slipped through in the very change that added the rule's newest application.
+Resolve the count the way uvicorn does — argv flag if present, else
+`int(os.getenv("WEB_CONCURRENCY", 1))` — in both the assertion and the degradation report, and
+add `WEB_CONCURRENCY` cases to `tests/test_process_model.py`.
+
+### Clean verdicts
+
+Recorded because a clean result on a named area is a useful outcome in itself.
+
+- **`scripts/rescore_corpus.py` — clean for SQL injection.** Every value is bound:
+  `--start-after` to `:last_id`, chunk size to `:limit`, both `IN` lists via
+  `bindparam(..., expanding=True)`, the update via `executemany` dicts. The only string
+  interpolation is `_SELECT_IOCS.format(override_filter=...)`, and that value comes solely from
+  two literals chosen by the `information_schema` probe. No table or column name derives from
+  input, and keyset pagination means no `LIMIT`/`OFFSET` string building.
+- **`.github/workflows/feed-sync.yml` — clean for secret leakage and script injection.**
+  `CRON_SECRET` reaches only a `-H` argument through a step-scoped `env:`, never `${{ }}`
+  interpolation, so it is not baked into the run block. No `set -x`, no curl `-v`. The
+  `workflow_dispatch` `reason` input is declared and never referenced in any `run:`. The
+  classifier heredoc delimiter is quoted. *Residual trust note, not a finding:* the target host
+  comes from the mutable repository variable `vars.API_BASE_URL`, so anyone able to edit
+  repository variables can redirect the secret to a host they control without ever reading it.
+- **`render.yaml` — clean for literal secrets.** Every sensitive key is `sync: false` or
+  `generateValue: true`. *Two configuration observations:* `REDIS_URL` uses
+  `fromService: name: wiestell-redis` while the service is named `sentinel-redis`, and the
+  frontend references `sentinel-backend` where the backend is `wiestell-backend`. If the
+  blueprint does not hard-fail on those, `REDIS_URL` is simply unset — which is the condition
+  residual-risk #5 assumes is closed by provisioning Redis.
+- **`/cron-status`, `health_check`, `health_root` — clean.** The admin guard cannot be bypassed
+  via the router-level default: the route is registered directly on `app` with its own
+  `dependencies=[Depends(require_admin)]`, inheriting nothing from `api/__init__.py`, and no
+  route in `api_router` shadows the path. `_deployment_degradations()` returns fixed strings
+  only — no paths, no environment values. Nothing in the payload is uniquely useful to an
+  authenticated non-admin: feed status and redacted `last_sync_error` are already available to
+  any authenticated caller through `GET /api/v1/feeds`.
+- **The `assessed` contract, `normalize_enrichment_for_display` and `app/enrichers/*` — clean
+  against the escalation classes.** No unsafe deserialization anywhere in `app/`. `assessed` is
+  **not** attacker-injectable: each enricher builds it as a literal list from its own control
+  flow, and no enricher merges third-party response data into the payload top level.
+  `_assessed_signals` filters declared names against `RISK_SIGNALS[source]`, so unknown keys are
+  dropped. `normalize_enrichment_for_display` is type-guarded throughout, copies rather than
+  mutates, and returns the input untouched on any unusable shape. No HTML sink exists
+  downstream — the frontend's only two `dangerouslySetInnerHTML` uses render static marketing
+  JSON-LD. The worst a hostile enrichment API achieves is a wrong score, which is the
+  documented boundary.
+
+  **Two invariants worth writing down, since nothing enforces them:** (1) no enricher may merge
+  response keys into the payload top level, or `assessed` / `found` / `signature` become
+  attacker-controlled; (2) enrichment payloads are passed verbatim into the Groq prompt
+  (`api/ai.py:82-94`), so a hostile source can prompt-inject the analyst-facing AI output. No
+  tool access, so the impact is misleading text rather than escalation — but it is the one place
+  third-party strings cross into an instruction channel.
