@@ -1,0 +1,169 @@
+# Deploy checklist
+
+**Status:** Phase 6 draft, 2026-07-31. Written before the first deploy of this change set,
+which is the point — several steps exist because getting the *order* wrong is unrecoverable
+or expensive, and that is not discoverable while deploying.
+
+Ordering constraints, stated once so the steps below make sense:
+
+| Because | This must precede this |
+|---|---|
+| the rescore script skips rows holding an override | first rescore → any `manual_score_override` |
+| `Base.metadata.create_all()` runs in the seed script and fails on the current schema | migration repair → seeding |
+| feed slugs must resolve to connectors before a sync can do anything | `seed_feeds.py` → first sync |
+| scoring changes reach stored rows only via the rescore | deploy code → rescore |
+| a rescore reads *stored* enrichment payloads | see §6 — this one is a **decision**, not an order |
+
+---
+
+## 0. Before touching anything
+
+- [ ] **Rotate the credentials still in git history.** `9107d1c` carries a literal
+      `EMAIL_PASSWORD`, and SECURITY_REVIEW.md's rotation notice lists a MySQL password and
+      SMTP password. Removing them from the working tree did not make them secret. Rotate,
+      then decide whether to purge history.
+- [ ] **Run the owner queries in one sitting** — four blocking, two not:
+      §5 of [the migration-chain design](superpowers/specs/2026-07-30-migration-chain-repair-design.md)
+      (`SELECT VERSION()`, `SHOW CREATE TABLE iocs`, `SHOW CREATE TABLE feed_sources`,
+      `SELECT * FROM alembic_version`), plus §5.4 (four corpus counts) and §5.5 (the GeoIP
+      `error_city` check). Record the output **verbatim in that document** before anything
+      changes it.
+- [ ] **Confirm `alembic upgrade head` cannot run yet.** It fails at error 1170 on
+      `iocs.value`. Nothing below that depends on migrations can proceed until §2 is done.
+
+## 1. Decisions to make, not discover
+
+Each of these has a recommendation with reasoning recorded; none should be settled by
+whatever happens first.
+
+- [ ] **MaxMind credentials** — provision `MAXMIND_ACCOUNT_ID` / `MAXMIND_LICENSE_KEY`, or
+      accept IP enrichment with no geo data permanently. If accepting, drop
+      `high_risk_country` from `RISK_SIGNALS` rather than leaving a signal nothing can
+      assess. (§8 item 14)
+- [ ] **Rescore now or after Phase 4** — recommendation: now. (§5.4.2 of the migration
+      design; see §6 below)
+- [ ] **`TRUSTED_PROXY_HOPS`** — leave at 0 until measured in §4. A wrong non-zero value is
+      worse than 0.
+- [ ] **Bucket timezone for trends** — UTC (current, self-consistent) or IST. Decide before
+      anyone adds date labels to the chart. (CLAUDE.md, Phase 5 caution)
+- [ ] **`k` for the OTX rescale** — measured from the pulse distribution if ≥200 rows carry
+      `pulse_count >= 1`, otherwise the pre-committed `k = 14`. Record which. (§8 item 15)
+
+## 2. Schema
+
+- [ ] Apply the migration-chain repair per §4 of its design. **Reconcile `alembic_version`
+      with reality first** — stamping matters more than upgrading here, because replaying
+      revisions that were effectively applied by hand fails partway and leaves a mixed state.
+- [ ] Run the two diagnostic queries (§2.1 prefix-collision count, §3.2 exact-duplicate
+      count) and record the numbers. If duplicates exist, the dedupe **merges** rather than
+      deletes — deleting a loser lowers the survivor's `source_count` and silently changes
+      its score.
+- [ ] **Delete the test-only prefix-length scaffold** in `tests/conftest_mysql.py` once the
+      real schema is fixed, or the `-m mysql` tier keeps testing a schema production does
+      not have.
+- [ ] Add `iocs.scoring_model_version` (what lets the rescore target stale rows) and
+      `iocs.manual_score_override` (inert until it exists).
+- [ ] Confirm `alembic upgrade head` now succeeds from an **empty** database. Disaster
+      recovery is currently untested and impossible; this is the step that changes that.
+
+## 3. Seed
+
+- [ ] `python scripts/seed_feeds.py` — slugs must match `FEED_CONNECTORS` exactly or the
+      feed cannot sync. Note this script calls `create_all()`, so it cannot run before §2.
+- [ ] `python scripts/seed_mitre.py` — the ATT&CK catalogue. `/attack/*` returns empty
+      without it.
+- [ ] Verify `virustotal` and `phishtank` are `is_enabled = 0`. Revision `e5f6a7b80002`
+      soft-disables them; their connectors are **deleted**, so if the revision has not
+      reached production they sit permanently overdue logging `scheduler_no_connector`.
+
+## 4. Deploy the service
+
+- [ ] Set every `sync: false` variable in the Render dashboard. `tests/test_deploy_config.py`
+      asserts none of them carry literal values in `render.yaml`.
+- [ ] Deploy, and confirm the build log shows the GeoLite2 download **succeeding** — it is
+      `|| echo "...continuing"`, so a failure is not a build failure.
+- [ ] **Verify the actual running start command, not the one in `render.yaml`.** The
+      dashboard can override it, and that override lives in no file any test can read. Four
+      subsystems assume one process; `main.py::_assert_single_worker` refuses to boot at
+      `--workers > 1`, so a refused start is the symptom to recognise. (CLAUDE.md invariant)
+- [ ] **Measure the hop count**: log the raw `X-Forwarded-For` from the deployed instance,
+      count the entries, then set `TRUSTED_PROXY_HOPS`. Until it is set, the per-IP rate
+      limits do not bind — the header is ignored and every caller buckets under the socket
+      peer, which on Render is the edge.
+- [ ] `GET /api/v1/health`, and `GET /api/v1/cron-status` with an admin token.
+
+## 5. Wire the cron
+
+- [ ] Set the `API_BASE_URL` repository **variable** and `CRON_SECRET` repository **secret**
+      for `.github/workflows/feed-sync.yml`. `CRON_SECRET` must match Render's exactly —
+      `require_admin_or_cron` compares with `hmac.compare_digest` and an empty server-side
+      secret never matches.
+- [ ] Trigger `workflow_dispatch` once and read the response body. It carries per-feed
+      status; a 200 with every feed failing is the shape to look for.
+- [ ] Confirm the cron interval still matches `_GOVERNING_SYNC_INTERVAL_SECONDS`.
+      `tests/test_deploy_config.py` asserts this, so it should already hold — the manual
+      check is for the case where the schedule was changed in the dashboard rather than
+      the file.
+
+## 6. Scoring: the two-part deployment
+
+**This is the part most easily got wrong, because the code deploy looks like the whole job.**
+
+Deploying the code changes *how a score is computed*. It changes **nothing already stored**:
+ingestion skips rows whose evidence has not changed, and the enrichment cron selects only
+never-enriched IOCs. `SCORING_MODEL_VERSION` is **9**; stored values were written under
+version 1 or whichever intermediate version was live when a row was last touched.
+
+So until the rescore runs, **the dashboard ranks rows scored under at least four different
+models against each other** — "top threats", the critical tile, the ≥76 filter and every
+sort by `threat_score`. That is not stale data; it is an unsound triage surface, and it
+cannot be demonstrated to a UAT audience as-is. (§8 item 16)
+
+- [ ] Deploy the code (§4 above).
+- [ ] `python scripts/rescore_corpus.py --dry-run` — gives the score distribution **and** a
+      timing sample. **Multiply that sample by at least 1.33× before trusting it**: the dry
+      run skips the UPDATE, so it is 3 statements per chunk against the write pass's 4, and
+      writes cost more than reads on a shared host. Treat it as a lower bound.
+- [ ] Review the distribution before writing. A large shift in the wrong direction is
+      easier to investigate now than to unpick afterwards.
+- [ ] Run the write pass. Budget from the §5.4.1 table — at 200,000 rows this is **1–2¼
+      hours** from a laptop against Hostinger. Resumable via `--start-after` and idempotent,
+      so an interruption recovers rather than restarts.
+- [ ] **Only now** populate any `manual_score_override` values. Set earlier and those rows
+      are skipped by the rescore permanently.
+- [ ] **Schedule the second rescore** as part of Phase 4, in the same change set as the
+      `WHERE Enrichment.id IS NULL` fix. A rescore recomputes from *stored* enrichment
+      payloads, and legacy rows carry no `assessed`, so they route through
+      `_legacy_assessed` — deliberately conservative, assessing nothing where it cannot
+      tell. Those scores change again once the rows refresh. This is a known planned cost,
+      not a defect. (§5.4.2)
+
+## 7. After the first sync
+
+- [ ] Check `feed_sources.last_sync_status` per feed. `BaseFeed.run()` lets exceptions
+      propagate so a real failure records `failed` rather than a misleading `no_data` —
+      trust the distinction.
+- [ ] Check `last_ingest_gap`. A non-zero value means records may have aged out of a rolling
+      window between syncs, which is the signal the cron interval is too slow for that feed.
+- [ ] Re-run §5.4's corpus counts. The tagged-IOC count is what makes the `/attack/*` sizing
+      in §8 item 17 real rather than provisional — if the tagged population is already past
+      ~100,000, the `ioc_techniques` join table (§6.1) stops being an improvement and
+      becomes the fix.
+- [ ] Spot-check the `enrichments` table for `geoip` rows carrying `error_city`. Existing
+      ones do **not** clear themselves even after MaxMind is provisioned — the freeze trap
+      means they are never re-enriched. Clearing them is a separate production write needing
+      its own sign-off.
+
+## 8. Known-open, so nobody reports them as new
+
+- `/login` has no per-account attempt counter; correct `X-Forwarded-For` handling cannot
+  substitute for one. (SECURITY_REVIEW item 8 — needs a migration, so blocked behind §2)
+- OTX reputation is mis-scaled: one pulse reads 10, below the 30.0 no-evidence neutral, and
+  an AbuseIPDB confidence of 5 reads 5. Positive verdicts can still score safer than
+  silence. (§8 item 15)
+- Provider corroboration is measured nowhere in the composite. Deliberate and explicit
+  rather than fixed. (§8 item 15)
+- Three background mechanisms exist; only the HTTP cron runs. Do not assume a change to the
+  asyncio scheduler or Celery affects production.
+- Feed cadence drifts by one cron period when `sync_frequency` is a multiple of the cron
+  interval. (§8 item 12 — Phase 4)

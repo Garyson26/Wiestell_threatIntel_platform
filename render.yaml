@@ -47,6 +47,26 @@ services:
         value: 3600
       - key: GEOIP_DB_PATH
         value: /opt/render/project/src/backend/data/GeoLite2-City.mmdb
+      # MaxMind credentials for the build-time GeoLite2 download. Free, but an account
+      # is required. Without these the download step fails, the `|| echo` swallows it,
+      # the .mmdb is absent, and GeoIP is gated off — so the ENTIRE IP population is
+      # enriched with no country or ASN data, silently. Declared here (rather than only
+      # in the dashboard) so the dependency is visible at the point the build step reads
+      # it. See PROJECT_SUMMARY.md §8 item 14; owner decision still open on whether to
+      # provision these or accept IP enrichment without geo permanently.
+      - key: MAXMIND_ACCOUNT_ID
+        sync: false
+      - key: MAXMIND_LICENSE_KEY
+        sync: false
+      # Trusted reverse-proxy hop count for rate-limit bucketing. 0 = trust nothing and
+      # use the socket peer, which is the safe default and what ships. Render terminates
+      # TLS at its own edge, so this needs a non-zero value here — but set it from a
+      # MEASURED count, not from documentation: log the raw X-Forwarded-For from a
+      # deployed instance and count the entries. A wrong non-zero value is worse than 0
+      # (too low reads an attacker-supplied entry; too high buckets every caller under
+      # the edge address). See SECURITY_REVIEW.md residual risk #5.
+      - key: TRUSTED_PROXY_HOPS
+        sync: false
       # Database — set manually in the Render dashboard. Connection strings
       # contain credentials and must never be committed to the repository.
       - key: DATABASE_URL
