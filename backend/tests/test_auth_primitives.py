@@ -23,9 +23,14 @@ class TestAccessTokens:
         assert payload["jti"] and payload["iat"] and payload["exp"]
 
     def test_token_signed_with_another_key_is_rejected(self):
+        # The attacker key is >=32 bytes only to keep the suite warning-free: PyJWT 2.13
+        # emits InsecureKeyLengthWarning below that, and "attacker-key" (12 bytes) tripped
+        # it. Key length is incidental to this test - what matters is that the key differs
+        # from SECRET_KEY. Worth noting the warning agrees with app/config.py, which
+        # already refuses a SECRET_KEY under 32 characters in production.
         forged = jwt.encode(
             {"sub": "abc-123", "role": "admin", "type": "access", "exp": 9999999999},
-            "attacker-key",
+            "attacker-key-padded-to-thirty-two-bytes-min",
             algorithm="HS256",
         )
         with pytest.raises(HTTPException) as exc:
