@@ -48,6 +48,45 @@ whatever happens first.
       anyone adds date labels to the chart. (CLAUDE.md, Phase 5 caution)
 - [ ] **`k` for the OTX rescale** — measured from the pulse distribution if ≥200 rows carry
       `pulse_count >= 1`, otherwise the pre-committed `k = 14`. Record which. (§8 item 15)
+- [ ] **abuse.ch API key** — free signup at `auth.abuse.ch`. The MalwareBazaar *feed*
+      connector is keyless, so ingestion needs nothing; but the MalwareBazaar and YARAify
+      **enrichers** are both credential-gated, and without the key a hash IOC receives
+      `reputation` and nothing else — from OTX alone, which has no corroboration channel
+      and so can only ever return `malicious` or `silent`, never a scored verdict in
+      between. **Hash enrichment is effectively dead in UAT without this**, and the §6a
+      work that made a confirmed sample reach `high` cannot fire at all. Sets
+      `MALWAREBAZAAR_API_KEY`; `YARAIFY_API_KEY` falls back to the same value.
+      (§8 item 11)
+- [ ] **Email provider** — `EMAIL_USER` / `EMAIL_PASSWORD` / `SMTP_HOST`. Without them
+      `send_*_email` returns early, so **OTP delivery fails and nobody can log in**. Note
+      the OTP is no longer returned in the response body when delivery fails (that was
+      C-04), so a missing provider is a hard login block rather than a degraded one.
+- [ ] **Render region** — `render.yaml` says `oregon`. There is **no India region**, which
+      is the reason the query-budget work counts statements rather than timing them: every
+      round trip to Hostinger carries 50–300 ms. Pick the region closest to the database,
+      not to the users, since the app is far chattier with MySQL than with the browser.
+- [ ] **Free versus Starter instance** — free is capped at `cpus: 0.1` / 512 MB **and spins
+      down when idle**, so the first cron firing after a quiet period pays a cold start
+      inside the sync's own timeout. The `/attack/*` measurement in §8 item 17 (~2 s at
+      50,000 tagged IOCs) is a *0.1 CPU* figure and improves roughly linearly with CPU.
+- [ ] **The four cron firing times.** `.github/workflows/feed-sync.yml` currently has
+      `17 */6 * * *` as a placeholder. **They must be EVENLY SPACED**, because
+      `tests/test_deploy_config.py` reduces the cron expression to a single interval and
+      compares it against `_GOVERNING_SYNC_INTERVAL_SECONDS`; a non-uniform schedule does
+      not reduce, and the test raises rather than guessing. So:
+
+      | Expression | Result |
+      |---|---|
+      | `17 */6 * * *` | fine — the `*/N` form is what the test reads |
+      | `17 0,6,12,18 * * *` | fine — evenly spaced, but see below |
+      | `0 9,17,21,23 * * *` | **fails the test** — uneven spacing has no single interval |
+
+      Stated here so the times are chosen knowing the constraint rather than discovered
+      from a red build. If uneven spacing is ever genuinely wanted (aligning each sync to a
+      different feed's publish time, say), the test must change to compare the **worst-case
+      gap** against the constant — which is the correct comparison anyway, just harder to
+      write. Note the enumerated form `0,6,12,18` is evenly spaced but is not the `*/N`
+      shape the parser currently reduces; prefer `*/6` unless there is a reason not to.
 
 ## 2. Schema
 
@@ -90,7 +129,20 @@ whatever happens first.
       count the entries, then set `TRUSTED_PROXY_HOPS`. Until it is set, the per-IP rate
       limits do not bind — the header is ignored and every caller buckets under the socket
       peer, which on Render is the edge.
-- [ ] `GET /api/v1/health`, and `GET /api/v1/cron-status` with an admin token.
+- [ ] **`GET /api/v1/health` and read the `degradations` array.** It is empty on a correct
+      deployment. It reports the two states where the app runs but is not doing what the
+      design assumes — both settable in Render's dashboard, invisible in the repository, and
+      otherwise evidenced only by a boot log line that scrolls away:
+
+      | `id` | Means |
+      |---|---|
+      | `geoip_database_missing` | the `.mmdb` is absent, so **every** IP indicator is enriched with no country or ASN data |
+      | `multiple_workers_allowed` | `ALLOW_MULTIPLE_WORKERS` is set, so rate limits, the DB pool, enrichment concurrency and any cache are all per worker |
+
+      Note `status` stays `"healthy"` for both. That is deliberate: `"degraded"` drives
+      orchestrator restarts and neither of these is fixed by restarting, so flipping it
+      would train uptime monitoring to ignore the field. These need a human, not a reboot.
+- [ ] `GET /api/v1/cron-status` with an admin token.
 
 ## 5. Wire the cron
 

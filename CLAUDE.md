@@ -62,13 +62,27 @@ container is not running, so a developer without Docker still gets a green defau
 run.
 
 `tests/test_query_budget.py` counts statements per request via a
-`before_cursor_execute` listener and asserts per-endpoint ceilings. Three are
-`xfail(strict=True)` because the N+1s they describe are not fixed yet — measured
-today: `attack/matrix` 41, `attack/heatmap` 41, `dashboard/trends?days=30` 60,
-`dashboard/stats` 3. Fixing an endpoint turns its XFAIL into an XPASS, which fails
-the run and prompts you to delete the marker. Counting statements rather than timing
-is deliberate: local latency to a container is ~0.1 ms against 50-300 ms from Render
-to Hostinger, so an N+1 is invisible locally and fatal in production.
+`before_cursor_execute` listener and asserts per-endpoint ceilings. Counting statements
+rather than timing is deliberate: local latency to a container is ~0.1 ms against
+50-300 ms from Render to Hostinger, so an N+1 is invisible locally and fatal in
+production.
+
+Three ceilings were `xfail(strict=True)` while the N+1s were live, and **all three were
+retired on 2026-07-31** when Phase 5 landed the rewrites — the markers reported XPASS,
+failed the run, and that was the prompt to delete them. Measured before → after:
+`attack/matrix` 41 → 2, `attack/heatmap` 41 → 2, `dashboard/trends?days=30` 60 → 3,
+`dashboard/stats` 3 → 3. Every ceiling is now a live assertion, and the counts are flat in
+corpus size and in `days` rather than proportional. The harness self-test was inverted to
+match (it asserted the count *tracked* the technique total as proof the N+1 was real), with
+a separate test constructing a deliberate loop so the counter's sensitivity is still
+demonstrated rather than assumed.
+
+Two further deploy-facing suites: `tests/test_process_model.py` (the worker count and the
+four subsystems that assume one process — see the invariant below) and
+`tests/test_deploy_config.py` (the feed-sync cron interval against
+`_GOVERNING_SYNC_INTERVAL_SECONDS`, MaxMind credentials against the build step that needs
+them, and the workflow's failure semantics, extracted from the workflow and executed so the
+test exercises the shipped classifier rather than a copy).
 
 **`docker compose` gotchas.** Host ports are configurable (`BACKEND_PORT`,
 `DB_PORT`, `FRONTEND_PORT`, `NGINX_PORT`, `REDIS_PORT`) so the stack can coexist
@@ -220,6 +234,7 @@ Other invariants to preserve:
 - Anything that persists or returns an exception string must pass through `utils/sanitize.redact_secrets()` — driver errors embed the connection URI. `redact_headers()` for header dumps. `feed_sources.last_sync_error` is served to clients, so it is redacted on write *and* in the `FeedResponse` serializer.
 - JWTs use PyJWT with an explicit `algorithms=[...]` allowlist and `type: "access"`; `python-jose` was removed and should not come back.
 - `feed.api_key_env` is restricted to `config.ALLOWED_FEED_API_KEY_ENVS`, enforced in the schema *and* at read time in `feed_scheduler` — the value is forwarded to third-party APIs, so an unrestricted name is a secret-exfiltration primitive.
+- **Commit locally per section; never `git push`.** The repository has live credentials in its history and has not been purged or rotated, so pushing is the owner's action and gated on both. Before every commit, scan the staged diff for secrets and binaries and confirm `.gitignore` covers `.env`, `*.mmdb`, `*.pdf`. **Amend for wrong content; layer a follow-up commit for process disclosures** — amending a message that asserted something unverified would erase the record of having done so, which is the part worth keeping.
 - **Four subsystems assume one process per instance, so the uvicorn worker count is part of the security model, not a throughput dial.** `--workers 1` is declared in `render.yaml` and `backend/start.sh`, refused at startup by `main.py::_assert_single_worker` (overridable with `ALLOW_MULTIPLE_WORKERS=true`), and pinned by `tests/test_process_model.py`. At N workers: the in-memory rate limiter becomes N independent budgets, so the effective limit is N × `AUTH_RATE_LIMIT_MAX` — this is what makes the residual-risk #5 narrowing valid; the database pool is per process, so 2 + 3 becomes 5N connections against a **shared** MySQL account allowance; `enrichment_engine`'s module-level semaphore becomes 5N third-party calls in flight; and any in-process cache becomes N inconsistent caches. Each degrades silently. The check is at runtime as well as in a test because Render's dashboard can override the start command without touching a file. Raising the count means revisiting all four together — Redis for the limiter and any cache, a smaller `pool_size`, and a shared bound for enrichment.
 - **A guard whose failure mode is silence needs its *extraction* verified, not just its assertion.** Several checks here do not compare two values directly — they first gather something (AST nodes, log records, registry contents, declared signal names) and then assert over what they gathered. If the gathering step silently returns nothing, the assertion passes vacuously and the guard is decorative. This has bitten four times: the `SCORING_MODEL_FINGERPRINT` hash omitted `WEIGHT_PROFILES` because it is an `ast.AnnAssign` and the walker only handled `ast.Assign`; the `assessed` name-match extractor missed four dict-construction styles, then over-matched a ternary condition; and the GeoIP missing-database test asserted over `caplog.records`, which is always empty because structlog renders straight to stdout. So: **mutate the thing being guarded and confirm the test fails.** Delete the log line, rename the signal, neuter the constant — if the suite stays green, the guard never worked. Assert non-emptiness of whatever was extracted, and prefer `capsys` over `caplog` for structlog output.
 
