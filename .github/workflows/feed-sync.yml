@@ -1,0 +1,106 @@
+name: Feed sync (external cron)
+
+# Drives the ONE live background path: POST /api/v1/feeds/sync-all.
+#
+# Three background mechanisms exist in this codebase and only this one runs — the asyncio
+# scheduler loop is implemented but never started, and the Celery beat schedule is
+# entirely commented out. See CLAUDE.md. So this workflow is not a convenience: it is
+# what makes ingestion happen at all.
+#
+# THE SCHEDULE HERE AND MalwareBazaarFeed._GOVERNING_SYNC_INTERVAL_SECONDS MUST AGREE.
+# That constant (6h = four firings a day) is what the rolling-window continuity check
+# uses to decide whether records could have fallen through a gap between syncs. If this
+# cron fires less often than the constant claims, the window check silently under-reports
+# gaps and indicators are lost without a warning. The relationship is asserted by
+# tests/test_deploy_config.py, which parses the cron expression out of this file — so the
+# loop is closed in CI rather than by anyone remembering.
+#
+# STATUS: placeholder values, deliberately. The interval below matches the constant, but
+# the exact minute offsets are unchosen — they should be staggered away from the top of
+# the hour once the feed sources' own publish times are known, so a sync does not race a
+# feed's own regeneration. Changing the interval means changing the constant in the same
+# commit; the test enforces that.
+
+on:
+  schedule:
+    # Every 6 hours = 4 firings/day, matching _GOVERNING_SYNC_INTERVAL_SECONDS.
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Why this manual run (recorded in the job log)"
+        required: false
+        default: "manual trigger"
+
+concurrency:
+  # A sync holds row locks in MySQL and the feed ingestion path is tuned around lock
+  # contention on a shared host. Two overlapping runs would contend with each other, so a
+  # slow run must delay the next rather than double up. cancel-in-progress is deliberately
+  # FALSE: killing a sync mid-chunk leaves the watermark behind the data it already wrote.
+  group: feed-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    # Generous, because a cold Render instance has to wake before it answers, and a full
+    # sync across 11 feeds is minutes rather than seconds. Not unbounded: a hung sync
+    # should fail visibly rather than burn the runner budget.
+    timeout-minutes: 25
+    steps:
+      - name: Trigger feed sync
+        env:
+          API_BASE: ${{ vars.API_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${API_BASE:-}" ]; then
+            echo "::error::API_BASE_URL repository variable is not set"
+            exit 1
+          fi
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::CRON_SECRET repository secret is not set"
+            exit 1
+          fi
+
+          # X-Cron-Secret is accepted by require_admin_or_cron as an alternative to an
+          # admin token, compared with hmac.compare_digest and only when the server has a
+          # non-empty secret configured. It must match Render's CRON_SECRET exactly.
+          #
+          # --fail-with-body so a non-2xx exits non-zero AND prints the body: the response
+          # carries per-feed status, and a silent failure here means ingestion stops with
+          # nobody noticing. Response is redacted server-side, so it is safe to log.
+          # Body written to a file rather than a variable so a large response is not
+          # truncated by shell handling.
+          http_status=$(
+            curl --silent --show-error --fail-with-body \
+                 --connect-timeout 30 --max-time 1200 \
+                 --retry 3 --retry-delay 30 --retry-connrefused \
+                 --output response.json --write-out '%{http_code}' \
+                 -X POST "${API_BASE%/}/api/v1/feeds/sync-all" \
+                 -H "X-Cron-Secret: ${CRON_SECRET}" \
+                 -H "Content-Type: application/json"
+          )
+          echo "HTTP ${http_status}"
+          echo '--- response ---'
+          cat response.json || true
+          echo
+
+      - name: Summarise into the run page
+        if: always()
+        run: |
+          {
+            echo "### Feed sync"
+            echo
+            echo "- Trigger: \`${{ github.event_name }}\`"
+            echo "- Result: \`${{ job.status }}\`"
+            echo
+            echo '```json'
+            head -c 4000 response.json 2>/dev/null || echo '(no response captured)'
+            echo
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
