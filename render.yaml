@@ -19,7 +19,7 @@ services:
       alembic upgrade head || echo "⚠️  Database migration failed - continuing..."
     # --workers 1 is DELIBERATE AND LOAD-BEARING, not a throughput oversight. uvicorn
     # already defaults to a single worker, so this is declared rather than relied upon:
-    # four separate conclusions elsewhere assume one process per instance, and raising
+    # five separate conclusions elsewhere assume one process per instance, and raising
     # this silently invalidates all of them. See tests/test_process_model.py.
     #
     #   1. the in-memory rate limiter becomes N independent limiters, so the effective
@@ -28,11 +28,27 @@ services:
     #      5N connections against a SHARED Hostinger account allowance;
     #   3. enrichment_engine's module-level semaphore bounds concurrency per process, so
     #      the real ceiling becomes 5N third-party calls in flight;
-    #   4. any in-process cache would be N caches serving inconsistent reads.
+    #   4. any in-process cache would be N caches serving inconsistent reads;
+    #   5. REDIS_URL is deliberately unset (see below), which is only correct because the
+    #      limiter's fallback is process-local — at N workers a shared store is REQUIRED.
     #
-    # If throughput ever requires more workers, all four have to be revisited together —
-    # Redis for (1) and (4), a smaller pool_size for (2), and a shared bound for (3).
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --log-level info --workers 1
+    # If throughput ever requires more workers, all five have to be revisited together —
+    # provision Redis for (1), (4) and (5), a smaller pool_size for (2), and a shared bound
+    # for (3).
+    # --no-proxy-headers is DELIBERATE (finding R-05). uvicorn's proxy_headers defaults
+    # to TRUE, and its ProxyHeadersMiddleware rewrites request.client.host from
+    # X-Forwarded-For whenever the peer is in FORWARDED_ALLOW_IPS. That is a SECOND
+    # algorithm on the same header as deps.py::_client_ip, and the two can disagree.
+    #
+    # This app's is the one to keep: it fails closed at TRUSTED_PROXY_HOPS=0, it is under
+    # test, and it is configured in a file. uvicorn's is on by default, driven by an
+    # environment variable a dashboard makes trivially settable, and degrades to taking the
+    # LEFT-MOST (attacker-supplied) entry under FORWARDED_ALLOW_IPS=*.
+    #
+    # Note the flag: `--proxy-headers=false` is INVALID and uvicorn refuses to start
+    # ("Option '--proxy-headers' does not take a value"). The disable form is
+    # --no-proxy-headers. Pinned by tests/test_process_model.py.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --log-level info --workers 1 --no-proxy-headers
     rootDir: backend
     envVars:
       - key: PYTHON_VERSION
@@ -86,12 +102,13 @@ services:
         sync: false
       - key: DATABASE_ASYNC_URL
         sync: false
-      # Redis - Connected to Redis service below
-      - key: REDIS_URL
-        fromService:
-          name: wiestell-redis
-          type: redis
-          property: connectionString
+      # REDIS_URL is deliberately NOT set here (2026-08-04). utils/rate_limiter falls back
+      # to process-local state when it is absent, and with ONE worker per instance that
+      # fallback is correct — see the single-process note in CLAUDE.md, of which this is now
+      # the fifth dependent. Residual risk #5's live cause is the X-Forwarded-For bypass,
+      # which Redis does not touch, so provisioning it would buy nothing today.
+      # The variable stays documented as optional in .env.example; only the service and the
+      # wiring are removed. Raising the worker count is what makes Redis necessary again.
       # Security
       - key: SECRET_KEY
         generateValue: true  # Render auto-generates secure random value
@@ -171,14 +188,18 @@ services:
     autoDeploy: true
 
   # ============================================================================
-  # REDIS - Caching & Background Jobs
+  # REDIS - REMOVED 2026-08-04
   # ============================================================================
-  - type: redis
-    name: sentinel-redis
-    plan: starter  # Free tier available
-    region: oregon
-    ipAllowList: []  # Allow all (within Render network)
-    maxmemoryPolicy: allkeys-lru  # Evict least recently used keys when full
+  # The service was named `sentinel-redis` while the backend referenced
+  # `wiestell-redis`, so the wiring never resolved — which is how it was noticed. Rather
+  # than fix the name, the prior question was asked: is Redis needed at all? It is not.
+  # rate_limiter degrades cleanly to process-local state, and that is CORRECT at one
+  # worker per instance. Provisioning it would not have addressed residual risk #5,
+  # whose live cause is the X-Forwarded-For bypass.
+  #
+  # Re-add BOTH this service and the REDIS_URL env entry if the worker count is ever
+  # raised, or if more than one instance is ever run — at that point the in-memory
+  # limiter becomes N independent budgets and a shared store is required.
 
 # ============================================================================
 # CRON JOBS - Scheduled Tasks
