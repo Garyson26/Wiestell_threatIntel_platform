@@ -354,3 +354,105 @@ class TestDegradedStatesAreSurfacedButNotPublished:
                 )
                 return
         raise AssertionError("/api/v1/cron-status is not registered")
+
+
+class TestWorkerCountResolvesLikeUvicornDoes:
+    """Finding R-04: the guard read `sys.argv` only, and uvicorn also reads the environment.
+
+    Verified against the installed `uvicorn==0.34.0` (`uvicorn/config.py:329-330`):
+
+        if workers is None and "WEB_CONCURRENCY" in os.environ:
+            self.workers = int(os.environ["WEB_CONCURRENCY"])
+
+    So dropping `--workers 1` from the start command and setting WEB_CONCURRENCY=4 in
+    Render's dashboard started four workers with a SILENT pass from the guard and an EMPTY
+    degradations array - both blind to the state they exist to catch.
+
+    The full set was enumerated rather than guessed: every os.environ read in the installed
+    uvicorn is WEB_CONCURRENCY, FORWARDED_ALLOW_IPS (proxy trust, not counting) and an
+    env-file path. There is no `-w` short form. gunicorn is not installed and would add
+    GUNICORN_CMD_ARGS - which is why test_gunicorn_is_not_used exists above.
+    """
+
+    @staticmethod
+    def _count(monkeypatch, argv, env=None):
+        import sys
+
+        from app.main import _resolved_worker_count
+
+        monkeypatch.setattr(sys, "argv", argv)
+        monkeypatch.delenv("WEB_CONCURRENCY", raising=False)
+        for k, v in (env or {}).items():
+            monkeypatch.setenv(k, v)
+        return _resolved_worker_count()
+
+    def test_uvicorn_really_does_read_web_concurrency(self):
+        """Pins the upstream behaviour this guard is compensating for.
+
+        If a future uvicorn drops it, this fails and the extra handling can go.
+        """
+        import pathlib
+
+        import uvicorn
+
+        source = (pathlib.Path(uvicorn.__file__).parent / "config.py").read_text(
+            encoding="utf-8")
+        assert "WEB_CONCURRENCY" in source, (
+            "uvicorn no longer reads WEB_CONCURRENCY; re-check what it reads now rather "
+            "than assuming the environment is no longer a worker-count input"
+        )
+
+    def test_web_concurrency_is_honoured_when_no_flag_is_given(self, monkeypatch):
+        assert self._count(monkeypatch, ["uvicorn", "app.main:app"],
+                           {"WEB_CONCURRENCY": "4"}) == 4
+
+    def test_an_explicit_flag_wins_over_the_environment(self, monkeypatch):
+        """uvicorn's own precedence: the flag is checked first."""
+        assert self._count(monkeypatch, ["uvicorn", "app.main:app", "--workers", "1"],
+                           {"WEB_CONCURRENCY": "8"}) == 1
+
+    def test_neither_source_means_one(self, monkeypatch):
+        assert self._count(monkeypatch, ["uvicorn", "app.main:app"]) == 1
+
+    def test_a_malformed_environment_value_does_not_raise(self, monkeypatch):
+        assert self._count(monkeypatch, ["uvicorn", "app.main:app"],
+                           {"WEB_CONCURRENCY": "lots"}) == 1
+
+    def test_the_startup_refusal_fires_on_web_concurrency(self, monkeypatch):
+        """The whole point: this combination used to pass silently."""
+        import sys
+
+        from app.main import _assert_single_worker
+
+        monkeypatch.setattr(sys, "argv", ["uvicorn", "app.main:app"])
+        monkeypatch.setenv("WEB_CONCURRENCY", "4")
+        monkeypatch.delenv("ALLOW_MULTIPLE_WORKERS", raising=False)
+        with pytest.raises(RuntimeError, match="uvicorn workers requested"):
+            _assert_single_worker()
+
+    def test_the_degradation_report_sees_web_concurrency_too(self, monkeypatch, tmp_path):
+        """A multi-worker start with no override must be VISIBLE, not merely refused.
+
+        The refusal can be bypassed (a supervisor that restarts past it, an import order
+        that misses it), so /cron-status must independently report the state.
+        """
+        import sys
+
+        from app.config import settings
+        from app.enrichers import reset_registry
+        from app.main import _deployment_degradations
+
+        db = tmp_path / "GeoLite2-City.mmdb"
+        db.write_bytes(b"stub")
+        monkeypatch.setattr(settings, "GEOIP_DB_PATH", str(db))
+        reset_registry()
+
+        monkeypatch.setattr(sys, "argv", ["uvicorn", "app.main:app"])
+        monkeypatch.setenv("WEB_CONCURRENCY", "4")
+        monkeypatch.delenv("ALLOW_MULTIPLE_WORKERS", raising=False)
+
+        ids = {d["id"] for d in _deployment_degradations()}
+        assert "multiple_workers_undeclared" in ids, (
+            "four workers are running with no override and /cron-status reports nothing - "
+            f"the report is blind to WEB_CONCURRENCY. Got: {ids}"
+        )

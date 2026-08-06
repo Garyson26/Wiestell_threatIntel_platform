@@ -62,9 +62,22 @@ services:
       # use the socket peer, which is the safe default and what ships. Render terminates
       # TLS at its own edge, so this needs a non-zero value here — but set it from a
       # MEASURED count, not from documentation: log the raw X-Forwarded-For from a
-      # deployed instance and count the entries. A wrong non-zero value is worse than 0
-      # (too low reads an attacker-supplied entry; too high buckets every caller under
-      # the edge address). See SECURITY_REVIEW.md residual risk #5.
+      # deployed instance and count the entries.
+      #
+      # WHICH WAY IS DANGEROUS (corrected 2026-08-04, finding R-03 - this comment previously
+      # said the opposite). Indices count from the RIGHT, and the right-hand entries are the
+      # ones infrastructure appended:
+      #   TOO HIGH -> indexes further LEFT, into the client-supplied portion -> ATTACKER-CHOSEN
+      #   too low  -> indexes right, onto a trusted proxy's own address -> a shared bucket,
+      #               over-restrictive but NOT spoofable
+      # So err LOW if you must err. The earlier wording pointed operators at the exploitable
+      # direction.
+      #
+      # AND COUNTING IS NOT SUFFICIENT. If the Render origin (*.onrender.com) is reachable
+      # off-edge, a request straight to the origin bypasses any CDN while still satisfying a
+      # hop count measured THROUGH that CDN - so the attacker's own entry lands at the index
+      # being trusted. Establish whether the origin is directly reachable BEFORE setting this;
+      # if it is, 0 may be the only honest value. See SECURITY_REVIEW.md residual risk #5.
       - key: TRUSTED_PROXY_HOPS
         sync: false
       # Database — set manually in the Render dashboard. Connection strings

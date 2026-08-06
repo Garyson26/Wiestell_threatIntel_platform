@@ -117,9 +117,20 @@ class Settings(BaseSettings):
     # Production is Render, which terminates TLS at its own edge (nginx/nginx.conf is
     # docker-compose only and is NOT in the production path), so this needs a non-zero
     # value there. **Set it from a measured count, not from documentation** — log the raw
-    # header from a deployed instance and count the entries. Render may front with
-    # Cloudflare, but `CF-Connecting-IP` is undocumented on Render's side, so do not build
-    # on it. See SECURITY_REVIEW.md residual risk #5.
+    # header from a deployed instance and count the entries.
+    #
+    # ERR LOW, NOT HIGH (corrected 2026-08-04, finding R-03). `entries[-hops]` counts from
+    # the right, so a value that is too HIGH indexes left into the client-supplied portion
+    # and yields an attacker-chosen address; too low indexes right onto a proxy's own
+    # address, which merely shares a bucket. An earlier version of this comment said the
+    # reverse and pointed operators at the exploitable direction.
+    #
+    # Counting hops is necessary but NOT sufficient: if the origin is reachable off-edge, a
+    # direct-to-origin request satisfies a hop count measured through a CDN while placing the
+    # attacker's own value at the trusted index. Render may front with Cloudflare, but
+    # `CF-Connecting-IP` is undocumented on Render's side, so do not build on it.
+    # See SECURITY_REVIEW.md residual risk #5.
+
     TRUSTED_PROXY_HOPS: int = 0
 
     # GeoIP

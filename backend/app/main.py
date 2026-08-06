@@ -18,6 +18,63 @@ from app.utils.sanitize import redact_headers, redact_secrets
 logger = structlog.get_logger()
 
 
+# Truthy spellings accepted for the override, in one place so the startup refusal and the
+# /cron-status degradation report cannot drift apart.
+_TRUTHY = {"1", "true", "yes"}
+
+
+def _multiple_workers_allowed() -> bool:
+    import os
+
+    return (os.getenv("ALLOW_MULTIPLE_WORKERS") or "").strip().lower() in _TRUTHY
+
+
+def _resolved_worker_count() -> int:
+    """How many workers the server will ACTUALLY start, resolved the way uvicorn does.
+
+    **The argv flag is not the whole story.** Verified against the installed
+    ``uvicorn==0.34.0`` (``uvicorn/config.py:329-330``)::
+
+        if workers is None and "WEB_CONCURRENCY" in os.environ:
+            self.workers = int(os.environ["WEB_CONCURRENCY"])
+
+    so dropping ``--workers 1`` from the start command and setting ``WEB_CONCURRENCY=4`` in
+    Render's dashboard starts four workers. The first version of this guard read ``sys.argv``
+    only, so that combination passed silently *and* reported no degradation — the exact
+    "guard whose failure mode is silence" class the CLAUDE.md rule names, in the change that
+    added the rule's newest application (finding R-04, 2026-08-04).
+
+    **The full set was enumerated rather than guessed.** Every ``os.environ`` read in the
+    installed uvicorn is: ``WEB_CONCURRENCY`` (worker count), ``FORWARDED_ALLOW_IPS`` (proxy
+    trust, unrelated to counting) and an env-file path. There is no ``-w`` short form.
+    gunicorn is **not installed** and is not a start path here — it would add
+    ``GUNICORN_CMD_ARGS`` as a second injection point, which is why
+    ``tests/test_process_model.py`` fails if it appears in any start command.
+
+    Precedence matches uvicorn's: an explicit flag wins, the environment is the fallback.
+    """
+    import os
+    import sys
+
+    requested = None
+    argv = sys.argv
+    for i, arg in enumerate(argv):
+        if arg == "--workers" and i + 1 < len(argv):
+            requested = argv[i + 1]
+        elif arg.startswith("--workers="):
+            requested = arg.split("=", 1)[1]
+
+    # Only consult the environment when no flag was given — uvicorn's own precedence.
+    if requested is None:
+        requested = os.getenv("WEB_CONCURRENCY")
+
+    try:
+        return int(requested) if requested is not None else 1
+    except (TypeError, ValueError):
+        # Not our business to validate the server's own argument parsing.
+        return 1
+
+
 def _assert_single_worker() -> None:
     """Refuse to start under multiple uvicorn workers unless explicitly overridden.
 
@@ -49,28 +106,11 @@ def _assert_single_worker() -> None:
     uvicorn on Windows (spawn, the harder case: each worker re-executes and still sees the
     parent's argv), so this fires in every worker rather than only the supervisor.
     """
-    import os
-    import sys
-
-    requested = None
-    argv = sys.argv
-    for i, arg in enumerate(argv):
-        if arg == "--workers" and i + 1 < len(argv):
-            requested = argv[i + 1]
-        elif arg.startswith("--workers="):
-            requested = arg.split("=", 1)[1]
-
-    try:
-        count = int(requested) if requested is not None else 1
-    except ValueError:
-        return  # Not our business to validate uvicorn's own argument parsing.
-
+    count = _resolved_worker_count()
     if count <= 1:
         return
 
-    override = (os.getenv("ALLOW_MULTIPLE_WORKERS") or "").strip().lower() in {
-        "1", "true", "yes",
-    }
+    override = _multiple_workers_allowed()
     detail = (
         f"{count} uvicorn workers requested. Four subsystems assume one process per "
         "instance: the in-memory rate limiter (N independent budgets), the database pool "
@@ -266,7 +306,21 @@ def _deployment_degradations() -> list:
     # assumptions. If it was set merely to get past a refused boot, the rate limiter,
     # connection pool, enrichment bound and any cache are all degraded and nothing else
     # says so. See main.py::_assert_single_worker.
-    if (os.getenv("ALLOW_MULTIPLE_WORKERS") or "").strip().lower() in {"1", "true", "yes"}:
+    workers = _resolved_worker_count()
+    if workers > 1 and not _multiple_workers_allowed():
+        # Startup should have refused this, so reaching it means the refusal was bypassed
+        # or the count changed after import. Report it as its own state rather than
+        # folding it into the override case.
+        degradations.append({
+            "id": "multiple_workers_undeclared",
+            "impact": (
+                f"{workers} workers are running without ALLOW_MULTIPLE_WORKERS set, so "
+                "the startup refusal did not fire and every per-process assumption is "
+                "silently multiplied"
+            ),
+            "fix": "run one worker, or set ALLOW_MULTIPLE_WORKERS=true deliberately",
+        })
+    if _multiple_workers_allowed():
         degradations.append({
             "id": "multiple_workers_allowed",
             "impact": (
