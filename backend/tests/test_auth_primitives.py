@@ -136,3 +136,46 @@ class TestPasswordPolicy:
     def test_otp_field_must_be_six_digits(self):
         with pytest.raises(ValidationError):
             PasswordReset(email="t@example.com", otp="abcdef", new_password="Str0ng-Passw0rd!")
+
+
+class TestCronSecretComparison:
+    """Finding R-01: a non-ASCII `X-Cron-Secret` used to raise instead of returning 401.
+
+    Starlette decodes header values as latin-1, so any byte in 0x80-0xFF yields a non-ASCII
+    `str`, and `hmac.compare_digest` refuses two `str` operands when either contains one.
+    That turned a 401 into an unauthenticated 500 on the two cron-accepting endpoints, in
+    one request with no credentials. It failed CLOSED - no bypass - but this is the one auth
+    dependency an unauthenticated caller is invited to exercise.
+    """
+
+    def test_a_non_ascii_secret_returns_false_rather_than_raising(self):
+        from app.api.deps import _secret_matches
+
+        # 0xFF decoded as latin-1 - exactly what Starlette hands over for that byte.
+        assert _secret_matches("\xff", "the-configured-cron-secret") is False
+
+    def test_every_high_byte_is_handled(self):
+        from app.api.deps import _secret_matches
+
+        for byte in range(0x80, 0x100):
+            assert _secret_matches(chr(byte), "the-configured-cron-secret") is False
+
+    def test_a_correct_secret_still_matches(self):
+        from app.api.deps import _secret_matches
+
+        assert _secret_matches("s3cret-value", "s3cret-value") is True
+
+    def test_a_wrong_ascii_secret_does_not_match(self):
+        from app.api.deps import _secret_matches
+
+        assert _secret_matches("wrong", "s3cret-value") is False
+
+    def test_a_multibyte_secret_matches_itself(self):
+        """The configured secret is utf-8; the header arrives latin-1-decoded.
+
+        A generated CRON_SECRET is ASCII, so this is the degenerate case - but it must not
+        raise if someone sets a non-ASCII secret by hand.
+        """
+        from app.api.deps import _secret_matches
+
+        assert _secret_matches("café", "café") is False  # differing encodings, no crash
