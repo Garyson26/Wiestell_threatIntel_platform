@@ -456,3 +456,133 @@ class TestWorkerCountResolvesLikeUvicornDoes:
             "four workers are running with no override and /cron-status reports nothing - "
             f"the report is blind to WEB_CONCURRENCY. Got: {ids}"
         )
+
+
+class TestUvicornProxyHandlingIsDisabled:
+    """Finding R-05: two algorithms must not run on one header.
+
+    uvicorn's `proxy_headers` defaults to TRUE, and its ProxyHeadersMiddleware rewrites
+    `scope["client"]` from X-Forwarded-For whenever the peer is in FORWARDED_ALLOW_IPS
+    (default 127.0.0.1). That is a second, independent interpretation of the same header
+    that `deps.py::_client_ip` parses - and they can disagree.
+
+    This app's is the one kept: it fails closed at TRUSTED_PROXY_HOPS=0, it is under test,
+    and it lives in a file under review. uvicorn's is on by default, driven by an
+    environment variable a dashboard makes trivially settable, and degrades to taking the
+    LEFT-MOST (attacker-supplied) entry under FORWARDED_ALLOW_IPS=*.
+
+    Keeping only one also simplifies the Phase 6 hop measurement: one code path to reason
+    about rather than two interacting ones.
+    """
+
+    @pytest.mark.parametrize("path", [START_SH, RENDER_YAML],
+                             ids=["start.sh", "render.yaml"])
+    def test_proxy_headers_are_disabled_in_every_start_path(self, path):
+        commands = _uvicorn_lines(path.read_text(encoding="utf-8"))
+        assert commands, f"no uvicorn invocation found in {path.name}"
+        for command in commands:
+            assert "--no-proxy-headers" in command, (
+                f"{path.name} does not disable uvicorn's proxy handling: {command!r}\n"
+                "Without it, uvicorn rewrites request.client.host from X-Forwarded-For "
+                "and runs a second algorithm alongside deps.py::_client_ip - which also "
+                "means the TRUSTED_PROXY_HOPS=0 fallback is no longer the socket peer."
+            )
+
+    @pytest.mark.parametrize("path", [START_SH, RENDER_YAML],
+                             ids=["start.sh", "render.yaml"])
+    def test_the_enabling_form_never_appears(self, path):
+        """`--proxy-headers` on its own re-enables it, even beside the disable form."""
+        for command in _uvicorn_lines(path.read_text(encoding="utf-8")):
+            stripped = command.replace("--no-proxy-headers", "")
+            assert "--proxy-headers" not in stripped, (
+                f"{path.name} re-enables uvicorn's proxy handling: {command!r}"
+            )
+
+    def test_the_invalid_value_form_is_not_used(self):
+        """`--proxy-headers=false` looks right and is REJECTED by uvicorn.
+
+        Verified: `Option '--proxy-headers' does not take a value.` It is a boolean flag
+        pair, so the disable form is `--no-proxy-headers`. Using the value form would stop
+        the service booting at all - a deploy-time failure, not a silent one, but worth
+        pinning because it is the natural thing to write.
+        """
+        for path in (START_SH, RENDER_YAML):
+            text = path.read_text(encoding="utf-8")
+            for raw in text.splitlines():
+                code = raw.split("#", 1)[0]
+                assert "--proxy-headers=" not in code, (
+                    f"{path.name} uses `--proxy-headers=<value>`, which uvicorn rejects; "
+                    "use --no-proxy-headers"
+                )
+
+    def test_forwarded_allow_ips_is_not_set(self):
+        """Setting it is meaningless with the middleware off, and a trap if it returns.
+
+        FORWARDED_ALLOW_IPS only has an effect when proxy_headers is enabled. Its presence
+        in a start path or blueprint would mean someone re-enabled the middleware, or
+        intends to - and `*` is the value that makes uvicorn take the LEFT-MOST, fully
+        attacker-controlled X-Forwarded-For entry.
+        """
+        candidates = [
+            ROOT / "render.yaml",
+            ROOT / "backend" / "start.sh",
+            ROOT / "backend" / "Dockerfile",
+            ROOT / "docker-compose.yml",
+            ROOT / "vercel.json",
+        ]
+        offenders = []
+        for path in candidates:
+            if not path.exists():
+                continue
+            for num, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                code = raw.split("#", 1)[0]
+                if "FORWARDED_ALLOW_IPS" in code or "--forwarded-allow-ips" in code:
+                    offenders.append(f"{path.name}:{num}: {code.strip()}")
+        assert not offenders, (
+            "FORWARDED_ALLOW_IPS is configured: " + repr(offenders)
+            + ". It only matters when uvicorn's proxy middleware is on, which this "
+            "deployment disables. If it was added to make proxy headers work, that is the "
+            "second algorithm returning - fix TRUSTED_PROXY_HOPS instead. Never set it "
+            "to `*`: uvicorn then trusts the left-most entry, which the client chooses."
+        )
+
+
+class TestRedisIsDeliberatelyUnprovisioned:
+    """The fifth thing that depends on the single-process model.
+
+    Deleting the Redis service was correct only because one worker makes the limiter's
+    process-local fallback correct. Anyone raising the worker count needs to see Redis in
+    the list of things that changes - so it is asserted here beside the other four rather
+    than left as prose in a blueprint comment.
+    """
+
+    def test_the_blueprint_provisions_no_redis_service(self):
+        text = RENDER_YAML.read_text(encoding="utf-8")
+        for raw in text.splitlines():
+            code = raw.split("#", 1)[0]
+            assert "type: redis" not in code, (
+                "render.yaml provisions Redis again. That is not wrong in itself - but it "
+                "is only NEEDED once the worker count or instance count rises above one, "
+                "and if either has changed, the other four single-process assumptions "
+                "need revisiting too. See this module's docstring."
+            )
+
+    def test_redis_stays_documented_as_an_escape_hatch(self):
+        """Removing the service must not remove the knowledge of when it is needed."""
+        env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
+        assert "REDIS_URL" in env_example, (
+            "REDIS_URL is no longer documented in .env.example. The service was removed "
+            "because it buys nothing at one worker, but the variable must stay "
+            "discoverable for when the worker count rises."
+        )
+
+    def test_the_limiter_still_falls_back_without_redis(self):
+        """The property that makes the removal safe, asserted rather than assumed."""
+        from app.utils.rate_limiter import rate_limiter
+
+        key = "test-redis-absent-fallback"
+        assert rate_limiter.check_rate_limit(key, 1, 60) is True
+        assert rate_limiter.check_rate_limit(key, 1, 60) is False, (
+            "the limiter does not enforce its budget without Redis, so removing the "
+            "service removed the limit rather than just the coordination"
+        )

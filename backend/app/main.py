@@ -85,7 +85,7 @@ def _assert_single_worker() -> None:
     debugging with `--workers 4` and carrying the command forward. None of those touch a
     file the test can read.
 
-    Four subsystems assume one process per instance, and each breaks quietly rather than
+    Five subsystems assume one process per instance, and each breaks quietly rather than
     loudly at N workers:
 
       1. `utils/rate_limiter` falls back to per-process state without ``REDIS_URL``, so N
@@ -95,7 +95,9 @@ def _assert_single_worker() -> None:
          5N connections against a **shared** MySQL account allowance;
       3. `enrichment_engine`'s semaphore is module-level, so the real in-flight ceiling
          becomes 5N third-party calls;
-      4. any in-process cache would become N caches serving inconsistent reads.
+      4. any in-process cache would become N caches serving inconsistent reads;
+      5. ``REDIS_URL`` is deliberately unset, so the limiter's process-local fallback is
+         load-bearing — at N workers a shared store becomes required rather than optional.
 
     Failing closed is deliberate: every one of those degrades silently, and (2) can exhaust
     an allowance shared with other clients — a failure that lands outside this application.
