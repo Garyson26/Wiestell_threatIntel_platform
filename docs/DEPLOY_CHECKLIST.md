@@ -43,7 +43,14 @@ whatever happens first.
 - [ ] **Rescore now or after Phase 4** — recommendation: now. (§5.4.2 of the migration
       design; see §6 below)
 - [ ] **`TRUSTED_PROXY_HOPS`** — leave at 0 until measured in §4. A wrong non-zero value is
-      worse than 0.
+      worse than 0 (and note the direction: **too high** is the spoofable one — see R-03).
+      **But 0 is not free on Render.** The socket peer is Render's edge, so every caller
+      buckets under one address and every per-IP budget becomes a GLOBAL budget: 10 login
+      attempts per 5 minutes for the whole world, one user able to exhaust the AI assistant
+      for everyone. That is an availability problem arriving on day one of UAT, not a
+      misconfiguration — so the §4 measurement is **higher priority than it looks**, and the
+      per-account counter (SECURITY_REVIEW item 8) is what would let the IP budget be
+      loosened safely. See R-06.
 - [ ] **Bucket timezone for trends** — UTC (current, self-consistent) or IST. Decide before
       anyone adds date labels to the chart. (CLAUDE.md, Phase 5 caution)
 - [ ] **`k` for the OTX rescale** — measured from the pulse distribution if ≥200 rows carry
@@ -132,10 +139,16 @@ whatever happens first.
       dashboard can override it, and that override lives in no file any test can read. Four
       subsystems assume one process; `main.py::_assert_single_worker` refuses to boot at
       `--workers > 1`, so a refused start is the symptom to recognise. (CLAUDE.md invariant)
-- [ ] **Measure the hop count**: log the raw `X-Forwarded-For` from the deployed instance,
-      count the entries, then set `TRUSTED_PROXY_HOPS`. Until it is set, the per-IP rate
-      limits do not bind — the header is ignored and every caller buckets under the socket
-      peer, which on Render is the edge.
+- [ ] **Measure the hop count — do this EARLY, not last.** Log the raw `X-Forwarded-For`
+      from the deployed instance and count the entries, then set `TRUSTED_PROXY_HOPS`. This
+      closes a bypass *and* fixes an availability problem: until it is set, every caller
+      buckets under Render's edge address, so the per-IP limits are global limits and one
+      noisy client locks out login and the AI endpoints for everyone (R-06).
+      **Also establish whether the origin is reachable off-edge** (R-03). If `*.onrender.com`
+      answers directly, a request straight to the origin satisfies a count measured through
+      a CDN while supplying its own entry — and 0 may be the only honest value, which makes
+      the per-account counter the sole credential control rather than a complement.
+      Err **low** if you must err: too high indexes into the client-supplied portion.
 - [ ] `GET /api/v1/health` — expect 200. Deliberately **minimal**: it must stay
       unauthenticated for Render's health checker, so anything on it is world-readable.
       (Render reads only the status *code*, not the body.)
