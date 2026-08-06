@@ -36,6 +36,15 @@ redis_data/
 # been committed, and this keeps it that way.
 *.pdf
 
+# next-sitemap output. Regenerated at every `next build` via the postbuild hook, and
+# next-sitemap.config.js IS committed, so Vercel produces both at deploy time. Tracking them
+# only dirtied the tree after every local build with a lastmod timestamp diff carrying no
+# information — and worse, a stale committed sitemap would silently override the config's
+# authenticated-route exclusions with whatever the routes were when it was last generated.
+frontend/public/sitemap.xml
+frontend/public/sitemap-*.xml
+frontend/public/robots.txt
+
 # Logs
 *.log
 celerybeat-schedule

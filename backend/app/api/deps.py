@@ -134,6 +134,33 @@ require_admin = require_roles(ROLE_ADMIN)
 require_analyst = require_roles(ROLE_ADMIN, ROLE_ANALYST)
 
 
+def _secret_matches(provided: str, expected: str) -> bool:
+    """Constant-time compare of a header value against a configured secret.
+
+    **Compares BYTES, not str.** ``hmac.compare_digest`` refuses two ``str`` operands when
+    either contains a non-ASCII character, and Starlette decodes header values as
+    **latin-1** — so any byte in 0x80-0xFF in ``X-Cron-Secret`` produced a non-ASCII ``str``
+    and raised ``TypeError`` out of the dependency. That turned a 401 into an
+    unauthenticated 500 on ``POST /feeds/sync-all`` and ``POST /enrichment/backfill/start``,
+    reachable in one request with no credentials (finding R-01, 2026-08-04).
+
+    It failed *closed* — no authentication was bypassed — but this is the one auth
+    dependency an unauthenticated caller is invited to exercise, so it must return a clean
+    401 for every input rather than crashing on some of them.
+
+    Encoding back through latin-1 is exact and lossless for anything Starlette produced from
+    a header, so a header of arbitrary bytes round-trips to those same bytes and is compared
+    without ever raising. The encode is still guarded: a mismatch must never become an
+    exception, whatever the input.
+    """
+    try:
+        return hmac.compare_digest(
+            provided.encode("latin-1"), expected.encode("utf-8")
+        )
+    except (UnicodeError, ValueError, AttributeError):
+        return False
+
+
 async def require_admin_or_cron(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -146,7 +173,7 @@ async def require_admin_or_cron(
     """
     provided = request.headers.get("X-Cron-Secret", "")
     expected = settings.CRON_SECRET
-    if expected and provided and hmac.compare_digest(provided, expected):
+    if expected and provided and _secret_matches(provided, expected):
         return None
 
     user = await get_current_user(request, db)
@@ -190,7 +217,14 @@ def _client_ip(request: Request) -> str:
     if hops <= 0:
         return peer
 
-    forwarded = request.headers.get("X-Forwarded-For", "")
+    # getlist, NOT get. `.get()` returns only the FIRST matching header line, and HTTP
+    # permits the field on several lines — nginx and Envoy merge into one comma-joined
+    # value, but HAProxy-style `option forwardfor` appends a separate line. Reading only
+    # the first line therefore means reading only what the CLIENT sent, reinstating the
+    # `split(",")[0]` defect this helper exists to remove (finding R-02, 2026-08-04).
+    # Joining first makes the parse independent of the edge's merge behaviour, which is a
+    # property of infrastructure this code should not have to assume.
+    forwarded = ",".join(request.headers.getlist("X-Forwarded-For"))
     if not forwarded:
         return peer
 
