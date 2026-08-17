@@ -24,10 +24,25 @@ WHERE TO RUN IT
 From a developer machine, against the Hostinger DSN. **Not on Render**: free
 instances have no shell and no one-off jobs, and spin-down would kill a long run.
 
+bash / zsh::
+
     cd backend
     DATABASE_URL="mysql+pymysql://user:pass@host/db" \
     SECRET_KEY="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')" \
     python ../scripts/rescore_corpus.py --dry-run
+
+PowerShell — **the owner runs Windows, where `VAR=value cmd` is a PARSE ERROR**, not a
+different-but-working form. This is an hour-plus job against a shared host, so a syntax
+failure discovered mid-runbook is far worse than one discovered now::
+
+    cd backend
+    $env:DATABASE_URL = "mysql+pymysql://user:pass@host/db"
+    $env:SECRET_KEY = python -c "import secrets; print(secrets.token_urlsafe(48))"
+    python ..\scripts\rescore_corpus.py --dry-run
+
+PowerShell has no inline env-var prefix, so the assignments are separate statements — which
+is what you want here anyway: they persist for the session, across the dry run and then the
+write pass. Note the backslashes in the path and the absence of line continuations.
 
 Review the distribution, get sign-off, then drop ``--dry-run``.
 
