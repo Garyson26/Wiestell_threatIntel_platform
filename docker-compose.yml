@@ -82,15 +82,24 @@ services:
   # PostgreSQL-only ARRAY comparators `.any()` and `.overlap()` against MySQL JSON
   # columns and raised on every request.
   #
-  # IMAGE MUST MATCH PRODUCTION. Hostinger may be MySQL 8 or MariaDB, and their
-  # JSON function semantics differ — MariaDB implements JSON as LONGTEXT with a
-  # CHECK constraint and its json_contains argument handling is not identical.
-  # Testing MySQL 8 semantics against a MariaDB host produces false confidence,
-  # which is worse than not testing at all. Confirm with `SELECT VERSION();` on
-  # production, then pin DB_IMAGE in .env to the matching tag, e.g.
-  #     DB_IMAGE=mariadb:11.4
+  # IMAGE MUST MATCH PRODUCTION, and as of 2026-08-17 it does. Production is
+  # **MariaDB 11.8.8** (owner-confirmed via SELECT VERSION()), so the default is
+  # mariadb:11.8. It was mysql:8.0 from Spec 4 until then, which means the -m mysql
+  # tier spent that whole period validating the wrong dialect.
+  #
+  # That was not harmless. MySQL 8 rejects the real schema with
+  #   (1170, "BLOB/TEXT column 'value' used in key specification without a key length")
+  # because iocs.value is TEXT under UNIQUE(type, value) — a MySQL-8-only restriction.
+  # MariaDB 11.8 creates that index without complaint, exactly as production has it
+  # (SUB_PART NULL on both columns). The workaround that error forced — a test-only
+  # (type, value(700)) prefix index in conftest_mysql — changed which key space InnoDB
+  # locked, and silently invalidated the lock-contention conclusions measured through it.
+  # Both are gone. See tests/conftest_mysql.py.
+  #
+  # JSON semantics differ too: MariaDB implements JSON as LONGTEXT with a CHECK
+  # constraint and its json_contains argument handling is not identical to MySQL's.
   db:
-    image: ${DB_IMAGE:-mysql:8.0}
+    image: ${DB_IMAGE:-mariadb:11.8}
     command: >
       --wait-timeout=30
       --interactive-timeout=30

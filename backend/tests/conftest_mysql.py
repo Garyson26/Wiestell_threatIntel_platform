@@ -13,33 +13,40 @@ container is unreachable — a developer without Docker still gets a green defau
 suite.
 
 -----------------------------------------------------------------------------
-SCHEMA CAVEAT — READ BEFORE TRUSTING THESE TESTS
+RESOLVED 2026-08-17 — THE SCHEMA WAS NEVER BROKEN; THE CONTAINER WAS WRONG
 -----------------------------------------------------------------------------
-Neither ``alembic upgrade head`` nor ``Base.metadata.create_all()`` can build this
-schema on MySQL 8. Both fail on the ``iocs`` table with::
+This file previously carried a "SCHEMA CAVEAT" saying that neither
+``alembic upgrade head`` nor ``Base.metadata.create_all()`` could build the schema,
+because both failed on ``iocs`` with::
 
     (1170, "BLOB/TEXT column 'value' used in key specification without a key length")
 
-because ``iocs.value`` is ``TEXT`` and carries ``UNIQUE(type, value)``; MySQL and
-MariaDB both refuse to index a TEXT column without a prefix length. Found
-2026-07-30. It means there is **no working path in this repository to create a
-fresh database**, and production's schema must therefore have been built by some
-other route or predate the column's current type.
+and concluded there was "no working path in this repository to create a fresh
+database". **That conclusion was wrong, and its stated reason — "MySQL and MariaDB
+both refuse to index a TEXT column without a prefix length" — was factually wrong
+about MariaDB.**
 
-Resolving that needs `SHOW CREATE TABLE iocs;` against production and an owner
-decision, so it is deliberately NOT fixed here. To make the tier functional now,
-:func:`_test_metadata` applies a **test-only** prefix-length adaptation to that one
-constraint. Consequences to keep in mind:
+Production is **MariaDB 11.8.8**, confirmed by the owner. On MariaDB 11.8:
 
-* Everything else — column types, JSON columns, datetime handling, the ingestion
-  statements, savepoints — is the real schema and the real code path.
-* Uniqueness in the test schema is on ``(type, value(700))`` rather than the full
-  value, so two values sharing a 700-character prefix would collide here and not
-  in production. No test depends on that distinction. 700 rather than 768 because
-  InnoDB caps a key at 3072 bytes and utf8mb4 costs 4 bytes per character, which
-  the ``type`` column also draws on: 768*4 + 80 exceeds the cap (error 1071).
-* **Delete this adaptation** once the model is fixed. It is a scaffold, not a
-  design.
+* ``alembic upgrade head`` runs the entire chain clean, all six revisions.
+* Unadapted ``Base.metadata.create_all()`` succeeds.
+* The resulting ``uq_ioc_type_value`` spans the FULL ``(type, value)`` with
+  ``SUB_PART NULL`` — byte-for-byte what production has.
+
+Error 1170 is a MySQL-8-only restriction. The tier had been running against
+``mysql:8.0`` since Spec 4, so **it was validating the wrong dialect**, and the
+prefix-length workaround existed only to paper over that. Both are now gone:
+``DB_IMAGE`` defaults to ``mariadb:11.8`` and this module creates the real schema.
+
+Why it matters beyond tidiness — the workaround was not behaviour-neutral. Under a
+``(type, value(700))`` prefix index, InnoDB locks a *different* key space than under
+the full index, and the lock-contention conclusions in
+``test_mysql_integration.py::TestCreateIocHoldsAWriteLockThroughEnrichment`` were
+originally measured against the prefix version. Re-measured on MariaDB with the real
+index, the conclusion held — but only after a second confound was ruled out (see that
+test: on a near-empty table InnoDB gap-locks the whole range, so the result depends on
+the table being populated). A schema workaround silently changed what a lock test was
+measuring, which is the general hazard worth remembering.
 """
 
 from __future__ import annotations
@@ -162,10 +169,15 @@ def statement_counter():
 
 
 def _test_metadata() -> sa.MetaData:
-    """A copy of the real metadata that MySQL will actually accept.
+    """The real metadata, unaltered.
 
-    Only the ``uq_ioc_type_value`` constraint is altered, and only because
-    ``iocs.value`` is TEXT. See the module docstring.
+    This used to rewrite ``uq_ioc_type_value`` into a ``(type, value(700))`` prefix
+    index so MySQL 8 would accept it. That adaptation is **deleted**: MariaDB 11.8 —
+    which is what production runs — creates the full-column index without complaint,
+    so the tier now builds exactly the production schema. See the module docstring.
+
+    Kept as a function rather than inlined because the fixtures below call it and a
+    future divergence (if one is ever genuinely needed) should have one place to live.
     """
     from app.database import Base
     # Import for the side effect of registering every table on Base.metadata.
@@ -183,20 +195,6 @@ def _test_metadata() -> sa.MetaData:
     for table in Base.metadata.tables.values():
         table.to_metadata(metadata)
 
-    iocs = metadata.tables["iocs"]
-    for constraint in list(iocs.constraints):
-        if constraint.name == "uq_ioc_type_value":
-            iocs.constraints.discard(constraint)
-    # Prefix-length unique index — the MySQL-legal equivalent.
-    already = any(ix.name == "uq_ioc_type_value" for ix in iocs.indexes)
-    if not already:
-        sa.Index(
-            "uq_ioc_type_value",
-            iocs.c.type,
-            iocs.c.value,
-            unique=True,
-            mysql_length={"value": 700},
-        )
     return metadata
 
 

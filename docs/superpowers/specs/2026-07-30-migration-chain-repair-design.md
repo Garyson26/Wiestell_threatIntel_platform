@@ -262,7 +262,22 @@ round-trip latency from wherever it is run to Hostinger:
 | 20,000 | ~2,700 | ~7 min | ~13 min |
 | 50,000 | ~6,700 | ~17 min | ~33 min |
 | 100,000 | ~13,400 | ~33 min | ~67 min |
-| 200,000 | ~26,700 | **~1 h** | **~2 h 15 m** |
+| 200,000 | ~26,700 | ~1 h | ~2 h 15 m |
+| **217,485 — MEASURED 2026-08-17** | **~29,000** | **~1 h 13 m** | **~2 h 25 m** |
+
+**The count is no longer hypothetical.** `iocs` holds **217,485 rows** (owner, 2026-08-17),
+so `ceil(217485 / 30) = 7,250` chunks × 4 statements = **28,998 statements**. The estimate
+is therefore a **scheduled maintenance window**, not an errand: over an hour in the good
+case and approaching two and a half in the bad one, and the 1.33× dry-run correction below
+applies on top of the dry run, not on top of these.
+
+Two consequences that follow from the size rather than from the schedule:
+
+* **Do not start it against a live UAT window.** The write pass contends with ingestion for
+  locks on the same table, and at 7,250 commits the overlap is not a corner case.
+* **`--start-after` matters now.** At this size an interrupted run is likely enough that
+  resumability is a working requirement rather than a nicety. Note the resume point before
+  starting.
 
 Run from a laptop against a shared host, so it is a **scheduled job, not a quick one** —
 and the owner should know that before starting it rather than forty minutes in. It is
