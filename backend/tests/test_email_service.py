@@ -537,3 +537,85 @@ class TestC04PasswordResetMustNotBecomeAnAccountExistenceOracle:
             assert "except HTTPException" not in source, (
                 f"{name} swallows the delivery-failure 503; only password reset may."
             )
+
+
+class TestProactiveRateLimitBackoff:
+    """The live 200 carried ratelimit-limit: 10, remaining: 9, reset: 1.
+
+    So the rate_limit_exceeded threshold is READABLE per request rather than inferred.
+    Observed 2026-08-04; it is not in the published error reference.
+
+    At OTP volume 10/second is never approached - one request per login - so this is a
+    cheap use of a live signal rather than a fix for a live problem.
+    """
+
+    @staticmethod
+    def _resp(status, body, **headers):
+        return httpx.Response(
+            status_code=status,
+            content=json.dumps(body),
+            headers={"content-type": "application/json", **headers},
+            request=httpx.Request("POST", "https://api.resend.com/emails"),
+        )
+
+    async def test_it_waits_when_the_next_request_would_be_refused(
+        self, configured, monkeypatch
+    ):
+        slept = []
+
+        async def _fake_sleep(seconds):
+            slept.append(seconds)
+
+        monkeypatch.setattr(email_service.asyncio, "sleep", _fake_sleep)
+        _Transport(
+            self._resp(500, {"name": "application_error"},
+                       **{"ratelimit-remaining": "0", "ratelimit-reset": "1"}),
+            self._resp(200, {"id": "x"}),
+        ).install(monkeypatch)
+
+        assert await send_otp_email("a@example.com", OTP_CODE, "alice") is True
+        assert slept == [1.0], f"expected a 1s wait before the retry, got {slept}"
+
+    async def test_it_does_not_wait_when_budget_remains(self, configured, monkeypatch):
+        slept = []
+        monkeypatch.setattr(email_service.asyncio, "sleep",
+                            lambda s: slept.append(s) or asyncio.sleep(0))
+        _Transport(
+            self._resp(500, {"name": "application_error"},
+                       **{"ratelimit-remaining": "9", "ratelimit-reset": "1"}),
+            self._resp(200, {"id": "x"}),
+        ).install(monkeypatch)
+
+        await send_otp_email("a@example.com", OTP_CODE, "alice")
+        assert slept == [], "waited despite 9 requests of budget remaining"
+
+    @pytest.mark.parametrize("headers", [
+        {},                                                    # absent entirely
+        {"ratelimit-remaining": "not-a-number"},               # non-numeric
+        {"ratelimit-remaining": "0", "ratelimit-reset": "600"},  # implausibly long
+        {"ratelimit-remaining": "0", "ratelimit-reset": "x"},   # non-numeric reset
+    ])
+    async def test_an_unexpected_header_shape_never_stalls_the_request(
+        self, configured, monkeypatch, headers
+    ):
+        """A changed contract must not hold a login request open.
+
+        Every one of these means the provider is reporting something this code does not
+        understand. Guessing would be worse than proceeding - the retry still happens, it
+        just is not delayed.
+        """
+        slept = []
+        monkeypatch.setattr(email_service.asyncio, "sleep",
+                            lambda s: slept.append(s) or asyncio.sleep(0))
+        _Transport(
+            self._resp(500, {"name": "application_error"}, **headers),
+            self._resp(200, {"id": "x"}),
+        ).install(monkeypatch)
+
+        assert await send_otp_email("a@example.com", OTP_CODE, "alice") is True
+        assert slept == [], f"stalled on an unexpected header shape: {headers}"
+
+    def test_the_backoff_ceiling_is_short(self):
+        """The observed reset window is one second; anything much larger is a signal
+        that the header means something else."""
+        assert email_service._MAX_BACKOFF_SECONDS <= 2.0

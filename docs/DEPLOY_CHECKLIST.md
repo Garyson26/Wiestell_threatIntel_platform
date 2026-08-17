@@ -201,7 +201,23 @@ sort by `threat_score`. That is not stale data; it is an unsound triage surface,
 cannot be demonstrated to a UAT audience as-is. (§8 item 16)
 
 - [ ] Deploy the code (§4 above).
-- [ ] `python scripts/rescore_corpus.py --dry-run` — gives the score distribution **and** a
+- [ ] **Set the environment first — the script raises immediately without it.** It imports
+      `app.config`, which has no default for `DATABASE_URL`, so this is a hard stop rather
+      than a degraded run.
+
+      ```powershell
+      # PowerShell (the owner's shell). `VAR=value cmd` is a parse error here.
+      cd backend
+      $env:DATABASE_URL = "mysql+pymysql://user:pass@host/db"
+      $env:SECRET_KEY = python -c "import secrets; print(secrets.token_urlsafe(48))"
+      ```
+      ```bash
+      # bash / zsh
+      cd backend
+      export DATABASE_URL="mysql+pymysql://user:pass@host/db"
+      export SECRET_KEY="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')"
+      ```
+- [ ] `python ../scripts/rescore_corpus.py --dry-run` — gives the score distribution **and** a
       timing sample. **Multiply that sample by at least 1.33× before trusting it**: the dry
       run skips the UPDATE, so it is 3 statements per chunk against the write pass's 4, and
       writes cost more than reads on a shared host. Treat it as a lower bound.

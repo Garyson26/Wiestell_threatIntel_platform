@@ -104,10 +104,28 @@ What the suite pins down, i.e. what will break loudly if regressed: every route 
 
 `DATABASE_URL` has **no default** — importing `app.config` raises without it, deliberately (a hardcoded production DSN used to live there). `SECRET_KEY` must be ≥32 random chars or startup fails when `ENVIRONMENT` is production/staging; in development an ephemeral key is generated per process, so tokens do not survive a restart. See [.env.example](.env.example).
 
-Any local script or one-off check needs at least:
+Any local script or one-off check needs at least `DATABASE_URL` and `SECRET_KEY`.
+
 ```bash
+# bash / zsh
 DATABASE_URL="mysql+pymysql://u:p@localhost/db" SECRET_KEY="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')" python ...
 ```
+
+```powershell
+# PowerShell — the owner's shell. `VAR=value cmd` is a PARSE ERROR here, not a
+# different-but-working form, so a bash-only snippet fails outright rather than
+# degrading. PowerShell has no inline env-var prefix: assignments are separate
+# statements, and they persist for the session.
+$env:DATABASE_URL = "mysql+pymysql://u:p@localhost/db"
+$env:SECRET_KEY = python -c "import secrets; print(secrets.token_urlsafe(48))"
+python ...
+```
+
+**Any command in these docs that sets an environment variable needs both forms.** Two
+documented commands have already failed against the real environment: the `VAR=value python`
+one-liner above, and `--proxy-headers=false` (which uvicorn rejects — the disable form is
+`--no-proxy-headers`). A snippet that cannot run where it is meant to run is worse than no
+snippet, because the failure surfaces mid-task rather than while writing it.
 
 ## Database gotchas (these cause real bugs)
 
