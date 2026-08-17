@@ -460,11 +460,22 @@ class TestIngestChunkStatementBudget:
             )
 
     def test_the_prelude_reads_are_all_grouped_and_bounded(self):
-        """Four pre-loop reads per chunk — one more than before Section 0.5."""
+        """Every pre-loop read is grouped, and none of them sits inside a loop.
+
+        UPDATED for Phase 4 Section B. The two grouped reads moved out of
+        ``_ingest_chunk`` and into ``_prefetch_reads``, which runs once per 500-row READ
+        chunk instead of once per 30-row write chunk. The property being guarded is
+        unchanged — reads are grouped, never per-row — so the test follows the code
+        rather than being relaxed.
+
+        ``_ingest_chunk`` still calls ``_prefetch_reads`` itself: that is the retry path,
+        where the prefetched snapshot must be discarded and re-read after a rollback.
+        """
         for fn_name, expected in (
+            ("_prefetch_reads",
+             {"_distinct_feed_counts_async", "_already_linked_async"}),
             ("_ingest_chunk",
-             {"_distinct_feed_counts_async", "_already_linked_async",
-              "_enrichments_for_async"}),
+             {"_prefetch_reads", "_enrichments_for_async"}),
         ):
             node = self._function_node(fn_name)
             called = self._all_called(node)
@@ -473,6 +484,25 @@ class TestIngestChunkStatementBudget:
             in_loop = self._calls_inside_loops(node)
             leaked = expected & in_loop
             assert not leaked, f"{fn_name} calls these inside a loop: {sorted(leaked)}"
+
+    def test_the_prefetch_is_not_called_from_the_ingest_loop(self):
+        """Section B's saving exists only if the prefetch runs per READ chunk.
+
+        `ingest_iocs` must call `_prefetch_reads` from the OUTER loop. If it moved into
+        the inner write loop the statement count would return to the coupled figure while
+        every other structural assertion here still passed.
+        """
+        import ast
+
+        node = self._function_node("ingest_iocs")
+        outer = [n for n in ast.walk(node) if isinstance(n, (ast.For, ast.AsyncFor))]
+        assert len(outer) >= 2, (
+            "ingest_iocs no longer has a nested read/write loop, so reads and writes are "
+            "chunked together again"
+        )
+        assert "_prefetch_reads" in self._all_called(node), (
+            "ingest_iocs never prefetches; every write chunk would read for itself"
+        )
 
     def test_enrichment_map_lookup_is_a_dict_get_not_a_query(self):
         """The per-row access must be an in-memory lookup."""
