@@ -329,6 +329,25 @@ Password → OTP → JWT. After this review the flow enforces: purpose-bound sin
 
     **Interim option if it becomes a problem before the schema work lands:** cache `/attack/matrix` and `/attack/heatmap` rather than `/dashboard/stats` — the matrix is now the expensive endpoint and its data changes only when ingestion adds technique mappings, so a short TTL is honest there in a way it never was for a 3-statement aggregate.
 
+19. **Fifteen of 69 `app/` modules have no direct test reference.** Measured 2026-08-04 after a sync→async signature change on the entire email transport kept 589 tests green — email was completely untested, the same class as the untested sync ingestion path deleted earlier. A module list is more useful than a coverage percentage, because it says *where* the next silent change can hide.
+
+    **Genuinely dark — no test references them at all:**
+
+    | Module | Size | Why it matters |
+    |---|---|---|
+    | `feeds/otx_alienvault` | 13.5 KB | the largest untested surface in the codebase; parses third-party JSON on the ingestion path |
+    | `feeds/abuseipdb` | 4.4 KB | same class |
+    | `feeds/feodo_tracker` | 3.0 KB | same class |
+    | `utils/ioc_validator` | 4.0 KB | **input validation for every IOC value**, called from `api/ioc.py` (2 sites) and `feed_ingestion` — exercised indirectly, never asserted directly |
+    | `services/report_generator`, `api/reports` | 10.7 KB | report generation, no coverage |
+    | `enrichers/shodan_enricher` | 2.3 KB | deliberately unscored, so low risk |
+    | `feeds/mitre_attack` | 2.7 KB | the seed loader, run manually |
+    | `tasks/*` (celery_app, enrichment_tasks) | 7.6 KB | **dead code** — the beat schedule is entirely commented out, so this is expected |
+
+    **Partially covered, listed for accuracy:** `api/contact` + `schemas/contact` + `models/contact` — the *routes* are in the `test_access_control` audit (auth boundaries are asserted) but no test exercises the handler body, and `POST /contact/submit` is **public**. `services/correlation_engine` is referenced by `test_mysql_integration.py`, so the `json_contains` bug class that once crashed it is covered.
+
+    **The two worth acting on first** are `utils/ioc_validator` (a validation function on the hot path with no direct assertions — a loosened check would pass every existing test) and the three feed parsers (13.5 KB of OTX parsing that only fails in production). The Celery modules are dead and should be deleted rather than tested.
+
 16. **THE RESCORE IS A UAT BLOCKER, NOT HOUSEKEEPING.** `scripts/rescore_corpus.py` has never been run. Every scoring change since 2026-07-28 alters how a score is *computed* and none of them touch what is *stored*, because nothing re-scores an existing row: ingestion skips rows whose evidence has not changed, and the enrichment cron selects only never-enriched IOCs.
 
     `SCORING_MODEL_VERSION` is now **8**. Stored `threat_score` values were written under version 1 — or under whichever intermediate version happened to be live when a row was last touched — so **the corpus holds scores produced by at least four superseded models, and the dashboard ranks them against each other.** "Top threats", the critical-count tile, the ≥76 filter and every sort by `threat_score` are comparing numbers computed under different rules. That is not a stale-data inconvenience; it makes the primary triage surface unsound, and it cannot be demonstrated to a UAT audience as-is.

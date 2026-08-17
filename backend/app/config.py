@@ -24,7 +24,7 @@ INSECURE_SECRET_KEYS = {
 
 # Environment variable names a feed row is allowed to reference for its API key.
 # Without this allowlist an operator (or an attacker who reached the feed API)
-# could point ``feed.api_key_env`` at SECRET_KEY / DATABASE_URL / EMAIL_PASSWORD
+# could point ``feed.api_key_env`` at SECRET_KEY / DATABASE_URL / RESEND_API_KEY
 # and have the value forwarded to a third-party feed endpoint.
 #
 # Kept to exactly the names a live feed connector declares — audited 2026-07-29,
@@ -147,13 +147,17 @@ class Settings(BaseSettings):
     CACHE_TTL_REPUTATION: int = 21600   # 6 hours
     CACHE_TTL_DASHBOARD: int = 60       # 1 minute
 
-    # ── Email Configuration (credentials come from the environment only) ──────
-    EMAIL_SERVICE: str = "smtp"
-    EMAIL_USER: str = ""
-    EMAIL_PASSWORD: str = ""
-    SMTP_HOST: str = ""
-    SMTP_PORT: int = 465
-    SMTP_SECURE: bool = True
+    # ── Email (Resend HTTP API; credentials from the environment only) ────────
+    # SMTP was removed in Phase 3. Render free web services cannot open outbound
+    # connections on 25/465/587, and the auth flow is password -> email OTP -> JWT, so
+    # without a transport over 443 nobody can log in. Resend's own SMTP on 2465/2587 was
+    # considered and rejected - see the note in utils/email_service.py.
+    #
+    # RESEND_API_KEY is a SERVICE credential and must never be added to
+    # ALLOWED_FEED_API_KEY_ENVS: that allowlist is the H-03 exfiltration surface, and a
+    # name on it can be dereferenced by a feed row and forwarded to a third-party endpoint.
+    RESEND_API_KEY: str = ""
+    EMAIL_FROM: str = "Wiestell <noreply@wiestell.com>"
     ADMIN_EMAIL: str = ""               # Recipient for error notifications
     ENABLE_ERROR_EMAILS: bool = False   # Opt-in: alert emails carry request context
 

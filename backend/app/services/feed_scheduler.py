@@ -102,7 +102,7 @@ async def _run_feed_sync_inner(feed_id: str, feed_slug: str, connector_path: str
             return
         if feed.api_key_env:
             # Only feed-key variables may be dereferenced. Without this check a
-            # feed row pointing at SECRET_KEY / DATABASE_URL / EMAIL_PASSWORD
+            # feed row pointing at SECRET_KEY / DATABASE_URL / RESEND_API_KEY
             # would have that value forwarded to a third-party endpoint as an
             # API key. Enforced here as well as in the schema so pre-existing
             # rows cannot exfiltrate secrets.

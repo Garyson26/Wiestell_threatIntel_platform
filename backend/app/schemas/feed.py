@@ -12,7 +12,7 @@ def _validate_api_key_env(value: Optional[str]) -> Optional[str]:
     """Restrict which environment variable a feed may read its API key from.
 
     Without this, a feed row could point at SECRET_KEY / DATABASE_URL /
-    EMAIL_PASSWORD and the sync worker would forward that value to a
+    RESEND_API_KEY and the sync worker would forward that value to a
     third-party endpoint as an API key.
     """
     if value in (None, ""):

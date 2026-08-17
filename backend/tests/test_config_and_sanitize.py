@@ -79,7 +79,7 @@ class TestFeedApiKeyAllowlist:
     def test_sensitive_names_are_not_allowlisted(self):
         from app.config import ALLOWED_FEED_API_KEY_ENVS
 
-        for name in ("SECRET_KEY", "DATABASE_URL", "EMAIL_PASSWORD", "CRON_SECRET", "PATH"):
+        for name in ("SECRET_KEY", "DATABASE_URL", "RESEND_API_KEY", "CRON_SECRET", "PATH"):
             assert name not in ALLOWED_FEED_API_KEY_ENVS
 
 

@@ -125,19 +125,13 @@ services:
         sync: false
       - key: ENABLE_ERROR_EMAILS
         value: false
-      # Email Configuration - Hostinger SMTP
-      - key: EMAIL_SERVICE
-        value: smtp
-      - key: EMAIL_USER
-        sync: false  # Set manually in Render dashboard
-      - key: EMAIL_PASSWORD
-        sync: false  # Set manually in Render dashboard (secret)
-      - key: SMTP_HOST
-        value: smtp.hostinger.com
-      - key: SMTP_PORT
-        value: 465
-      - key: SMTP_SECURE
-        value: true
+      # Email — Resend HTTP API over 443. SMTP was removed in Phase 3 because Render
+      # free web services cannot reach 25/465/587, which made OTP login impossible.
+      # Sending-access key only; never add this name to ALLOWED_FEED_API_KEY_ENVS.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: Wiestell <noreply@wiestell.com>
       # API Keys (Optional - set in Render dashboard)
       - key: OTX_API_KEY
         sync: false

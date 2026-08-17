@@ -107,7 +107,20 @@ async def _issue_otp(
     db.add(record)
     await db.commit()
 
-    if not send_otp_email(email, otp_code, username, is_password_reset=(purpose == PURPOSE_RESET)):
+    # Key shape follows Resend's <event-type>/<entity-id> guidance. The OTP row id is
+    # unique and stable, and `purpose` distinguishes a login code from a reset code issued
+    # to the same address. Deliberately contains NO code, NO address and NO timestamp: the
+    # code would leak into a header, the address is PII, and a timestamp would make the key
+    # differ on retry - which is the one thing that must not happen.
+    idempotency_key = f"otp/{purpose}/{record.id}"
+
+    if not await send_otp_email(
+        email,
+        otp_code,
+        username,
+        is_password_reset=(purpose == PURPOSE_RESET),
+        idempotency_key=idempotency_key,
+    ):
         logger.error("otp_email_delivery_failed", purpose=purpose)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -302,7 +315,21 @@ async def forgot_password(data: PasswordResetRequest, db: AsyncSession = Depends
                 user_id=user.id,
             )
         except HTTPException:
-            # Swallow delivery failures so the endpoint stays a non-oracle.
+            # ── FINDING C-04. DO NOT REMOVE THIS except. ──────────────────────────
+            # `_issue_otp` raises 503 on delivery failure, and login and registration let
+            # that reach the client. THIS endpoint must not, because the 503 would only
+            # ever be raised for an address that EXISTS - an address with no account never
+            # reaches `_issue_otp` at all. So a visible error here turns password reset
+            # into an account-existence oracle: probe an address, and a 503 means "real
+            # account, mail failed" while a 200 means "no such account".
+            #
+            # Swallowing it is therefore the oracle protection, not defensive tidying, and
+            # the endpoint returns the same generic body either way. Making this failure
+            # "helpful" reintroduces C-04.
+            #
+            # Note this property is INVISIBLE from utils/email_service.py: the asymmetry
+            # lives here, in the caller, so a reader of the email code cannot see it.
+            # Pinned by tests/test_email_service.py and the users API tests.
             logger.error("password_reset_email_failed")
 
     return OTPResponse(message=_GENERIC_OTP_MESSAGE, otp_required=True)

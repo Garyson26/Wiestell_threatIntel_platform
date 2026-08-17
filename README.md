@@ -111,7 +111,8 @@ python -m pytest            # no database required
 | `CRON_SECRET` | Shared secret for scheduler calls to `/feeds/sync-all` and `/enrichment/backfill/start`, sent as `X-Cron-Secret` | Recommended |
 | `ENABLE_API_DOCS` | Serve `/docs`, `/redoc`, `/openapi.json`. Default `false` | No |
 | `REDIS_URL` | Redis connection string (cache, distributed rate limits, Celery broker) | No |
-| `EMAIL_USER` / `EMAIL_PASSWORD` / `SMTP_HOST` | SMTP credentials — required for OTP login to work | Yes |
+| `RESEND_API_KEY` | Resend API key (sending access) — **required for OTP login to work** | Yes |
+| `EMAIL_FROM` | Sender, e.g. `Wiestell <noreply@wiestell.com>` | No (has a default) |
 | `OTX_API_KEY` | AlienVault OTX API key | No |
 | `ABUSEIPDB_API_KEY` | AbuseIPDB API key | No |
 | `SHODAN_API_KEY` | Shodan API key | No |

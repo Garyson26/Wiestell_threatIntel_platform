@@ -31,12 +31,8 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - FEED_SYNC_INTERVAL=${FEED_SYNC_INTERVAL:-3600}
-      - EMAIL_SERVICE=${EMAIL_SERVICE:-smtp}
-      - EMAIL_USER=${EMAIL_USER:-}
-      - EMAIL_PASSWORD=${EMAIL_PASSWORD:-}
-      - SMTP_HOST=${SMTP_HOST:-smtp.hostinger.com}
-      - SMTP_PORT=${SMTP_PORT:-465}
-      - SMTP_SECURE=${SMTP_SECURE:-true}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - EMAIL_FROM=${EMAIL_FROM:-Wiestell <noreply@wiestell.com>}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
       - CRON_SECRET=${CRON_SECRET:-}
       - ENABLE_API_DOCS=${ENABLE_API_DOCS:-false}
@@ -80,12 +76,8 @@ services:
       - THREATFOX_API_KEY=${THREATFOX_API_KEY:-}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required (min 32 random chars)}
-      - EMAIL_SERVICE=${EMAIL_SERVICE:-smtp}
-      - EMAIL_USER=${EMAIL_USER:-}
-      - EMAIL_PASSWORD=${EMAIL_PASSWORD:-}
-      - SMTP_HOST=${SMTP_HOST:-smtp.hostinger.com}
-      - SMTP_PORT=${SMTP_PORT:-465}
-      - SMTP_SECURE=${SMTP_SECURE:-true}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - EMAIL_FROM=${EMAIL_FROM:-Wiestell <noreply@wiestell.com>}
     depends_on:
       redis:
         condition: service_healthy

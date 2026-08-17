@@ -1,38 +1,269 @@
-"""Email service for sending OTP and notifications."""
+"""Email service for sending OTP and notifications.
+
+Transport is the **Resend HTTP API over 443**, not SMTP. Render free web services cannot
+open outbound connections on ports 25, 465 or 587, and the authentication flow is
+password -> email OTP -> JWT, so without a transport over 443 nobody can log in at all,
+including the owner. This is the gate on the project being testable, not a hardening task.
+
+**Resend offers SMTP on 2465 and 2587, which Render does not block. That was considered and
+rejected** (Spec 7 section 3): Render's block is anti-spam policy, so a port that merely
+circumvents it can be closed without notice, and the HTTP API's structured error bodies are
+what make quota exhaustion detectable at all - over SMTP a 4xx is opaque.
+
+**The `resend` SDK is deliberately not used.** Its own FastAPI example calls
+`resend.Emails.send()` from a synchronous endpoint, where FastAPI's threadpool hides the
+blocking. This module is called from `async def` handlers, so the same call would block the
+event loop on every OTP - the exact defect the original review found in `whois_enricher`.
+`httpx` is already a dependency and adds no new advisory surface.
+
+SECURITY PROPERTIES THAT MUST SURVIVE ANY CHANGE HERE (each has a test):
+  * an OTP code is never logged and never returned, on any path including every failure;
+  * delivery failure raises 503 for login and registration but is SWALLOWED for password
+    reset - the asymmetry lives in `api/users.py::forgot_password` and exists so the
+    endpoint is not an account-existence oracle (finding C-04);
+  * an unconfigured transport returns False without attempting a request;
+  * the username is HTML-escaped before rendering, and alert diagnostics go through
+    `redact_secrets()` / `redact_headers()`;
+  * alert email stays opt-in behind `ENABLE_ERROR_EMAILS`.
+"""
 
 import html
-import smtplib
-import ssl
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional, Tuple
 
+import httpx
 import structlog
 
 from app.config import settings
 
 logger = structlog.get_logger()
 
+_API_URL = "https://api.resend.com/emails"
 
-def _smtp_configured() -> bool:
-    return bool(settings.SMTP_HOST and settings.EMAIL_USER and settings.EMAIL_PASSWORD)
-
-
-def _send(to_email: str, message: MIMEMultipart) -> None:
-    """Deliver a prepared message over SMTP (SSL or STARTTLS with cert checks)."""
-    context = ssl.create_default_context()
-    if settings.SMTP_SECURE and settings.SMTP_PORT == 465:
-        with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, context=context) as server:
-            server.login(settings.EMAIL_USER, settings.EMAIL_PASSWORD)
-            server.sendmail(settings.EMAIL_USER, to_email, message.as_string())
-    else:
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
-            server.starttls(context=context)
-            server.login(settings.EMAIL_USER, settings.EMAIL_PASSWORD)
-            server.sendmail(settings.EMAIL_USER, to_email, message.as_string())
+# A single POST. httpx's default timeout would let a hung provider hold a login request
+# open far longer than a user will wait.
+_TIMEOUT_SECONDS = 10.0
 
 
-def send_otp_email(to_email: str, otp: str, username: str, is_password_reset: bool = False) -> bool:
+# ── Error classification ──────────────────────────────────────────────────────
+# Verified against Resend's published error reference 2026-08-04, not from memory.
+#
+# STATUS ALONE IS NOT ENOUGH. Three distinct conditions return 429 and are separable only
+# by the `name` field in the body, and only one of the three is retryable:
+#
+#   429 rate_limit_exceeded      too many requests per second   -> retry after backoff
+#   429 daily_quota_exceeded     100/day cap on the free plan   -> NEVER retry, degrade
+#   429 monthly_quota_exceeded   3,000/month                    -> NEVER retry, degrade
+#
+# `validation_error` is likewise ambiguous: the reference lists it at 400, 403 AND 422.
+# The spec's table showed it only at 403. None of its forms is retryable, so the ambiguity
+# costs nothing here - but it is why classification keys on (status, name) rather than
+# either alone.
+
+# The only responses worth trying a second time. Everything absent from this set is fatal.
+_RETRYABLE_NAMES = frozenset({
+    "rate_limit_exceeded",          # 429, transient by definition
+    "concurrent_idempotent_requests",  # 409, the same key is still in flight
+    "application_error",            # 500
+    "internal_server_error",        # 500
+})
+
+# Recorded separately because these are not failures to retry but a state to SURFACE.
+_QUOTA_NAMES = frozenset({"daily_quota_exceeded", "monthly_quota_exceeded"})
+
+
+def _is_retryable(status_code: int, name: str) -> bool:
+    """Whether a second attempt could plausibly succeed.
+
+    Deliberately allowlist-shaped. A denylist would make every unrecognised future error
+    retryable, and the costly mistakes here are all in that direction - retrying a quota
+    rejection burns the next window's allowance, and retrying `invalid_idempotent_request`
+    means something regenerated the payload and a second send would be a DUPLICATE OTP.
+    """
+    if name == "invalid_idempotent_request":
+        # 409, and never retryable: it means the retry rebuilt the payload, which for an
+        # OTP means a different code. Retrying would deliver two codes for one login.
+        return False
+    if name in _QUOTA_NAMES:
+        # REDUNDANT BY DESIGN, and verified so: the allowlist below already excludes these,
+        # and `_post` returns before ever consulting this function for a quota name. A
+        # mutation removing this line changed no behaviour. It stays as a second barrier -
+        # if someone later adds a quota name to _RETRYABLE_NAMES by mistake, this still
+        # catches it, and retrying a quota rejection burns the next window's allowance.
+        return False
+    if name in _RETRYABLE_NAMES:
+        return True
+    # No name (a proxy error page, a truncated body) - fall back to the status class.
+    # 5xx is provider-side and worth one more attempt; every 4xx is our fault.
+    return not name and status_code >= 500
+
+
+# ── Quota state (Section 2) ───────────────────────────────────────────────────
+# PROCESS-LOCAL, which is correct only under the single-process model. This is now the
+# SIXTH thing that assumption governs, alongside the rate limiter, the connection pool,
+# the enrichment semaphore, any in-process cache, and REDIS_URL being unset. See the
+# invariant in CLAUDE.md; raising the worker count means N independent views of quota, so
+# a cap hit by one worker would be invisible to the others.
+_quota_state: Dict[str, Optional[datetime]] = {
+    "daily_quota_exceeded": None,
+    "monthly_quota_exceeded": None,
+}
+
+
+def _record_quota_rejection(name: str) -> None:
+    _quota_state[name] = datetime.now(timezone.utc)
+    logger.error(
+        "email_quota_exceeded",
+        quota=name,
+        detail=(
+            "Resend rejected the send because the plan quota is exhausted. OTP delivery "
+            "is failing, which means login and registration return 503 and password reset "
+            "silently does nothing."
+        ),
+    )
+
+
+def quota_degradation() -> Optional[Dict[str, str]]:
+    """The `email_quota_exhausted` entry for /cron-status, or None.
+
+    Reported by elapsed time rather than by a flag, so it clears itself: the daily cap
+    resets every 24 hours and the monthly one at the calendar month. Without that, a single
+    rejection would leave the degradation showing for the life of the process.
+    """
+    now = datetime.now(timezone.utc)
+
+    daily = _quota_state.get("daily_quota_exceeded")
+    if daily is not None and (now - daily).total_seconds() < 24 * 3600:
+        return {
+            "id": "email_quota_exhausted",
+            "impact": (
+                "the Resend daily cap (100/day on the free plan) was hit at "
+                f"{daily.isoformat()}; OTP delivery is failing, so login and registration "
+                "return 503 and password reset silently does nothing"
+            ),
+            "fix": (
+                "wait for the daily reset, or raise the plan. Every tester logs in at "
+                "least twice a day because JWT expiry is 12 hours, so 100/day is the limit "
+                "this deployment actually reaches."
+            ),
+        }
+
+    monthly = _quota_state.get("monthly_quota_exceeded")
+    if monthly is not None and (monthly.year, monthly.month) == (now.year, now.month):
+        return {
+            "id": "email_quota_exhausted",
+            "impact": (
+                "the Resend monthly cap (3,000/month on the free plan) was hit at "
+                f"{monthly.isoformat()}; no email will send until the calendar month rolls"
+            ),
+            "fix": "raise the plan; sending pauses at the cap rather than billing overage",
+        }
+    return None
+
+
+def _reset_quota_state_for_tests() -> None:
+    """Test hook. Module-level state would otherwise leak between tests."""
+    for key in _quota_state:
+        _quota_state[key] = None
+
+
+# ── Transport ─────────────────────────────────────────────────────────────────
+
+def _configured() -> bool:
+    return bool(settings.RESEND_API_KEY and settings.EMAIL_FROM)
+
+
+def _parse_error(response: httpx.Response) -> Tuple[str, str]:
+    """(name, message) from an error body, tolerating a non-JSON response.
+
+    A proxy or gateway in front of the API can return HTML, so this must never raise -
+    a parse failure would surface as a 500 from the login endpoint rather than a clean 503.
+    """
+    try:
+        body = response.json()
+    except Exception:
+        return "", response.text[:200]
+    if not isinstance(body, dict):
+        return "", str(body)[:200]
+    return str(body.get("name") or ""), str(body.get("message") or "")[:300]
+
+
+async def _post(payload: Dict[str, Any], idempotency_key: Optional[str]) -> bool:
+    """POST one prepared payload, with at most one retry. Never raises.
+
+    THE PAYLOAD AND THE KEY ARE BUILT BY THE CALLER AND NOT REBUILT HERE. That is the whole
+    point of taking them as arguments: a retry must send BYTE-IDENTICAL content under the
+    SAME idempotency key. For an OTP the code lives inside the payload, so regenerating it
+    on retry would both change the bytes - earning `409 invalid_idempotent_request` - and,
+    worse, deliver a second, different code for one login attempt.
+    """
+    if not _configured():
+        logger.error(
+            "email_not_configured",
+            hint="Set RESEND_API_KEY and EMAIL_FROM",
+        )
+        return False
+
+    headers = {
+        "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    if idempotency_key:
+        # Resend keeps a key for 24 hours; a repeat inside that window returns the original
+        # response without sending again. Max 256 characters (400 invalid_idempotency_key
+        # outside 1-256), so the key is truncated defensively rather than trusted.
+        headers["Idempotency-Key"] = idempotency_key[:256]
+
+    # One attempt, then at most one retry. Two is enough to ride out a transient 5xx or a
+    # concurrent-key collision; more would hold a login request open past a user's patience.
+    for attempt in (1, 2):
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
+                response = await client.post(_API_URL, json=payload, headers=headers)
+        except httpx.HTTPError as exc:
+            # Connection-level: no response, so nothing to classify. The idempotency key
+            # makes a retry safe even if the first request did arrive.
+            if attempt == 1:
+                logger.warning("email_send_retrying", reason=type(exc).__name__)
+                continue
+            logger.error("email_send_failed", error_type=type(exc).__name__)
+            return False
+
+        if response.is_success:
+            return True
+
+        name, message = _parse_error(response)
+
+        if name in _QUOTA_NAMES:
+            _record_quota_rejection(name)
+            return False
+
+        if _is_retryable(response.status_code, name) and attempt == 1:
+            logger.warning(
+                "email_send_retrying", status=response.status_code, name=name or "unknown"
+            )
+            continue
+
+        # `message` can name a domain or an address, so it is logged but never returned to
+        # a caller - the 503 that reaches the client stays generic.
+        logger.error(
+            "email_send_failed",
+            status=response.status_code,
+            name=name or "unknown",
+            detail=message,
+        )
+        return False
+
+    return False
+
+
+async def send_otp_email(
+    to_email: str,
+    otp: str,
+    username: str,
+    is_password_reset: bool = False,
+    idempotency_key: Optional[str] = None,
+) -> bool:
     """
     Send OTP via email using SMTP.
     
@@ -45,8 +276,8 @@ def send_otp_email(to_email: str, otp: str, username: str, is_password_reset: bo
     Returns:
         True if email sent successfully, False otherwise
     """
-    if not _smtp_configured():
-        logger.error("smtp_not_configured", hint="Set SMTP_HOST, EMAIL_USER and EMAIL_PASSWORD")
+    if not _configured():
+        logger.error("email_not_configured", hint="Set RESEND_API_KEY and EMAIL_FROM")
         return False
 
     # The username is rendered inside an HTML email — escape it so a crafted
@@ -55,19 +286,15 @@ def send_otp_email(to_email: str, otp: str, username: str, is_password_reset: bo
 
     try:
         # Create message
-        message = MIMEMultipart("alternative")
-
         if is_password_reset:
-            message["Subject"] = "Wiestell - Password Reset OTP"
+            subject = "Wiestell - Password Reset OTP"
             purpose = "password reset"
             expiry = "10 minutes"
         else:
-            message["Subject"] = "Wiestell - Your Login OTP Code"
+            subject = "Wiestell - Your Login OTP Code"
             purpose = "login"
             expiry = "5 minutes"
             
-        message["From"] = settings.EMAIL_USER
-        message["To"] = to_email
 
         # Create HTML and plain text versions
         text_content = f"""
@@ -170,12 +397,17 @@ Wiestell Security Team
 """
 
         # Attach both versions
-        part1 = MIMEText(text_content, "plain")
-        part2 = MIMEText(html_content, "html")
-        message.attach(part1)
-        message.attach(part2)
-
-        _send(to_email, message)
+        # Built ONCE, before the first attempt. `_post` retries this exact object so a
+        # retry cannot deliver a different code - see its docstring.
+        payload = {
+            "from": settings.EMAIL_FROM,
+            "to": [to_email],
+            "subject": subject,
+            "html": html_content,
+            "text": text_content,
+        }
+        if not await _post(payload, idempotency_key):
+            return False
 
         # The recipient address and the code itself are deliberately absent from
         # the log line — an OTP in a log file is a bypass of the second factor.
@@ -187,7 +419,7 @@ Wiestell Security Team
         return False
 
 
-def send_notification_email(to_email: str, subject: str, message: str) -> bool:
+async def send_notification_email(to_email: str, subject: str, message: str) -> bool:
     """
     Send a generic notification email.
     
@@ -199,19 +431,18 @@ def send_notification_email(to_email: str, subject: str, message: str) -> bool:
     Returns:
         True if email sent successfully, False otherwise
     """
-    if not _smtp_configured():
-        logger.error("smtp_not_configured")
+    if not _configured():
+        logger.error("email_not_configured")
         return False
 
     try:
-        msg = MIMEMultipart()
-        msg["Subject"] = subject
-        msg["From"] = settings.EMAIL_USER
-        msg["To"] = to_email
-
-        msg.attach(MIMEText(message, "plain"))
-
-        _send(to_email, msg)
+        if not await _post({
+            "from": settings.EMAIL_FROM,
+            "to": [to_email],
+            "subject": subject,
+            "text": message,
+        }, None):
+            return False
 
         logger.info("notification_email_sent")
         return True
@@ -221,7 +452,7 @@ def send_notification_email(to_email: str, subject: str, message: str) -> bool:
         return False
 
 
-def send_error_alert_email(
+async def send_error_alert_email(
     error_type: str,
     error_message: str,
     endpoint: str,
@@ -243,7 +474,7 @@ def send_error_alert_email(
     Returns:
         True if email sent successfully, False otherwise
     """
-    if not settings.ENABLE_ERROR_EMAILS or not settings.ADMIN_EMAIL or not _smtp_configured():
+    if not settings.ENABLE_ERROR_EMAILS or not settings.ADMIN_EMAIL or not _configured():
         return False
 
     # Diagnostics are embedded in an HTML email; escape them so error text
@@ -260,10 +491,7 @@ def send_error_alert_email(
         timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
         # Create message
-        message = MIMEMultipart("alternative")
-        message["Subject"] = f"🚨 Wiestell API Error: {error_type}"
-        message["From"] = settings.EMAIL_USER
-        message["To"] = settings.ADMIN_EMAIL
+        subject = f"🚨 Wiestell API Error: {error_type}"
 
         # Create plain text version
         text_content = f"""
@@ -395,12 +623,14 @@ This is an automated alert from Wiestell API monitoring.
 """
 
         # Attach both versions
-        part1 = MIMEText(text_content, "plain")
-        part2 = MIMEText(html_content, "html")
-        message.attach(part1)
-        message.attach(part2)
-
-        _send(settings.ADMIN_EMAIL, message)
+        if not await _post({
+            "from": settings.EMAIL_FROM,
+            "to": [settings.ADMIN_EMAIL],
+            "subject": subject,
+            "html": html_content,
+            "text": text_content,
+        }, None):
+            return False
 
         logger.info("error_alert_email_sent")
         return True

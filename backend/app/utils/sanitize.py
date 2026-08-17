@@ -61,7 +61,7 @@ def _configured_secrets() -> Iterable[str]:
 
     candidates = [
         settings.SECRET_KEY,
-        settings.EMAIL_PASSWORD,
+        settings.RESEND_API_KEY,   # Phase 3: replaced EMAIL_PASSWORD
         settings.CRON_SECRET,
         settings.GROQ_API_KEY,
         settings.OTX_API_KEY,
