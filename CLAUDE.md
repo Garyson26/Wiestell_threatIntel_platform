@@ -273,14 +273,37 @@ Adding a feed means four things, all required: the connector class (with `slug`,
 - **Registration order is the attempt order**, and `tests/test_enrichers.py::TestEngineDispatch` pins the per-type source table. Reordering `build_registry` changes that contract.
 - Blocking libraries must go through `run_in_executor` (see `whois_enricher`) — a synchronous network call stalls the whole event loop. There's a test asserting WHOIS runs off the loop thread.
 
-**Three background-work mechanisms coexist and only one runs:**
+**Two background-work mechanisms remain and only one runs:**
 | Mechanism | State |
 |---|---|
 | `services/feed_scheduler.py::feed_scheduler_loop` (asyncio) | implemented, **never started** — `lifespan()` skips it for serverless |
-| `tasks/celery_app.py` beat schedule | wired up, entire schedule commented out |
 | `POST /api/v1/feeds/sync-all` | **the live path**, driven by external cron |
 
-Don't assume a change to the scheduler or Celery affects production.
+Don't assume a change to the scheduler affects production.
+
+**Celery was the third, and it was deleted on 2026-08-17** — `app/tasks/` (`celery_app`,
+`feed_tasks`, `enrichment_tasks`), both compose services and the `celery==5.4.0` pin. The
+beat schedule had been entirely commented out, but the package was **not** dead: `create_ioc`
+called `enrich_ioc_task.delay()`, which raised a refused connection (no broker — `REDIS_URL`
+is unset) into a bare `except Exception: pass`. Analysts got a 200 and an IOC that was never
+enriched, with no log line. **That is the lesson worth keeping: a queue dispatch wrapped in a
+bare except is indistinguishable from working.** `create_ioc` now awaits `enrich_ioc`
+in-request like its five siblings, and logs at warning if it raises.
+`tests/test_ioc_creation_enrichment.py` fails on any reintroduced `.delay()`/`.apply_async()`
+anywhere in `app/api`, and on an except block whose body is only `pass`.
+
+**`redis` is not an orphan of that deletion** — `utils/rate_limiter` reads `REDIS_URL`, so
+the compose service and the dependency both stay.
+
+**Enrichment serving goes through `normalize_enrichment_for_display`, and the guard for
+that is now repo-wide.** The Spec 6c checks called `inspect.getsource` on named handlers,
+so `get_enrichment` — which no guard named — served `e.data` raw, i.e. the pre-2026-07-31
+reputation mean, from 2026-07-31 until 2026-08-17. The replacement walks the AST of every
+module in `app/api` looking for dict literals with a `"data"` key, so a **new** handler is
+covered without anyone remembering to add it. Per the extraction rule below, it asserts the
+walker found the known sites before asserting none of them are raw — verified by neutering
+the walker, which makes the raw-payload assertion pass vacuously and is caught only by the
+non-emptiness check.
 
 **Enrichment** picks sources per IOC type (`_get_applicable_sources`), reuses non-expired cached rows from the `enrichments` table (one row per IOC×source, TTL in `expires_at`), and runs the remainder concurrently with `asyncio.gather`. Blocking WHOIS is offloaded to a thread pool. Enrichers degrade to `{"error": ...}` rather than raising when an API key is absent.
 

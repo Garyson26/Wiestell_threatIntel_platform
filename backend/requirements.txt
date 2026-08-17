@@ -23,8 +23,9 @@ alembic==1.14.0
 redis==5.2.1
 # aioredis removed — merged into redis-py 4.2+ and unmaintained since 2022
 
-# Celery
-celery==5.4.0
+# celery removed 2026-08-17 with app/tasks/ — see docker-compose.yml. The beat schedule
+# was commented out and the one live caller was dispatching into a broker that does not
+# exist. redis-py stays: utils/rate_limiter still uses it.
 
 # Validation & Serialization
 pydantic==2.10.4

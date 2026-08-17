@@ -406,7 +406,7 @@ IOC values come from untrusted third-party feeds and were written unescaped into
 | `jinja2` | 3.1.3 | 3.1.5 | Sandbox breakout fixes |
 | `bcrypt` | 3.2.2 | 4.2.1 | Passlib-compatibility and maintenance |
 | `aioredis` | 2.0.1 | **removed** | Unmaintained since 2022; merged into `redis-py` |
-| `cryptography`, `sqlalchemy`, `alembic`, `celery`, `pydantic`, `httpx`, `dnspython`, `structlog`, `tenacity`, `croniter`, `weasyprint`, `pandas`, `groq` | — | current | Routine maintenance |
+| `cryptography`, `sqlalchemy`, `alembic`, `pydantic`, `httpx`, `dnspython`, `structlog`, `tenacity`, `croniter`, `groq` | — | current | Routine maintenance. `celery` removed 2026-08-17 with `app/tasks/`; `weasyprint` and `pandas` removed earlier by owner decision |
 
 The JWT migration is a code change, not just a version bump: `deps.py` uses `pyjwt` with an explicit `algorithms=[...]` allowlist and `options={"require": ["exp", "sub"]}`.
 

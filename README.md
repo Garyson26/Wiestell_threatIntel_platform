@@ -31,7 +31,7 @@ Wiestell is a production-grade, full-stack Threat Intelligence Platform (TIP) de
 | Threat hunting workspace | Implemented |
 | Report generation (daily brief + custom) | Implemented |
 | STIX 2.1 / CSV / JSON export | Implemented |
-| Celery background task processing | Implemented |
+| ~~Celery background task processing~~ | **Removed 2026-08-17** — the beat schedule was disabled and the one live caller dispatched into a broker that does not exist |
 | Docker single-command deployment | Implemented |
 | Geographic threat distribution | Implemented |
 
@@ -46,7 +46,7 @@ Wiestell is a production-grade, full-stack Threat Intelligence Platform (TIP) de
                      BACKEND (FastAPI)
   Feed Ingestion | Enrichment Engine | Scoring | Correlation
         |              |            |            |
-     MySQL        Redis (opt.)   Celery     External
+     MySQL        Redis (opt.)              External
    + indexes      cache/limits   Workers    Threat Feeds
 ```
 
@@ -56,9 +56,9 @@ Wiestell is a production-grade, full-stack Threat Intelligence Platform (TIP) de
 |-------|-----------|
 | Frontend | Next.js 16 (App Router), React 19, TypeScript 5, Tailwind CSS 4, Recharts, D3.js |
 | Backend | FastAPI 0.115, Python 3.11, SQLAlchemy 2 (async), Pydantic v2 |
-| Database | **MySQL** via `aiomysql` (async) + `pymysql` (Alembic/Celery). JSON columns are queried with `json_contains`; the PostgreSQL `ARRAY` operators do **not** work here |
+| Database | **MySQL** via `aiomysql` (async) + `pymysql` (Alembic, scripts). JSON columns are queried with `json_contains`; the PostgreSQL `ARRAY` operators do **not** work here |
 | Cache / rate limits / queue | Redis 7 — optional; the code degrades to in-process fallbacks |
-| Task Queue | Celery with Redis broker (present but the beat schedule is disabled) |
+| Task Queue | None. Background work is driven by external cron against `POST /api/v1/feeds/sync-all`; enrichment runs in-request. Celery was deleted on 2026-08-17 |
 | Containerization | Docker + Docker Compose (local); Render + Vercel in production |
 
 ## Quick Start
@@ -76,7 +76,7 @@ cd Wiestell_threatIntel_platform
 cp .env.example .env
 python -c "import secrets; print('SECRET_KEY=' + secrets.token_urlsafe(48))"
 
-# Start frontend, backend, Celery, Redis and nginx (MySQL is external)
+# Start frontend, backend, Redis and nginx (MySQL is external)
 docker-compose up -d
 
 # Apply migrations, then seed
@@ -110,7 +110,7 @@ python -m pytest            # no database required
 | `CORS_ORIGINS` | Comma-separated allowed browser origins. `*` is rejected (credentialed API) | Yes |
 | `CRON_SECRET` | Shared secret for scheduler calls to `/feeds/sync-all` and `/enrichment/backfill/start`, sent as `X-Cron-Secret` | Recommended |
 | `ENABLE_API_DOCS` | Serve `/docs`, `/redoc`, `/openapi.json`. Default `false` | No |
-| `REDIS_URL` | Redis connection string (cache, distributed rate limits, Celery broker) | No |
+| `REDIS_URL` | Redis connection string (cache, distributed rate limits). Deliberately unset on Render — see the single-process invariant in CLAUDE.md | No |
 | `RESEND_API_KEY` | Resend API key (sending access) — **required for OTP login to work** | Yes |
 | `EMAIL_FROM` | Sender, e.g. `Wiestell <noreply@wiestell.com>` | No (has a default) |
 | `OTX_API_KEY` | AlienVault OTX API key | No |

@@ -329,11 +329,23 @@ async def get_ioc(ioc_id: str, db: AsyncSession = Depends(get_db)):
     return IOCDetailResponse.model_validate(ioc_data)
 
 
-@router.post("", response_model=IOCResponse, dependencies=[Depends(require_analyst)])
+@router.post("", response_model=IOCDetailResponse, dependencies=[Depends(require_analyst)])
 async def create_ioc(ioc_data: IOCCreate, db: AsyncSession = Depends(get_db)):
-    """Submit a new IOC and automatically trigger enrichment."""
-    from app.tasks.enrichment_tasks import enrich_ioc_task
-    
+    """Submit a new IOC, enrich it, and return the enriched record.
+
+    Enrichment runs in-request, as it does in `lookup_ioc`, `list_iocs`, `get_ioc`,
+    `search_iocs` and `trigger_enrichment`. This handler used to be the one outlier: it
+    dispatched to Celery with `enrich_ioc_task.delay(...)`, and that dispatch had been
+    silently doing NOTHING. `REDIS_URL` is unset, so Celery fell back to its default AMQP
+    broker, the connection was refused, and a bare `except Exception: pass` swallowed it
+    without even a log line. An analyst got a 200 and an IOC that was never enriched.
+    """
+    from app.services.enrichment_engine import enrich_ioc
+    from app.utils.sanitize import redact_secrets
+    import structlog
+
+    logger = structlog.get_logger()
+
     if not validate_ioc(ioc_data.type, ioc_data.value):
         detected = detect_ioc_type(ioc_data.value)
         if detected:
@@ -369,15 +381,43 @@ async def create_ioc(ioc_data: IOCCreate, db: AsyncSession = Depends(get_db)):
     )
     db.add(ioc)
     await db.flush()
-    
-    # Trigger background enrichment for newly created IOC
-    try:
-        enrich_ioc_task.delay(str(ioc.id))
-    except Exception:
-        # Don't fail the request if enrichment dispatch fails
-        pass
 
-    return IOCResponse.model_validate(ioc)
+    try:
+        await enrich_ioc(db, ioc)
+        await db.flush()  # Flush, not commit - get_db() owns the unit of work.
+        await db.refresh(ioc, ["enrichments"])
+    except Exception as e:
+        # `enrich_ioc` is not SUPPOSED to raise -- enrichers return {"error": ...} rather
+        # than throwing, and it writes inside begin_nested() so a duplicate-key race rolls
+        # back only the enrichment. If it raises anyway that is a real defect, so this
+        # logs at warning rather than swallowing. The guard exists only so an enrichment
+        # failure cannot fail the creation the analyst just made; the bare `except: pass`
+        # it replaces is precisely what kept the dead Celery dispatch invisible.
+        # Redacted because a driver error embeds the connection URI.
+        logger.warning(
+            "create_ioc_enrichment_failed",
+            ioc_id=str(ioc.id),
+            error=redact_secrets(str(e)),
+        )
+
+    enrichments = [
+        {"source": e.source,
+         "data": normalize_enrichment_for_display(e.source, e.data),
+         "enriched_at": e.enriched_at.isoformat()}
+        for e in ioc.enrichments
+    ]
+
+    # `sources` and `relationships` are empty BY CONSTRUCTION here, not by omission:
+    # IOCSource rows are written by feed ingestion and relationships by the correlation
+    # engine, and `enrich_ioc` creates neither (it only reads IOCSource for the source
+    # diversity term). Querying for them would spend two statements to prove it. If
+    # enrichment ever gains that side effect, load them here as `get_ioc` does.
+    ioc_response = IOCResponse.model_validate(ioc).model_dump()
+    ioc_response["enrichments"] = enrichments
+    ioc_response["sources"] = []
+    ioc_response["relationships"] = []
+
+    return IOCDetailResponse.model_validate(ioc_response)
 
 
 @router.post("/search", response_model=PaginatedIOCResponse)
@@ -531,7 +571,11 @@ async def get_enrichment(ioc_id: str, db: AsyncSession = Depends(get_db)):
         {
             "id": str(e.id),
             "source": e.source,
-            "data": e.data,
+            # Normalised like the other four enrichment-serving handlers. This one was
+            # missed on 2026-07-31: the Spec 6c guards are per-handler
+            # `inspect.getsource` checks and none of them named `get_enrichment`, so it
+            # served the pre-fix reputation MEAN rather than the strongest provider score.
+            "data": normalize_enrichment_for_display(e.source, e.data),
             "enriched_at": e.enriched_at.isoformat(),
             "expires_at": e.expires_at.isoformat() if e.expires_at else None,
         }

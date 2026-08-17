@@ -35,7 +35,7 @@ Wiestell ("SENTINEL" internally) is a self-hosted Threat Intelligence Platform f
    └──────┬───────┴───────┬───────┴──────┬───────┴────────┬───────┘
           ▼               ▼              ▼                ▼
      MySQL (SQLAlchemy 2 async / aiomysql)    External feed + enrichment APIs
-     Redis (optional: cache, rate limits, Celery broker)
+     Redis (optional: cache, rate limits)
 ```
 
 **Deployment reality vs. documentation.** The README describes PostgreSQL 16 + Docker Compose. The code targets **MySQL** (`mysql+aiomysql`, `json_contains`, naive-UTC datetimes, `INSERT IGNORE`), the Postgres service in `docker-compose.yml` is commented out, and the live deployment is a Hostinger MySQL instance with the API on Render/Vercel and the frontend on Vercel. Treat MySQL as the source of truth; the README's Postgres/Redis claims are stale.
@@ -45,7 +45,7 @@ Wiestell ("SENTINEL" internally) is a self-hosted Threat Intelligence Platform f
 | Mechanism | Location | Status |
 |---|---|---|
 | `asyncio` scheduler loop | `backend/app/services/feed_scheduler.py` | Implemented; **not started** — `lifespan()` deliberately skips it for serverless |
-| Celery worker + beat | `backend/app/tasks/` | Wired up but the whole `beat_schedule` is commented out |
+| ~~Celery worker + beat~~ | ~~`backend/app/tasks/`~~ | **Deleted 2026-08-17.** Beat was commented out, but `create_ioc` dispatched `enrich_ioc_task.delay()` into a broker that does not exist, swallowed by a bare `except: pass`. See item 20. |
 | HTTP-triggered cron | `POST /api/v1/feeds/sync-all` | **The one actually in use** (Vercel Cron / external scheduler) |
 
 ---
@@ -95,7 +95,6 @@ backend/
     enrichers/       Registry + all 9 BaseEnricher subclasses: geoip, whois, dns,
                      reputation, shodan, malwarebazaar, nvd, cvedetails, yaraify
     tests/           pytest suite (271 tests, no database required)
-    tasks/           Celery app + feed/enrichment tasks
     utils/           ioc_validator, stix_converter, rate_limiter, email_service,
                      db_retry, sanitize (← NEW: secret redaction)
   alembic/versions/  4 migrations
@@ -137,7 +136,7 @@ The most carefully engineered part of the codebase. IOCs are validated, normalis
 - a single `executemany UPDATE` for existing rows so InnoDB row locks are held for one statement instead of the whole Python loop,
 - a commit per chunk, and retry with exponential back-off on lock-wait timeout (1205) and deadlock (1213).
 
-Both async and sync variants exist (API path and Celery path).
+Only the async variant exists; the sync mirror was deleted on 2026-07-31 and the Celery path on 2026-08-17.
 
 ### Enrichment (`services/enrichment_engine.py` + `app/enrichers/`)
 Per IOC type, applicable sources are selected, cached non-expired rows are reused, and the remainder run **concurrently** via `asyncio.gather`. Writes happen inside a savepoint so a duplicate-key race rolls back only the enrichment, leaving the request's outer transaction usable. Blocking WHOIS runs in a thread pool. Once the pass completes, `_rescore_from_enrichment` recomputes the IOC's threat score so the enrichment-risk weight is applied to real data instead of an empty list.
@@ -214,7 +213,7 @@ Password → OTP → JWT. After this review the flow enforces: purpose-bound sin
 - Junk text committed into `README.md` and `render.yaml`.
 
 **Issues remaining (recommended, not blocking)**
-1. **Three competing schedulers** (asyncio loop, Celery beat, HTTP cron) with two of them dead code. Delete or clearly quarantine the unused paths.
+1. ~~**Three competing schedulers**~~ **Resolved 2026-08-17.** Celery beat and its package are deleted; the asyncio loop remains, implemented but never started, and is documented as such. HTTP cron is the live path.
 2. **`postcss` and `sharp` advisories persist** — both are pinned inside Next.js's own dependency tree, so npm's only offered "fix" is downgrading Next to v9 (rejected). They resolve when Next ships updated transitives. Exposure is limited: postcss runs at build time, and `sharp`/libvips only processes images passing through `next/image` (currently a local logo and favicon).
 3. **`iocs.manual_score_override` is not yet a column.** `calculate_threat_score` checks for it and returns it directly when present, so an analyst-set score can win outright — but the migration needs owner sign-off and does not ship with the scoring work. Until the column exists the hook is inert. This replaces the previous mechanism, which read back the computed `threat_score` field and so could not tell a human override from the engine's own last output. **Run-order note:** `scripts/rescore_corpus.py` recomputes unconditionally, so it probes `information_schema` for the column and adds `WHERE manual_score_override IS NULL` when it exists. Run the rescore *before* any override values are set, or those rows are simply skipped.
 4. **Duplicated endpoint logic.** IOC detail assembly is copy-pasted across `lookup_ioc`, `get_ioc` and `search_iocs`; enrichment triggering is duplicated in `ioc.py` and `enrichment.py`. Extract shared helpers.
@@ -263,7 +262,7 @@ Password → OTP → JWT. After this review the flow enforces: purpose-bound sin
 
     It is not merely unused, it is actively costly: `_ingest_chunk` and `_ingest_chunk_sync` are two near-identical copies of the most intricate code in the repo, and they have drifted twice inside a single change set — a Section 0.5 unbound `enrichment_map` and a Section 3 `new_ioc_rows` NameError, both in the sync half, both invisible to `compileall`. Every future scoring or ingestion change has to be made twice and reviewed twice.
 
-    Deleting it means removing `ingest_iocs_sync`, `_ingest_chunk_sync`, `_process_sync_chunk_with_retry`, `_distinct_feed_counts_sync`, `_already_linked_sync` and `_enrichments_for_sync`, plus the Celery feed task that calls them, and repointing `tests/test_ingest_write_volume.py` at the async path. Roughly 250 lines. Not done here because it is unrelated to scoring and deserves its own reviewed pass.
+    Deleting it means removing `ingest_iocs_sync`, `_ingest_chunk_sync`, `_process_sync_chunk_with_retry`, `_distinct_feed_counts_sync`, `_already_linked_sync` and `_enrichments_for_sync`, plus the Celery feed task that calls them (both since deleted — see item 20), and repointing `tests/test_ingest_write_volume.py` at the async path. Roughly 250 lines. Not done here because it is unrelated to scoring and deserves its own reviewed pass.
 
 0d. **FIXED 2026-07-31 — the sighting-count inflation was untouched on 60% of records.** Section 3's re-read gate keys on the source's own timestamp advancing. Five connectors supply no per-record timestamps at all and are full-list exports — the whole list republished every sync:
 
@@ -329,6 +328,25 @@ Password → OTP → JWT. After this review the flow enforces: purpose-bound sin
 
     **Interim option if it becomes a problem before the schema work lands:** cache `/attack/matrix` and `/attack/heatmap` rather than `/dashboard/stats` — the matrix is now the expensive endpoint and its data changes only when ingestion adds technique mappings, so a short TTL is honest there in a way it never was for a 3-statement aggregate.
 
+20. **FIXED 2026-08-17 — analyst-submitted IOCs were never enriched, silently, and this document called the responsible module "dead code".** `create_ioc` was the only handler in `api/ioc.py` that did not await `enrich_ioc`; it dispatched `enrich_ioc_task.delay(str(ioc.id))` to Celery. `REDIS_URL` is unset in the deployed environment, so Celery fell back to its default AMQP broker and the call raised `OperationalError [WinError 10061] connection refused` — into a bare `except Exception: pass` with **no log line**. The endpoint returned 200. Nothing anywhere recorded that enrichment had not happened.
+
+    **The documentation actively concealed it.** Item 19's coverage table listed `tasks/*` as "dead code — the beat schedule is entirely commented out, so this is expected", and that was true of `celery_app` and `feed_tasks` and false of `enrichment_tasks`, which had a live caller in the API layer. The deletion was approved on the premise that all three were dead; checking before deleting is what surfaced it.
+
+    **Why it stayed invisible.** Three properties compounded: a queue dispatch is fire-and-forget by design, so no caller observes the result; the bare `except: pass` removed the only remaining signal; and the endpoint has **no frontend caller** — there is no `createIOC` wrapper in `src/lib/api.ts` — so no UI flow would have shown a missing-enrichment symptom. **A queue dispatch inside a bare except is indistinguishable from working code.**
+
+    **Fixed** by awaiting `enrich_ioc(db, ioc)` in-request, matching the five siblings (`lookup_ioc`, `list_iocs`, `get_ioc`, `search_iocs`, `trigger_enrichment`). The guard now logs at warning with a redacted exception string rather than swallowing. The response model moved `IOCResponse` → `IOCDetailResponse` so the caller sees the enrichment it just paid for; that is purely additive (`IOCDetailResponse(IOCResponse)` adds three list fields), so no client field disappeared. `app/tasks/`, both compose services and the `celery==5.4.0` pin are gone; `redis` stays because `utils/rate_limiter` still reads `REDIS_URL`.
+
+    **Affected population is small, bounded, and self-repairing — it is NOT the item-16 frozen population.** These IOCs have *no* enrichment rows, which is exactly what the auto-enrich paths select for: `get_ioc` enriches whenever `not ioc.enrichments`, and `list_iocs` does under `enrich=true`. So they repair on first view. A rescore will **not** move them (no evidence → the 20.0 zero-evidence neutral, recomputed to 20.0), which is recorded in `rescore_corpus.py` so a flat band is not misread as skipped rows. **Owner query** — not determinable from this repo, since feed ingestion writes an `ioc_sources` row and manual creation does not:
+
+    ```sql
+    SELECT COUNT(*) FROM iocs i
+     LEFT JOIN ioc_sources s ON s.ioc_id = i.id
+     LEFT JOIN enrichments e ON e.ioc_id = i.id
+     WHERE s.ioc_id IS NULL AND e.ioc_id IS NULL;
+    ```
+
+    **Found alongside it: `get_enrichment` served the stale reputation mean for two and a half weeks.** `GET /api/v1/iocs/{id}/enrichment` returned `e.data` raw, bypassing `normalize_enrichment_for_display`. The Spec 6c guards missed it because they call `inspect.getsource` on **named** handlers and none named this one — the same shape of gap as the four extraction failures in CLAUDE.md. Live impact was limited: `getIOCEnrichment` is exported from `src/lib/api.ts` and never invoked, the same latent shape as `getTrends`. The replacement guard walks the AST of every module in `app/api` for dict literals with a `"data"` key, so new handlers are covered by default, and it asserts the walker found the known sites first — neutering the walker makes the raw-payload assertion pass vacuously, and only the non-emptiness check catches it.
+
 19. **Fifteen of 69 `app/` modules have no direct test reference.** Measured 2026-08-04 after a sync→async signature change on the entire email transport kept 589 tests green — email was completely untested, the same class as the untested sync ingestion path deleted earlier. A module list is more useful than a coverage percentage, because it says *where* the next silent change can hide.
 
     **Genuinely dark — no test references them at all:**
@@ -342,11 +360,11 @@ Password → OTP → JWT. After this review the flow enforces: purpose-bound sin
     | `services/report_generator`, `api/reports` | 10.7 KB | report generation, no coverage |
     | `enrichers/shodan_enricher` | 2.3 KB | deliberately unscored, so low risk |
     | `feeds/mitre_attack` | 2.7 KB | the seed loader, run manually |
-    | `tasks/*` (celery_app, enrichment_tasks) | 7.6 KB | **dead code** — the beat schedule is entirely commented out, so this is expected |
+    | ~~`tasks/*` (celery_app, enrichment_tasks)~~ | ~~7.6 KB~~ | **Wrong, and deleted 2026-08-17.** Called "dead code" here because the beat schedule was commented out — but `enrichment_tasks` had a live caller in `create_ioc`. See item 20. |
 
     **Partially covered, listed for accuracy:** `api/contact` + `schemas/contact` + `models/contact` — the *routes* are in the `test_access_control` audit (auth boundaries are asserted) but no test exercises the handler body, and `POST /contact/submit` is **public**. `services/correlation_engine` is referenced by `test_mysql_integration.py`, so the `json_contains` bug class that once crashed it is covered.
 
-    **The two worth acting on first** are `utils/ioc_validator` (a validation function on the hot path with no direct assertions — a loosened check would pass every existing test) and the three feed parsers (13.5 KB of OTX parsing that only fails in production). The Celery modules are dead and should be deleted rather than tested.
+    **The two worth acting on first** are `utils/ioc_validator` (a validation function on the hot path with no direct assertions — a loosened check would pass every existing test) and the three feed parsers (13.5 KB of OTX parsing that only fails in production). The Celery modules were assumed dead and deleted on 2026-08-17 — after checking, which is how the live caller in `create_ioc` was found. **`utils/ioc_validator` was done on 2026-08-17** (92 tests, mutation-verified against four loosenings). The feed parsers remain; `otx_alienvault` is deliberately deferred to Phase 4, which rewrites it.
 
 16. **THE RESCORE IS A UAT BLOCKER, NOT HOUSEKEEPING.** `scripts/rescore_corpus.py` has never been run. Every scoring change since 2026-07-28 alters how a score is *computed* and none of them touch what is *stored*, because nothing re-scores an existing row: ingestion skips rows whose evidence has not changed, and the enrichment cron selects only never-enriched IOCs.
 

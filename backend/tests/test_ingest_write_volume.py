@@ -357,24 +357,11 @@ class TestSyncPathIsGone:
                 "Wrap the async path with asyncio.run instead."
             )
 
-    def test_the_celery_task_drives_the_async_path(self):
-        import inspect
-
-        from app.tasks import feed_tasks
-
-        # Check for a *call*, not a mention: the module comments explain why the
-        # sync mirror was deleted, so a substring test on the name matches the
-        # explanation and fails for the wrong reason.
-        import ast
-
-        tree = ast.parse(inspect.getsource(feed_tasks))
-        called = {
-            getattr(n.func, "id", None) or getattr(n.func, "attr", None)
-            for n in ast.walk(tree) if isinstance(n, ast.Call)
-        }
-        assert "ingest_iocs_sync" not in called
-        assert "ingest_iocs" in called, "the task no longer ingests at all"
-        assert "run" in called, "expected asyncio.run to drive the async path"
+    # `test_the_celery_task_drives_the_async_path` was deleted on 2026-08-17 with
+    # `app/tasks/` itself. It asserted that feed_tasks called the async ingest rather than
+    # the deleted sync mirror — a real guard while a Celery worker existed, and dead once
+    # the whole package went. The property it protected is now covered by the test above,
+    # which asserts the sync names are absent from `feed_ingestion` outright.
 
 
 class TestFullListExports:
