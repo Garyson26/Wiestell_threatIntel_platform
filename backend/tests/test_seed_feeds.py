@@ -168,3 +168,71 @@ class TestTheMissingFeedsAreStillDefined:
         make that permanent by omission rather than by decision.
         """
         assert slug in {f["slug"] for f in _seeder_module().FEEDS}
+
+
+class TestSeededUrlsMatchTheConnectors:
+    """`feed_sources.url` is DESCRIPTIVE — confirmed 2026-08-17, and worth stating.
+
+    No connector's ``__init__`` accepts a url and nothing assigns ``feed.url``; the
+    scheduler builds a connector as ``connector_class(api_key=api_key)`` and the class's
+    own ``url`` attribute is what ``fetch()`` uses. So this column cannot misroute a
+    fetch, which also settles the SSRF question: an admin CAN set it through
+    ``FeedCreate``/``FeedUpdate``, but nothing reads it back into a request. (It is still
+    redacted on read — see ``schemas/feed.py`` — because an operator could paste a keyed
+    URL into it and feed reads are viewer-level.)
+
+    Descriptive is not the same as unimportant: it is shown in the feeds UI, so a wrong
+    value misinforms an operator diagnosing a feed. This guard keeps the two in step,
+    and it earned its place immediately — ``feodo-tracker`` was seeded as
+    ``ipblocklist_recommended.txt`` while the connector fetched ``ipblocklist.csv``.
+    Production happened to hold the correct value, so seeding ``url`` would have replaced
+    a right value with a wrong one.
+    """
+
+    def test_every_seeded_url_matches_its_connector_class_attribute(self):
+        import importlib
+
+        from app.services.feed_scheduler import FEED_CONNECTORS
+
+        mod = _seeder_module()
+        checked, mismatches = 0, []
+        for feed in mod.FEEDS:
+            slug, seeded = feed["slug"], feed.get("url")
+            if not seeded:
+                continue
+            path = FEED_CONNECTORS[slug]
+            module_path, class_name = path.rsplit(".", 1)
+            connector_url = getattr(
+                getattr(importlib.import_module(module_path), class_name), "url", None
+            )
+            checked += 1
+            if connector_url and seeded != connector_url:
+                mismatches.append(f"{slug}\n      seed: {seeded}\n      conn: {connector_url}")
+
+        assert checked >= 10, f"only {checked} urls compared; the loop is not running"
+        assert not mismatches, (
+            "seeded url disagrees with the connector that actually fetches:\n  "
+            + "\n  ".join(mismatches)
+            + "\n\nThe connector's class attribute is authoritative; fix the seed entry."
+        )
+
+    def test_no_connector_accepts_a_url_argument(self):
+        """The SSRF question, asserted rather than left as prose."""
+        import importlib
+        import inspect
+
+        from app.services.feed_scheduler import FEED_CONNECTORS
+
+        offenders, checked = [], 0
+        for path in set(FEED_CONNECTORS.values()):
+            module_path, class_name = path.rsplit(".", 1)
+            cls = getattr(importlib.import_module(module_path), class_name)
+            checked += 1
+            if "url" in inspect.signature(cls.__init__).parameters:
+                offenders.append(class_name)
+        assert checked >= 10, f"only {checked} connectors inspected"
+        assert not offenders, (
+            f"{offenders} accept a url at construction. If the scheduler ever passes "
+            "feed.url there, an admin-settable column becomes an SSRF primitive on an "
+            "authenticated endpoint — feed CRUD lets an admin write any value."
+        )

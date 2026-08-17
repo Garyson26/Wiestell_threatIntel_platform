@@ -127,7 +127,12 @@ FEEDS = [
         "slug": "feodo-tracker",
         "description": "Feodo Tracker tracks botnet C2 infrastructure",
         "feed_type": "csv",
-        "url": "https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.txt",
+        # Must match FeodoTrackerFeed.url -- the connector's class attribute is what
+        # actually fetches; this column is descriptive only. This said
+        # ipblocklist_recommended.txt while the connector fetched ipblocklist.csv,
+        # found 2026-08-17. Production already held the correct value, so seeding url
+        # would have overwritten a right value with a wrong one.
+        "url": "https://feodotracker.abuse.ch/downloads/ipblocklist.csv",
         "is_enabled": True,
         "sync_frequency": 1800,
     },
