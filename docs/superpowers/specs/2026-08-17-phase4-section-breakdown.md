@@ -112,9 +112,41 @@ to share the 30-row write chunk. Nested loop: read 500, write and commit in sub-
 not reduce this: the gate removes *writes*, and you cannot decide to skip a row without
 reading it, so ~51,000 records per sync must be read regardless.
 
-> **GATE 2 — re-derive the §2.8 numbers with the new read cost and Q0.1's latency.**
-> If a full URLhaus sync now fits comfortably inside the idle window, Section D needs
-> resumability only *between* feeds and gets materially simpler. Decide this explicitly.
+> **GATE 2 — SPLIT, 2026-08-17.** Section B's merits do not depend on the latency
+> number: reading 500 rows instead of 30 removes the same round-trips whatever each one
+> costs. So the chunk split landed on its own merits, and the §2.8 re-derivation moved
+> out of this gate.
+>
+> **The §2.8 re-derivation is now a PHASE 6 (post-deploy) verification step**, because
+> Render→Hostinger latency cannot be measured before the service exists. Q0.1 as
+> originally framed is not answerable pre-deploy at all — timing from a Mumbai
+> workstation traverses a different path than Render's edge, so a pre-deploy figure is a
+> data point, not the answer. A timing loop against the production DSN from the owner's
+> machine would give a **lower bound** if one is wanted; it is an owner action, since no
+> DSN exists in the working environment and connecting to production is out of scope here.
+>
+> What Phase 6 must re-derive, once real latency is known: whether one feed's sync fits
+> inside the 15-minute idle window, and therefore whether Section D needs resumability
+> *within* a feed or only *between* feeds.
+
+**MEASURED RESULT (2026-08-17, MariaDB 11.8, statement counts on the wire).** The design
+note's ~94% figure is READ statements only; total statements include writes, so the
+end-to-end saving is smaller and the two should not be conflated:
+
+| scenario | 450 rows, reads at 30 | reads at 500 | total saving |
+|---|---|---|---|
+| first sync (all rows new) | 77 | 63 | 18% |
+| **steady state (all rows exist)** | **106** | **64** | **40%** |
+
+The steady-state saving of 42 statements is *exactly* the predicted read saving —
+15 chunks × 3 reads = 45, down to 1 × 3 = 3 — so **reads did drop 93%**, as designed.
+Total statements fall 40% because the write path is untouched, which is deliberate.
+
+The first-sync row matters for a different reason: with every row new, `existing_map` is
+empty and two of the three reads short-circuit without querying, so only one read runs per
+chunk. **A test measuring a first sync would pass with the feature reverted** — which the
+first version of `test_read_chunk_sizing.py` did. It now populates first and measures the
+second pass.
 
 ---
 
@@ -244,7 +276,7 @@ Gate 0  (owner: Q0.1 latency, Q0.2 enrichment counts)   ── blocks D and E on
   │
   A  columns + cadence ─────────► GATE 1  shippable increment
   │
-  B  read/write chunk split ────► GATE 2  re-derive §2.8; may declass the blocker
+  B  read/write chunk split ────► DONE    §2.8 re-derivation deferred to Phase 6
   │
   C  taxonomy + KEV/MISP dates ─► GATE 3  score movement characterised
   │

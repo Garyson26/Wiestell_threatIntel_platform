@@ -48,6 +48,39 @@ _DEFAULT_BATCH_SIZE = 30
 # High-volume feeds require larger batches to complete within timeout limits
 _HIGH_VOLUME_BATCH_SIZE = 500
 
+# ── Read chunk size — Phase 4 Section B (design notes §2.9) ──────────────────
+#
+# READS AND WRITES DO NOT NEED THE SAME CHUNK SIZE, and coupling them was costing
+# ~94% of the read round-trips.
+#
+# The 30-row write chunk exists for exactly one reason: to hold InnoDB row locks for the
+# duration of a single `executemany` UPDATE rather than across a Python loop. That is a
+# WRITE property. Plain SELECTs under REPEATABLE READ take no row locks at all — they are
+# consistent reads served from the MVCC snapshot — so the read phase was paying a
+# lock-contention tax it does not owe.
+#
+# Three reads run per chunk before any write: the `iocs` lookup, the grouped
+# distinct-feed count, and the already-linked set. Amortised over 30 rows that is one
+# round-trip per ten rows; over 500 it is one per 167.
+#
+#   read chunk | URLhaus (15,524 rows) read statements
+#   -----------|---------------------------------------
+#         30   | ~1,554
+#        500   | ~96                      (-94%)
+#
+# WRITES STAY AT 30, and the commit stays per write batch. A 500-row read chunk that
+# committed once at the end would hold locks across ~17 write statements — strictly worse
+# than today, and it would undo the thing the chunking was built for. The shape is a
+# NESTED LOOP: read 500, then write and commit in sub-batches of 30.
+#
+# Safe across the intermediate commits only because `AsyncSessionLocal` sets
+# `expire_on_commit=False`. With the default True, every ORM object in the prefetched map
+# would expire on the first sub-batch commit and the next attribute access would issue a
+# refresh SELECT per row — an N+1 that would more than undo the saving. Verified, not
+# assumed; `tests/test_read_chunk_sizing.py` counts statements across a multi-commit read
+# chunk and fails if it scales with the write-chunk count.
+_READ_CHUNK_SIZE = 500
+
 
 def _now() -> datetime:
     """Current UTC time, naive and whole-second — the shape MySQL DATETIME holds.
@@ -151,15 +184,30 @@ async def ingest_iocs(
     count = 0
     batch_num = 0
 
-    for chunk_start in range(0, len(valid), batch_size):
-        batch_num += 1
-        chunk = valid[chunk_start : chunk_start + batch_size]
-        chunk_count = await _process_async_chunk_with_retry(session, feed_id, chunk)
-        count += chunk_count
-        
-        # Log progress every 10 batches to track ingestion progress
-        if batch_num % 10 == 0 or batch_num == total_batches:
-            logger.info("feed_ingest_progress", feed=feed_name, batch=batch_num, total_batches=total_batches, processed=count)
+    # NESTED LOOP — Section B. The outer loop is the READ unit, the inner loop is the
+    # WRITE-and-commit unit. They are different sizes on purpose: see _READ_CHUNK_SIZE.
+    # A read chunk smaller than the write chunk would be pointless but not wrong, so the
+    # inner slice is taken from the read chunk rather than from `valid` directly.
+    read_chunk_size = max(_READ_CHUNK_SIZE, batch_size)
+
+    for read_start in range(0, len(valid), read_chunk_size):
+        read_chunk = valid[read_start : read_start + read_chunk_size]
+
+        # Three statements for the whole read chunk, not three per write chunk. Issued
+        # outside any write transaction — these take no row locks.
+        prefetched = await _prefetch_reads(session, feed, read_chunk)
+
+        for chunk_start in range(0, len(read_chunk), batch_size):
+            batch_num += 1
+            chunk = read_chunk[chunk_start : chunk_start + batch_size]
+            chunk_count = await _process_async_chunk_with_retry(
+                session, feed_id, chunk, prefetched=prefetched
+            )
+            count += chunk_count
+
+            # Log progress every 10 batches to track ingestion progress
+            if batch_num % 10 == 0 or batch_num == total_batches:
+                logger.info("feed_ingest_progress", feed=feed_name, batch=batch_num, total_batches=total_batches, processed=count)
 
     # Re-fetch feed after the last chunk commit for the final status update.
     result = await session.execute(
@@ -419,10 +467,49 @@ async def _enrichments_for_async(
     return grouped
 
 
+async def _prefetch_reads(
+    session: AsyncSession,
+    feed: FeedSource,
+    rows: List[Dict[str, Any]],
+) -> Tuple[Dict[Tuple[str, str], IOC], Dict[str, int], set]:
+    """The three lock-free reads, for a whole READ chunk rather than a write chunk.
+
+    Returns ``(existing_map, feed_counts, linked_to_this_feed)`` — the same three
+    structures ``_ingest_chunk`` would otherwise build for itself, just computed over
+    500 rows instead of 30.
+
+    Returning a SUPERSET is safe and is the point: ``_ingest_chunk`` looks everything up
+    by key (``(type, value)``) or by id, so a map covering rows outside its own write
+    chunk is simply never consulted for them. Nothing iterates these maps as if they
+    described the chunk.
+
+    Enrichment is deliberately NOT prefetched here. It is fetched after the re-read gate,
+    for only the rows that will actually be re-scored — for URLhaus in steady state the
+    gate skips nearly everything, so hoisting it would turn a usually-skipped query into
+    one that always runs over 500 rows. That would be a pessimisation dressed as
+    consistency.
+    """
+    if not rows:
+        return {}, {}, set()
+
+    keys: List[Tuple[str, str]] = [(r["type"], r["value"]) for r in rows]
+    existing_rows = await session.execute(
+        select(IOC).where(tuple_(IOC.type, IOC.value).in_(keys))
+    )
+    existing_map: Dict[Tuple[str, str], IOC] = {
+        (ioc.type, ioc.value): ioc for ioc in existing_rows.scalars()
+    }
+    existing_ids = [ioc.id for ioc in existing_map.values()]
+    feed_counts = await _distinct_feed_counts_async(session, existing_ids)
+    linked_to_this_feed = await _already_linked_async(session, feed.id, existing_ids)
+    return existing_map, feed_counts, linked_to_this_feed
+
+
 async def _ingest_chunk(
     session: AsyncSession,
     feed: FeedSource,
     chunk: List[Dict[str, Any]],
+    prefetched: Optional[Tuple[Dict[Tuple[str, str], IOC], Dict[str, int], set]] = None,
 ) -> int:
     """Process one chunk: bulk-lookup existing IOCs, update or insert, link sources.
 
@@ -434,24 +521,20 @@ async def _ingest_chunk(
     workers. New INSERTs still use individual savepoints to handle the
     UNIQUE(type, value) race with other concurrent workers gracefully.
     """
-    # Build (type, value) lookup key for all IOCs in this chunk.
-    keys: List[Tuple[str, str]] = [(r["type"], r["value"]) for r in chunk]
-
-    # Single SELECT — read phase is lock-free (no FOR UPDATE here).
-    existing_rows = await session.execute(
-        select(IOC).where(tuple_(IOC.type, IOC.value).in_(keys))
-    )
-    existing_map: Dict[Tuple[str, str], IOC] = {
-        (ioc.type, ioc.value): ioc for ioc in existing_rows.scalars()
-    }
-
-    # How many DISTINCT feeds already report each existing IOC. Fetched as one
-    # grouped query before the loop, matching the bulk-read/bulk-write shape of
-    # the rest of this function — per-row queries here would reintroduce the
-    # lock-hold-during-Python-work problem the chunking is designed to avoid.
-    existing_ids = [ioc.id for ioc in existing_map.values()]
-    feed_counts = await _distinct_feed_counts_async(session, existing_ids)
-    linked_to_this_feed = await _already_linked_async(session, feed.id, existing_ids)
+    # The three lock-free reads. Normally supplied by `_prefetch_reads` over a 500-row
+    # READ chunk (Section B); computed here for this write chunk alone when `prefetched`
+    # is None — which is the retry path, and deliberately so. A retry follows a rollback,
+    # and another worker may have inserted rows in the meantime; reusing the pre-rollback
+    # snapshot would make this chunk treat a now-existing row as new, so `INSERT IGNORE`
+    # would drop it and the source link and sighting count would never be written. The
+    # retry therefore pays the old per-chunk read cost, which is correct: retries are
+    # rare by design, and correctness under concurrency is what the retry exists for.
+    if prefetched is not None:
+        existing_map, feed_counts, linked_to_this_feed = prefetched
+    else:
+        existing_map, feed_counts, linked_to_this_feed = await _prefetch_reads(
+            session, feed, chunk
+        )
     # Enrichment evidence for the re-scoring below. Without it every re-read
     # overwrote an enrichment-informed score with a non-enriched one — see
     # _enrichments_for_async.
@@ -639,6 +722,7 @@ async def _process_async_chunk_with_retry(
     chunk: List[Dict[str, Any]],
     max_retries: int = 3,
     base_delay: float = 1.0,
+    prefetched: Optional[Tuple[Dict[Tuple[str, str], IOC], Dict[str, int], set]] = None,
 ) -> int:
     """Process one async chunk and commit; retry on InnoDB lock contention.
 
@@ -663,7 +747,16 @@ async def _process_async_chunk_with_retry(
             if not feed:
                 return 0
 
-            count = await _ingest_chunk(session, feed, chunk)
+            # PREFETCHED DATA IS USED ON THE FIRST ATTEMPT ONLY. After a rollback the
+            # snapshot it was read under is gone, and another worker may have inserted
+            # rows this chunk believes are new — which `INSERT IGNORE` would then
+            # silently drop, losing the source link and the sighting increment. So a
+            # retry re-reads. It costs the old three statements for that one chunk,
+            # which is the right trade: retries are rare by design and this is exactly
+            # the concurrency case they exist to handle.
+            count = await _ingest_chunk(
+                session, feed, chunk, prefetched=prefetched if attempt == 0 else None
+            )
             # Commit immediately — this releases all InnoDB row locks and is
             # the primary defence against ER_LOCK_WAIT_TIMEOUT (1205) when
             # multiple workers update overlapping IOC sets concurrently.
