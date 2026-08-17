@@ -195,7 +195,10 @@ survivor with `INSERT ... IGNORE`, then delete the losers and rescore the surviv
     [2026-07-30-sighting-count-and-recency-design.md](2026-07-30-sighting-count-and-recency-design.md).
     The rescore reads those fields directly, so running it first would bake the
     inflation in permanently.
-11. Only then run `scripts/rescore_corpus.py --dry-run`, and the write pass after
+11. Only then run `scripts/rescore_corpus.py --dry-run` — set `DATABASE_URL` and
+    `SECRET_KEY` first, and note PowerShell uses `$env:NAME = "..."` as separate
+    statements rather than `VAR=value cmd`, which is a parse error there — and the
+    write pass after
     sign-off on the distribution.
 
 ## 5. Open questions for the owner

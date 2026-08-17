@@ -27,6 +27,7 @@ SECURITY PROPERTIES THAT MUST SURVIVE ANY CHANGE HERE (each has a test):
   * alert email stays opt-in behind `ENABLE_ERROR_EMAILS`.
 """
 
+import asyncio
 import html
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
@@ -70,6 +71,28 @@ _RETRYABLE_NAMES = frozenset({
 
 # Recorded separately because these are not failures to retry but a state to SURFACE.
 _QUOTA_NAMES = frozenset({"daily_quota_exceeded", "monthly_quota_exceeded"})
+
+# OBSERVED on the live 200 response 2026-08-04, not documented in the error reference:
+#
+#   ratelimit-limit: 10      requests per second
+#   ratelimit-remaining: 9
+#   ratelimit-reset: 1       seconds until the window rolls
+#
+# So the `rate_limit_exceeded` threshold is READABLE per request rather than inferred, and
+# the budget is 10/second. That is far above anything this application generates - an OTP
+# is one request per login - so this is a cheap signal rather than a live problem.
+#
+# Backing off proactively when the remaining budget reaches zero is still worth doing: it
+# converts a 429 plus a retry into a short wait, and it costs one header read. The threshold
+# is 1 rather than 0 because the header reports the budget AFTER this request, so 0 means
+# the next one is refused.
+_RATELIMIT_REMAINING_HEADER = "ratelimit-remaining"
+_RATELIMIT_RESET_HEADER = "ratelimit-reset"
+
+# Never sleep longer than this on a proactive back-off. The reset window is one second, so
+# a larger value means the header is reporting something unexpected and waiting on it would
+# hold a login request open.
+_MAX_BACKOFF_SECONDS = 2.0
 
 
 def _is_retryable(status_code: int, name: str) -> bool:
@@ -188,6 +211,31 @@ def _parse_error(response: httpx.Response) -> Tuple[str, str]:
     return str(body.get("name") or ""), str(body.get("message") or "")[:300]
 
 
+async def _respect_rate_limit(response: "httpx.Response") -> None:
+    """Wait out the window when the response says the next request would be refused.
+
+    Resend reports the per-second budget on every response (observed: limit 10, and a
+    one-second reset). Reading it turns a 429-then-retry into a short wait, which matters
+    only under burst - at OTP volume the budget is never approached - but it is one header
+    read and it makes the retry more likely to succeed rather than merely repeated.
+
+    Silent on anything unexpected: a missing, non-numeric or implausibly large value means
+    the contract changed, and guessing would hold a login request open.
+    """
+    remaining = response.headers.get(_RATELIMIT_REMAINING_HEADER)
+    if remaining is None:
+        return
+    try:
+        if int(remaining) > 0:
+            return
+        wait = float(response.headers.get(_RATELIMIT_RESET_HEADER, 1))
+    except (TypeError, ValueError):
+        return
+    if 0 < wait <= _MAX_BACKOFF_SECONDS:
+        logger.info("email_rate_limit_backoff", seconds=wait)
+        await asyncio.sleep(wait)
+
+
 async def _post(payload: Dict[str, Any], idempotency_key: Optional[str]) -> bool:
     """POST one prepared payload, with at most one retry. Never raises.
 
@@ -242,6 +290,7 @@ async def _post(payload: Dict[str, Any], idempotency_key: Optional[str]) -> bool
             logger.warning(
                 "email_send_retrying", status=response.status_code, name=name or "unknown"
             )
+            await _respect_rate_limit(response)
             continue
 
         # `message` can name a domain or an address, so it is logged but never returned to

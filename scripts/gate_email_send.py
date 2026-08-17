@@ -5,8 +5,26 @@ Spec 7 Section 5: the acceptance criterion for the SMTP -> Resend migration is a
 delivered to a real inbox, because a mock proves nothing about blocked egress ports, domain
 verification, or provider behaviour. This is that check.
 
+bash / zsh:
+
     RESEND_API_KEY=re_xxx GATE_RECIPIENT=you@example.com \
         python scripts/gate_email_send.py
+
+PowerShell (`VAR=value cmd` is a PARSE ERROR there, not a working variant):
+
+    $env:RESEND_API_KEY = "re_xxx"
+    $env:GATE_RECIPIENT = "you@example.com"
+    python scripts/gate_email_send.py
+
+The PowerShell form leaves the key in the session environment AND in the PSReadline history
+file. Clear both afterwards:
+
+    Remove-Item Env:RESEND_API_KEY
+    # then delete the line from (Get-PSReadlineOption).HistorySavePath
+
+This is exactly why the script takes no `--key` flag: a flag would put the key in shell
+history as well, AND in the process table where any local user can read it with `ps`.
+Reading from the environment keeps it out of the process table at least.
 
 NOT IMPORTED BY ANYTHING AT RUNTIME. It lives in scripts/ beside the other operator tools
 (seed_feeds, seed_mitre, rescore_corpus), none of which the application imports. It is a
