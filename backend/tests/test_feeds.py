@@ -220,6 +220,17 @@ class TestSchedulerAllowlistEnforcement:
             id = "feed-1"
             slug = "urlhaus"
             api_key_env = "SECRET_KEY"
+            # Mirrors the real FeedSource columns the sync path touches. A stub that
+            # omits a column does not fail safe: this test broke with AttributeError
+            # when Phase 4 added `consecutive_failures`, which is the good outcome —
+            # but a stub that silently absorbed unknown attributes (a MagicMock, say)
+            # would have kept passing while asserting nothing about the new state.
+            # Keep this a plain class for exactly that reason.
+            last_attempt_at = None
+            last_sync_at = None
+            last_sync_status = None
+            last_sync_error = None
+            consecutive_failures = 0
 
         class _Session:
             async def __aenter__(self):

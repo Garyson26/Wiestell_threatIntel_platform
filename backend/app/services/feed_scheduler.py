@@ -92,6 +92,17 @@ async def _run_feed_sync_inner(feed_id: str, feed_slug: str, connector_path: str
     module = importlib.import_module(module_path)
     connector_class = getattr(module, class_name)
 
+    # CAPTURED BEFORE THE FETCH, and this ordering is the Phase 4 cadence fix.
+    #
+    # Next-due is computed as `last_attempt_at + sync_frequency`. If that timestamp were
+    # taken at completion, every interval would silently become
+    # `sync_frequency + sync_duration` and drift further on each cycle — a feed set to 6h
+    # against a 6h cron would never fire on schedule, because by the time the next tick
+    # arrives it is always a few minutes short of due. Taking it at the start makes the
+    # interval exact for every value of sync_frequency, including sync_frequency ==
+    # cron_interval. See the design notes §1.3.
+    attempt_started_at = datetime.now(timezone.utc).replace(tzinfo=None)
+
     # Resolve API key and release the connection before the (potentially slow) HTTP fetch.
     api_key: Optional[str] = None
     async with AsyncSessionLocal() as session:
@@ -100,6 +111,14 @@ async def _run_feed_sync_inner(feed_id: str, feed_slug: str, connector_path: str
         if not feed:
             logger.error("run_feed_sync_not_found", feed_id=feed_id)
             return
+
+        # Stamped here, in the same session that resolves the key, so it is committed
+        # BEFORE the fetch begins. If it were written only at the end, a sync that
+        # crashes the process — or is killed by a Render spin-down mid-fetch — would
+        # leave the feed looking un-attempted and it would be retried immediately on
+        # every subsequent tick. Written on every attempt, success or failure.
+        feed.last_attempt_at = attempt_started_at
+        await session.commit()
         if feed.api_key_env:
             # Only feed-key variables may be dereferenced. Without this check a
             # feed row pointing at SECRET_KEY / DATABASE_URL / RESEND_API_KEY
@@ -129,8 +148,13 @@ async def _run_feed_sync_inner(feed_id: str, feed_slug: str, connector_path: str
             result = await session.execute(select(FeedSource).where(FeedSource.id == feed_id))
             feed = result.scalar_one_or_none()
             if feed:
-                feed.last_sync_at = datetime.utcnow()
+                # `last_sync_at` is deliberately NOT touched here. It means "last
+                # SUCCESSFUL ingest" as of revision a7b8c9d00004, and advancing it on a
+                # failure is what previously let a permanently broken feed look healthy
+                # on dashboard/feed-health. The attempt is already recorded —
+                # last_attempt_at was stamped before the fetch.
                 feed.last_sync_status = "failed"
+                feed.consecutive_failures = (feed.consecutive_failures or 0) + 1
                 # Driver/HTTP errors can embed credentials — store a scrubbed
                 # copy since this column is served to API clients.
                 feed.last_sync_error = redact_secrets(exc)[:2000]
@@ -152,6 +176,7 @@ async def _run_feed_sync_inner(feed_id: str, feed_slug: str, connector_path: str
                 count = await ingest_iocs(session, feed, iocs, batch_size=batch_size)
                 # ingest_iocs already sets last_sync_status, last_sync_at, and ioc_count
                 feed.last_sync_error = None  # Clear any previous error
+                feed.consecutive_failures = 0  # a success ends any back-off streak
                 _check_window_continuity(feed, connector)
                 await session.commit()
                 logger.info("run_feed_sync_complete", feed=feed_slug, iocs_ingested=count)
@@ -254,8 +279,12 @@ async def _mark_failed(feed_id: str, error: str) -> None:
         result = await session.execute(select(FeedSource).where(FeedSource.id == feed_id))
         feed = result.scalar_one_or_none()
         if feed:
-            feed.last_sync_at = datetime.utcnow()
+            # Same rule as the fetch-failure path: `last_sync_at` means "last SUCCESSFUL
+            # ingest" (revision a7b8c9d00004) and must not advance on a failure, or a
+            # permanently broken feed reads as recently synced. The attempt itself is
+            # already recorded — last_attempt_at is stamped before the fetch.
             feed.last_sync_status = "failed"
+            feed.consecutive_failures = (feed.consecutive_failures or 0) + 1
             feed.last_sync_error = redact_secrets(error)[:2000]
             await session.commit()
 
@@ -284,7 +313,16 @@ async def _tick() -> None:
             continue  # already syncing, skip
 
         freq = feed.sync_frequency or 3600
-        last = feed.last_sync_at  # naive UTC from MySQL, or None
+        # `last_attempt_at`, NOT `last_sync_at`. The attempt timestamp is stamped before
+        # the fetch, so this yields exact intervals; last_sync_at is stamped at
+        # completion and would make every interval sync_frequency + sync_duration.
+        # last_sync_at is now purely a feed-health field. See design notes §1.3.1.
+        #
+        # Migration a7b8c9d00004 backfills last_attempt_at from last_sync_at, so
+        # existing feeds are not all judged overdue on the first tick after deploy. A
+        # genuinely new feed row still has NULL here and fires immediately, which is
+        # correct.
+        last = feed.last_attempt_at  # naive UTC from MySQL, or None
         overdue = last is None or (now - last).total_seconds() >= freq
 
         if overdue:
