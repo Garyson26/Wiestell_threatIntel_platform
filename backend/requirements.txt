@@ -1,23 +1,23 @@
 # FastAPI & ASGI
-fastapi==0.115.6          # >=0.115.3 fixes starlette multipart DoS (CVE-2024-47874)
-uvicorn[standard]==0.34.0
+fastapi==0.141.1          # >=0.115.3 fixes starlette multipart DoS (CVE-2024-47874)
+uvicorn[standard]==0.52.3
 python-multipart==0.0.32  # form parser. NOTE: no endpoint accepts multipart/form-data
                           # or file uploads (verified 2026-08-03), so its advisories
                           # -- arbitrary file write, unbounded-header DoS, quadratic
                           # querystring -- are unreachable in this application.
 
 # Database
-sqlalchemy==2.0.36
+sqlalchemy==2.0.52
 aiomysql==0.3.2           # 0.2.0 allowed arbitrary client file read via a malicious
                           # MySQL server (LOAD DATA LOCAL INFILE class). Low probability
                           # but the host is a SHARED Hostinger account.
                           # database.py monkeypatches Connection.ensure_closed -- see
                           # the comment there; re-verify against any future bump.
-pymysql==1.1.1            # fixes SQL injection via crafted dates (CVE-2024-36039)
+pymysql==1.2.0            # fixes SQL injection via crafted dates (CVE-2024-36039)
 cryptography==50.0.0      # the reachable advisory is the vulnerable OpenSSL bundled in
                           # the wheels (affects TLS). PKCS#7 enveloped-data decryption
                           # and SECT-curve validation are not used anywhere here.
-alembic==1.14.0
+alembic==1.19.1
 
 # Redis
 redis==5.2.1
@@ -28,9 +28,9 @@ redis==5.2.1
 # exist. redis-py stays: utils/rate_limiter still uses it.
 
 # Validation & Serialization
-pydantic==2.10.4
-pydantic-settings==2.7.0
-email-validator==2.2.0    # backs pydantic EmailStr
+pydantic==2.13.4
+pydantic-settings==2.15.0
+email-validator==2.3.0    # backs pydantic EmailStr
 
 # HTTP Client
 httpx==0.28.1
@@ -43,8 +43,8 @@ aiohttp==3.14.3           # NOT imported by this codebase -- it is a hard depend
                           # non-negotiated compressed frames.
 
 # Enrichment
-python-whois==0.9.5
-dnspython==2.7.0
+python-whois==0.9.6
+dnspython==2.8.0
 geoip2==4.8.0
 # shodan==1.31.0  # Optional - not compatible with Vercel serverless (no binary wheels)
 
@@ -60,14 +60,14 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.2.1
 
 # STIX
-stix2==3.0.1
+stix2==3.0.2
 
 # Utilities
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 structlog==24.4.0
-tenacity==9.0.0
-croniter==6.0.0
-jinja2==3.1.5             # fixes sandbox breakouts in <3.1.5
+tenacity==9.1.4
+croniter==6.2.4
+jinja2==3.1.6             # fixes sandbox breakouts in <3.1.5
 
 # REMOVED 2026-07-31 (owner decision): weasyprint==63.1 and pandas==2.2.3.
 #
