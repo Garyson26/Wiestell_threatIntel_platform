@@ -51,8 +51,15 @@ database and stays around five seconds. The MySQL tier is opt-in:
 
 ```bash
 docker compose up -d db                           # MySQL 8 on 127.0.0.1:3307
-cd backend && python -m pytest -m mysql           # ~80s
+cd backend
+python -m pytest -m mysql                         # ~80s
 ```
+
+(Written without `&&` deliberately: it is a **parse error** in Windows PowerShell 5.1 —
+"the token '&&' is not a valid statement separator in this version" — not a missing
+convenience, so the line fails outright rather than degrading. Separate lines run
+identically in bash and PowerShell. Where a short-circuit genuinely matters, PowerShell
+spells it `A; if ($?) { B }`.)
 
 It covers what a mocked session structurally cannot: `json_contains` filters
 against the JSON columns (the bug class that broke `/attack/*` and the correlation

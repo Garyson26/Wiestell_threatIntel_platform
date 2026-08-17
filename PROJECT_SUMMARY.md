@@ -514,7 +514,10 @@ Recommended additions:
 Apply the new migration before starting the updated backend:
 
 ```bash
-cd backend && alembic upgrade head        # d4e5f6a70001_harden_otp_table
+cd backend
+alembic upgrade head        # d4e5f6a70001_harden_otp_table
 ```
+
+(No `&&`: it is a parse error in Windows PowerShell 5.1, which is the owner's shell.)
 
 `docker-compose.yml` and `render.yaml` no longer contain credentials; both read from the environment. See [.env.example](.env.example) for the full list.
