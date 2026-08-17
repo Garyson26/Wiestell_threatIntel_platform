@@ -884,3 +884,86 @@ the socket peer **by construction** rather than by accident. It was previously c
 because `FORWARDED_ALLOW_IPS` had not been widened; R-05's fix removed that dependency.
 (On Render it still reports the edge address, so it is uninformative until the hop count is
 set — but it can no longer be attacker-chosen.)
+
+---
+
+## Phase 3 — email transport moved from SMTP to a third-party HTTP API (2026-08-04)
+
+### The control listed under hardening no longer exists
+
+This document lists **"SMTP STARTTLS with certificate verification"** among the hardening
+beyond the 23 findings. **That code is gone.** `smtplib`, `ssl.create_default_context()`,
+the STARTTLS negotiation and the certificate check were all removed with the SMTP transport.
+Nothing replaced them, because nothing needed to: the transport is now HTTPS to
+`api.resend.com`, where TLS and certificate verification are `httpx`'s defaults rather than
+something this application negotiates.
+
+So the control is not weakened — it is **superseded**, and the entry should be read as
+historical rather than current.
+
+### Why the transport changed
+
+Render free web services cannot open outbound connections on ports 25, 465 or 587. The
+authentication flow is password → email OTP → JWT, so with no transport over 443 nobody can
+log in at all, including the owner. This was the gate on the project being testable.
+
+### NEW RESIDUAL RISK — OTP codes now transit a third party
+
+**This is a real new trust dependency and belongs on the record rather than being lost in a
+migration.**
+
+One-time passwords are the second factor for every login, registration and password reset.
+They are now generated here and handed to Resend over HTTPS for delivery. Consequently:
+
+* **Resend can read every OTP in transit.** The code is in the request body.
+* **Resend retains 30 days of logs** on the free plan, so a code is recoverable from their
+  side for far longer than its own 5–10 minute TTL.
+* A compromise of the Resend account, or of the API key, would expose codes for accounts
+  whose passwords an attacker already holds — the second factor, not the first.
+
+**Accepted, with the reasoning stated.** Every hosted email provider has this property; the
+codes transit the provider's infrastructure whether the transport is SMTP or HTTP. The
+alternative on this platform is no email at all, which means no login. What the migration
+changes is *which* third party, not *whether* there is one — the previous transport handed
+the same codes to Hostinger's SMTP service.
+
+Two things follow that are worth doing rather than assuming:
+
+1. The API key is scoped to **Sending access only**, not full access. A key with only
+   sending rights returns `401 restricted_api_key` if anything later tries to use it for
+   account operations — which is the desired failure rather than a silent success.
+2. The 5–10 minute OTP TTL and the per-code `attempts` counter both limit the value of a
+   code recovered from a provider log after the fact. Neither was chosen for this reason,
+   but both now carry that weight.
+
+### Decision recorded: alternate SMTP ports were considered and rejected
+
+Resend offers SMTP on **2465 and 2587**, which Render does **not** block. SMTP would
+therefore have worked with only a port change, keeping the existing `smtplib` code and the
+STARTTLS control. Rejected for two reasons:
+
+* **Render's block is anti-spam policy, not a technical limit.** A port that merely
+  circumvents the policy can be closed without notice, and the failure would land on the
+  login path — the least recoverable place for a surprise.
+* **The HTTP API returns structured errors, and SMTP does not.** Quota exhaustion arrives
+  as `429 daily_quota_exceeded` with a machine-readable `name`, which is what makes the
+  `email_quota_exhausted` degradation possible at all. Over SMTP the same condition is an
+  opaque 4xx string, and the platform would have had no way to tell "the plan is exhausted"
+  from "the message was rejected".
+
+### Operational note: quota exhaustion is now a named degradation
+
+The free plan allows 3,000 emails/month but is **capped at 100/day**, and 100/day is the
+limit this deployment will actually reach: JWT expiry is 12 hours, so every tester logs in
+at least twice daily, before resends and resets.
+
+The failure mode matters because of the C-04 asymmetry: quota exhaustion surfaces as a
+**503 on login and registration** and as **nothing at all on password reset**. From outside
+that looks like a server bug, and the daily reset makes it appear to fix itself. It is
+therefore reported as `email_quota_exhausted` in `/cron-status`'s degradations array,
+alongside `geoip_database_missing` and the worker states — admin-gated, since it tells a
+reader that authentication is currently failing.
+
+The state is process-local, which is correct only under the single-process model. Email is
+now the **sixth** thing that assumption governs, after the rate limiter, the connection
+pool, the enrichment semaphore, any in-process cache and the unset `REDIS_URL`.

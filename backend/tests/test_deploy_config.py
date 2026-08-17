@@ -187,7 +187,7 @@ class TestRenderConfigDeclaresWhatTheBuildNeeds:
         text = RENDER_YAML.read_text(encoding="utf-8")
         sensitive = (
             "DATABASE_URL", "DATABASE_ASYNC_URL", "SECRET_KEY", "CRON_SECRET",
-            "EMAIL_PASSWORD", "MAXMIND_LICENSE_KEY", "REDIS_URL",
+            "RESEND_API_KEY", "MAXMIND_LICENSE_KEY", "REDIS_URL",
         )
         lines = text.splitlines()
         offenders = []

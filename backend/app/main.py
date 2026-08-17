@@ -85,7 +85,7 @@ def _assert_single_worker() -> None:
     debugging with `--workers 4` and carrying the command forward. None of those touch a
     file the test can read.
 
-    Five subsystems assume one process per instance, and each breaks quietly rather than
+    Six subsystems assume one process per instance, and each breaks quietly rather than
     loudly at N workers:
 
       1. `utils/rate_limiter` falls back to per-process state without ``REDIS_URL``, so N
@@ -97,12 +97,14 @@ def _assert_single_worker() -> None:
          becomes 5N third-party calls;
       4. any in-process cache would become N caches serving inconsistent reads;
       5. ``REDIS_URL`` is deliberately unset, so the limiter's process-local fallback is
-         load-bearing — at N workers a shared store becomes required rather than optional.
+         load-bearing — at N workers a shared store becomes required rather than optional;
+      6. `utils/email_service` tracks Resend quota exhaustion in module state, so at N
+         workers a cap hit by one worker is invisible to the others and to /cron-status.
 
     Failing closed is deliberate: every one of those degrades silently, and (2) can exhaust
     an allowance shared with other clients — a failure that lands outside this application.
     ``ALLOW_MULTIPLE_WORKERS=true`` opens the door for someone who has actually revisited
-    all four, and says so in the logs when they do.
+    all six, and says so in the logs when they do.
 
     Worker children **do** inherit ``sys.argv`` — verified empirically 2026-07-31 against
     uvicorn on Windows (spawn, the harder case: each worker re-executes and still sees the
@@ -114,10 +116,11 @@ def _assert_single_worker() -> None:
 
     override = _multiple_workers_allowed()
     detail = (
-        f"{count} uvicorn workers requested. Four subsystems assume one process per "
+        f"{count} uvicorn workers requested. Six subsystems assume one process per "
         "instance: the in-memory rate limiter (N independent budgets), the database pool "
         "(5N connections against a shared account allowance), the enrichment semaphore "
-        "(5N third-party calls in flight), and any in-process cache. See "
+        "(5N third-party calls in flight), any in-process cache, the unset REDIS_URL, "
+        "and email quota tracking. See "
         "app/main.py::_assert_single_worker and SECURITY_REVIEW.md residual risk #5."
     )
     if override:
@@ -125,7 +128,7 @@ def _assert_single_worker() -> None:
         return
     logger.error("multiple_workers_refused", workers=count, detail=detail)
     raise RuntimeError(
-        detail + " Set ALLOW_MULTIPLE_WORKERS=true to override once all four have been "
+        detail + " Set ALLOW_MULTIPLE_WORKERS=true to override once all six have been "
         "revisited."
     )
 
@@ -238,7 +241,7 @@ async def error_notification_middleware(request: Request, call_next):
                 "headers": redact_headers(dict(request.headers)),
                 "error_id": error_id,
             }
-            send_error_alert_email(
+            await send_error_alert_email(
                 error_type=f"{status.HTTP_500_INTERNAL_SERVER_ERROR} {error_type}",
                 error_message=redact_secrets(exc),
                 endpoint=endpoint,
@@ -322,6 +325,14 @@ def _deployment_degradations() -> list:
             ),
             "fix": "run one worker, or set ALLOW_MULTIPLE_WORKERS=true deliberately",
         })
+    # Email quota. Reported here rather than on public /health for the same reason as the
+    # worker state: it tells an unauthenticated reader that login is currently failing.
+    from app.utils.email_service import quota_degradation
+
+    quota = quota_degradation()
+    if quota is not None:
+        degradations.append(quota)
+
     if _multiple_workers_allowed():
         degradations.append({
             "id": "multiple_workers_allowed",
