@@ -5,6 +5,7 @@ import importlib
 import pytest
 from pydantic import ValidationError
 
+from app.feeds.base import SHAPE_SLIDING_WINDOW
 from app.feeds.cisa_kev import CISAKEVFeed
 from app.feeds.ecrimelabs import ECrimeLabsCVEFeed
 from app.feeds.misp_cert_fr import MISPCertFRFeed
@@ -433,7 +434,9 @@ class TestMalwareBazaarPublicExport:
     def test_the_connector_opts_into_window_continuity_checking(self):
         from app.feeds.malwarebazaar import MalwareBazaarFeed
 
-        assert MalwareBazaarFeed.rolling_window is True
+        # Reads source_shape, not the derived `rolling_window` property: the property
+        # exists on instances, and the declaration is what a reviewer edits.
+        assert MalwareBazaarFeed.source_shape == SHAPE_SLIDING_WINDOW
 
     def test_parsing_records_the_window_it_observed(self):
         """The watermark input, taken from the file rather than assumed."""
@@ -694,7 +697,7 @@ class TestRollingWindowCoverage:
         from app.feeds.urlhaus import URLhausFeed
 
         for connector in (MalwareBazaarFeed, ThreatFoxFeed, URLhausFeed):
-            assert connector.rolling_window is True, connector.__name__
+            assert connector.source_shape == SHAPE_SLIDING_WINDOW, connector.__name__
 
     def test_full_catalogue_feeds_do_not_opt_in(self):
         """Opt-in must stay opt-in — a timestamp-free source reports a false gap."""
@@ -706,7 +709,7 @@ class TestRollingWindowCoverage:
 
         for connector in (CISAKEVFeed, ECrimeLabsCVEFeed, MISPCertFRFeed,
                           BlocklistDeFeed, EmergingThreatsFeed):
-            assert connector.rolling_window is False, connector.__name__
+            assert connector.source_shape != SHAPE_SLIDING_WINDOW, connector.__name__
 
     def test_measured_windows_leave_room_for_the_governing_interval(self):
         """Each measured window must be at least twice the interval that governs.
@@ -801,14 +804,21 @@ class TestRollingWindowCoverage:
 
 
 class TestDeclarationTaxonomy:
-    """`rolling_window` and `full_list_kind` must not both be set.
+    """Every connector declares exactly ONE source shape, and it must be valid.
 
-    Both set means the gate silently picks whichever branch is ordered first — the
-    exact failure just fixed, where the `no-source-timestamp` fallback preceded the
-    kind test and quietly negated the whole cumulative branch while its tests passed.
+    REWRITTEN 2026-08-17 (Phase 4 Section C). This class used to guard the *pair*
+    `rolling_window` + `full_list_kind` against being set together, because the gate
+    would then resolve the contradiction by branch order rather than by meaning.
 
-    Scheduled for collapse into one taxonomy in Section 1, which is touching the same
-    declaration surface for `assessed`. Until then this holds the line.
+    That failure mode is now structurally impossible: there is one attribute, so it
+    cannot contradict itself. What replaces the mutual-exclusion check is a stronger
+    property the old scheme could not express — **every connector must declare**.
+
+    Under the old scheme three connectors (AbuseIPDB, Feodo Tracker, OTX) declared
+    NEITHER and got their behaviour from the fall-through. That was correct behaviour
+    arrived at by accident, and the old test had to assert "at most one, never exactly
+    one" to accommodate it. With four shapes each of them has a name, so "exactly one,
+    always" is now assertable.
     """
 
     @staticmethod
@@ -828,84 +838,124 @@ class TestDeclarationTaxonomy:
                         and obj is not BaseFeed):
                     src = inspect.getsource(obj)
                     out[obj.__name__] = (
-                        obj.rolling_window,
-                        obj.full_list_kind,
+                        obj.source_shape,
                         ("first_seen=" in src or "last_seen=" in src),
                     )
         return out
 
-    def test_no_connector_declares_both(self):
-        """Mutual exclusion. They answer different questions and cannot both apply.
+    def test_every_connector_declares_a_valid_shape(self):
+        """The property the old scheme could not assert."""
+        from app.feeds.base import SOURCE_SHAPES
 
-        `rolling_window` needs per-record timestamps — it records min/max of them to
-        detect gaps. `full_list_kind` exists precisely because a feed has none. A
-        connector claiming both is describing something incoherent, and the gate would
-        resolve it by branch order rather than by meaning.
-        """
-        offenders = {
-            name: (rw, kind)
-            for name, (rw, kind, _ts) in self._connectors().items()
-            if rw and kind is not None
-        }
-        assert not offenders, (
-            "these connectors declare both rolling_window and full_list_kind, which "
-            "cannot both be true — the gate would pick by branch order: "
-            + repr(offenders)
-        )
-
-    def test_at_most_one_declaration_never_exactly_one(self):
-        """AT most one, not exactly one — and that distinction is deliberate.
-
-        Three connectors declare neither and are right to: AbuseIPDB, Feodo Tracker
-        and OTX all supply per-record timestamps, so the re-read gate works through
-        the timestamp path and needs no declaration. Asserting "exactly one" would
-        force a false declaration on them.
-        """
         conns = self._connectors()
-        neither = sorted(
-            name for name, (rw, kind, _ts) in conns.items()
-            if not rw and kind is None
+        assert len(conns) >= 11, f"only {len(conns)} connectors discovered"
+        bad = {n: shape for n, (shape, _ts) in conns.items()
+               if shape not in SOURCE_SHAPES}
+        assert not bad, (
+            "these connectors declare no valid source_shape, so gap monitoring, "
+            "last_seen semantics and the sighting counter all fall through to a "
+            "default nobody chose: " + repr(bad)
         )
-        # Every connector declaring neither MUST supply timestamps, or the gate has
-        # nothing to work with and the counter inflates.
-        for name in neither:
-            _rw, _kind, supplies_ts = conns[name]
-            assert supplies_ts, (
-                name + " declares neither rolling_window nor full_list_kind AND "
-                "supplies no per-record timestamps — its sighting counter will "
-                "inflate on every sync"
-            )
 
-    def test_the_current_declaration_state_is_pinned(self):
+    def test_require_shape_rejects_an_undeclared_connector(self):
+        """The extraction check: prove the validator actually rejects."""
+        import pytest as _pytest
+
+        from app.feeds.base import BaseFeed
+
+        class _Undeclared(BaseFeed):
+            name = "undeclared"
+            slug = "undeclared"
+
+            async def fetch(self):
+                return []
+
+            async def parse(self, raw):
+                return []
+
+        with _pytest.raises(ValueError, match="source_shape"):
+            _Undeclared._require_shape()
+
+    def test_gap_monitoring_is_on_for_sliding_windows_only(self):
+        """`rolling_window` is now derived, so this pins the derivation."""
+        from app.feeds.base import SHAPE_SLIDING_WINDOW
+
+        for name, (shape, _ts) in self._connectors().items():
+            import importlib
+            import pkgutil
+
+            from app import feeds as feeds_pkg
+
+            for mod in pkgutil.iter_modules(feeds_pkg.__path__):
+                module = importlib.import_module("app.feeds." + mod.name)
+                cls = getattr(module, name, None)
+                if cls is None:
+                    continue
+                instance = cls.__new__(cls)
+                assert instance.rolling_window is (shape == SHAPE_SLIDING_WINDOW), (
+                    f"{name}: rolling_window disagrees with source_shape={shape!r}. "
+                    "Gap detection reads the derived property, so a disagreement "
+                    "means a feed is monitored when it should not be, or vice versa."
+                )
+                break
+
+    def test_a_shape_without_timestamps_must_not_be_timestamp_dependent(self):
+        """SLIDING_WINDOW and INCREMENTAL both need per-record timestamps.
+
+        SLIDING_WINDOW records min/max to detect gaps; INCREMENTAL advances a cursor.
+        A connector declaring either while supplying no timestamps is describing
+        something it cannot deliver.
+        """
+        from app.feeds.base import SHAPE_INCREMENTAL, SHAPE_SLIDING_WINDOW
+
+        for name, (shape, supplies_ts) in self._connectors().items():
+            if shape in (SHAPE_SLIDING_WINDOW, SHAPE_INCREMENTAL):
+                assert supplies_ts, (
+                    f"{name} declares {shape} but passes no first_seen/last_seen to "
+                    "_make_ioc, so it has no timestamps to detect gaps or advance a "
+                    "cursor with"
+                )
+
+    def test_the_current_shape_assignment_is_pinned(self):
         """Records today's assignment, so a change is deliberate rather than drift.
 
-        Also documents an open question for Section 1's collapse: AbuseIPDB's
-        blacklist ("most reported in the last N days") and Feodo Tracker's
-        recommended list (currently-active C2s) are arguably rolling windows too, and
-        would benefit from gap detection. They are left undeclared for now because
-        adding it changes what is monitored, not what is scored.
+        The three formerly-undeclared connectors are the interesting rows. AbuseIPDB's
+        blacklist ("most reported in the last N days") and Feodo Tracker's recommended
+        list (currently-active C2s) ARE current-state lists that also carry timestamps
+        — a combination the two-attribute scheme could not express, which is why they
+        declared nothing. OTX is INCREMENTAL because its cursor means it never
+        republishes.
+
+        Declaring them changed NO scoring behaviour: `_next_sighting_and_last_seen`
+        and `_rescore_reason` gate the current-state branch on `_source_timestamped`,
+        so a timestamped current-state feed still takes the timestamp path. Without
+        that gate, this table's change would have swapped real source observation
+        times for ingest time on two feeds.
         """
+        from app.feeds.base import (
+            SHAPE_CUMULATIVE_CATALOGUE,
+            SHAPE_CURRENT_STATE_LIST,
+            SHAPE_INCREMENTAL,
+            SHAPE_SLIDING_WINDOW,
+        )
+
         expected = {
-            # rolling windows, all timestamped
-            "URLhausFeed": (True, None),
-            "ThreatFoxFeed": (True, None),
-            "MalwareBazaarFeed": (True, None),
-            # current-state full lists, no timestamps
-            "BlocklistDeFeed": (False, "current-state"),
-            "EmergingThreatsFeed": (False, "current-state"),
-            # cumulative catalogues, no timestamps
-            "CISAKEVFeed": (False, "cumulative"),
-            "ECrimeLabsCVEFeed": (False, "cumulative"),
-            "MISPCertFRFeed": (False, "cumulative"),
-            # timestamped, undeclared — see the docstring
-            "AbuseIPDBFeed": (False, None),
-            "FeodoTrackerFeed": (False, None),
-            "OTXAlienVaultFeed": (False, None),
+            "URLhausFeed": SHAPE_SLIDING_WINDOW,
+            "ThreatFoxFeed": SHAPE_SLIDING_WINDOW,
+            "MalwareBazaarFeed": SHAPE_SLIDING_WINDOW,
+            "BlocklistDeFeed": SHAPE_CURRENT_STATE_LIST,
+            "EmergingThreatsFeed": SHAPE_CURRENT_STATE_LIST,
+            "AbuseIPDBFeed": SHAPE_CURRENT_STATE_LIST,
+            "FeodoTrackerFeed": SHAPE_CURRENT_STATE_LIST,
+            "CISAKEVFeed": SHAPE_CUMULATIVE_CATALOGUE,
+            "ECrimeLabsCVEFeed": SHAPE_CUMULATIVE_CATALOGUE,
+            "MISPCertFRFeed": SHAPE_CUMULATIVE_CATALOGUE,
+            "OTXAlienVaultFeed": SHAPE_INCREMENTAL,
         }
-        actual = {n: (rw, kind) for n, (rw, kind, _) in self._connectors().items()}
+        actual = {n: shape for n, (shape, _) in self._connectors().items()}
         assert actual == expected, (
-            "connector declarations changed. If deliberate, update this table and "
-            "consider whether the scoring consequence was intended.\n  expected: "
+            "connector shape declarations changed. If deliberate, update this table "
+            "and consider whether the scoring consequence was intended.\n  expected: "
             + repr(sorted(expected.items())) + "\n  actual:   "
             + repr(sorted(actual.items()))
         )

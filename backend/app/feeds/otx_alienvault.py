@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 import structlog
 
-from app.feeds.base import BaseFeed
+from app.feeds.base import SHAPE_INCREMENTAL, BaseFeed
 
 logger = structlog.get_logger()
 
@@ -30,6 +30,20 @@ _TS_FORMATS = [
 class OTXAlienVaultFeed(BaseFeed):
     name = "AlienVault OTX"
     slug = "otx-alienvault"
+
+    # INCREMENTAL: with a `modified_since` cursor OTX returns only what CHANGED, so it
+    # is neither sliding, current-state nor cumulative. Two consequences:
+    #
+    #   * Gap monitoring is unnecessary and would be wrong -- the cursor guarantees
+    #     continuity, since the next fetch starts where the last one ended. That is a
+    #     stronger guarantee than the watermark check provides, not a weaker one.
+    #   * A record REAPPEARING genuinely was modified, so incrementing the sighting
+    #     counter is correct.
+    #
+    # That is the behaviour this connector already had by declaring nothing at all. The
+    # difference is that it is now stated, with the reason, instead of being the default
+    # that fell out of two absent attributes.
+    source_shape = SHAPE_INCREMENTAL
     feed_type = "api"
     url = "https://otx.alienvault.com/api/v1/pulses/subscribed"
     description = "AlienVault Open Threat Exchange — collaborative threat intelligence"

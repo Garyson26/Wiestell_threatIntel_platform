@@ -3,12 +3,20 @@
 from datetime import datetime
 from typing import Any, List, Dict, Optional
 
-from app.feeds.base import BaseFeed
+from app.feeds.base import SHAPE_CURRENT_STATE_LIST, BaseFeed
 
 
 class AbuseIPDBFeed(BaseFeed):
     name = "AbuseIPDB"
     slug = "abuseipdb"
+
+    # The blacklist is "most-reported IPs in the last N days" -- entries drop off it,
+    # so remaining on it is AbuseIPDB re-asserting the IP is still being reported. That
+    # is a CURRENT-STATE list, and it carries timestamps as well, which is exactly the
+    # combination the old two-attribute scheme could not express: declaring
+    # `full_list_kind` implied timestamp-free, so this connector declared NOTHING and
+    # got its behaviour by accident.
+    source_shape = SHAPE_CURRENT_STATE_LIST
     feed_type = "api"
     url = "https://api.abuseipdb.com/api/v2/blacklist"
     description = "AbuseIPDB blacklist of reported malicious IPs"
