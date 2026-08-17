@@ -53,10 +53,22 @@ def upgrade() -> None:
     )
 
     # Idempotent, and a no-op if the rows were never seeded — the entries were
-    # commented out of scripts/seed_feeds.py before this change.
+    # commented out of scripts/seed_feeds.py before this change. Confirmed against
+    # production's exact row set on 2026-08-17: 8 canonical feeds, neither removed slug
+    # present, and this UPDATE matches zero rows and leaves every is_enabled at 1.
+    #
+    # Bound parameters rather than an f-string interpolation of the tuple. The previous
+    # form was `f"WHERE slug IN {_REMOVED_FEED_SLUGS}"`, which is correct only while the
+    # tuple has two or more entries: Python renders a ONE-element tuple as
+    # `('virustotal',)`, and that trailing comma is a syntax error — verified, MariaDB
+    # rejects it with 1064. Dropping either slug from the tuple would have broken the
+    # migration at deploy time, which is precisely when it is least welcome.
     op.execute(
-        "UPDATE feed_sources SET is_enabled = 0 "
-        f"WHERE slug IN {_REMOVED_FEED_SLUGS}"
+        sa.text(
+            "UPDATE feed_sources SET is_enabled = 0 WHERE slug IN :slugs"
+        ).bindparams(
+            sa.bindparam("slugs", value=list(_REMOVED_FEED_SLUGS), expanding=True)
+        )
     )
 
 
