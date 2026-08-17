@@ -130,7 +130,8 @@ Three tests were deliberately rewritten after the enricher consolidation because
 
 **2. Before deploying**
 ```bash
-cd backend && alembic upgrade head       # d4e5f6a70001_harden_otp_table
+cd backend
+alembic upgrade head       # d4e5f6a70001_harden_otp_table
 python scripts/seed_feeds.py             # 3 new feed rows
 ```
 Set `SECRET_KEY` (≥32 random chars) — production now refuses to start without one. Optionally set `CRON_SECRET`, `NVD_API_KEY`, `CVEDETAILS_ACCESS_TOKEN`.
