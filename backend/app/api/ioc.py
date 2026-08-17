@@ -382,6 +382,24 @@ async def create_ioc(ioc_data: IOCCreate, db: AsyncSession = Depends(get_db)):
     db.add(ioc)
     await db.flush()
 
+    # LOCK-HOLD CONSTRAINT. Unlike the five sibling handlers, which READ an existing row
+    # and then enrich, this one INSERTs and then enriches -- and per the transaction
+    # convention it flushes rather than commits, so `get_db()` does not commit until this
+    # handler returns. The new row's write lock is therefore held for the whole enrichment:
+    # WHOIS through the executor, DNS, external APIs, plus any wait for the process-wide
+    # `_enrichment_semaphore` (5 slots, shared with a backfill or `sync-all`). Per-enricher
+    # timeouts are 15 s and 30 s, so tens of seconds is reachable.
+    #
+    # Measured 2026-08-17, not reasoned about: the blast radius is ONE ROW. A concurrent
+    # `INSERT ... IGNORE` of the same (type, value) blocks and surfaces as 1205; an
+    # unrelated value and a value adjacent in index order both proceed in ~6 ms, so no gap
+    # lock is taken. Feed ingestion -- the plausible victim -- already retries 1205 with
+    # back-off by design, and only the colliding chunk is affected.
+    #
+    # That narrowness is what makes in-request enrichment acceptable here. Pinned by
+    # tests/test_mysql_integration.py::TestCreateIocHoldsAWriteLockThroughEnrichment. If a
+    # second write is ever added before enrichment, or the unique index starts gap-locking,
+    # the hold stops being one row wide and this decision needs revisiting.
     try:
         await enrich_ioc(db, ioc)
         await db.flush()  # Flush, not commit - get_db() owns the unit of work.
