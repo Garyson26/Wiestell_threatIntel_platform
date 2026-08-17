@@ -36,6 +36,30 @@ fixed; what follows corrects the *surrounding* claims and adds what is missing.
 
 ### Independent verification of the credential purge — IT HAS NOT HAPPENED
 
+> **STILL OPEN as of 2026-08-17.** Re-confirmed by the owner after the first push of this
+> work: `git log --all -S'193.203.184.197'` returns **`1b918be`, `46ce663`, `8da6b31`,
+> `ecfa82d`**. Nothing below has been remediated in history.
+>
+> **Severity is now reduced but not zero.** Every credential named here has been **rotated**,
+> and the repository is **private** — so the exposure is a rotated secret behind an access
+> control, not a live one in the open. That is why this is tracked as open rather than
+> urgent, and why it is explicitly *not* being attempted alongside feature work: a history
+> rewrite invalidates every outstanding clone and every open PR, so it needs its own session
+> and its own window.
+>
+> **When it happens it must be scanner-driven, in this order:**
+>
+> 1. `gitleaks` over full history first — **build the replacement list from its output**,
+>    not from this document.
+> 2. Rewrite (`git filter-repo --replace-text`).
+> 3. Re-scan the rewritten history to verify, rather than assuming the rewrite took.
+> 4. **Re-clone fresh** and scan that, to confirm the remote — not the local working copy,
+>    which is what made the previous attempt look successful when it had not run.
+>
+> Step 1 is the whole lesson. The list-driven attempt failed *because* a list derived from
+> this review could not contain the two API keys this review never knew about. See
+> [Why the list-driven purge was structurally incapable of working](#why-the-list-driven-purge-was-structurally-incapable-of-working).
+
 The rotation notice below states that the committed secrets "remain in git history". **That is still
 true**, and was verified independently on 2026-08-04 rather than assumed. A `git filter-repo
 --replace-text` rewrite was believed to have been performed; **no such rewrite has taken effect on
