@@ -105,6 +105,7 @@ async def _run_feed_sync_inner(feed_id: str, feed_slug: str, connector_path: str
 
     # Resolve API key and release the connection before the (potentially slow) HTTP fetch.
     api_key: Optional[str] = None
+    stored_cursor: Optional[str] = None
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(FeedSource).where(FeedSource.id == feed_id))
         feed = result.scalar_one_or_none()
@@ -117,6 +118,7 @@ async def _run_feed_sync_inner(feed_id: str, feed_slug: str, connector_path: str
         # crashes the process — or is killed by a Render spin-down mid-fetch — would
         # leave the feed looking un-attempted and it would be retried immediately on
         # every subsequent tick. Written on every attempt, success or failure.
+        stored_cursor = feed.sync_cursor
         feed.last_attempt_at = attempt_started_at
         await session.commit()
         if feed.api_key_env:
@@ -138,6 +140,10 @@ async def _run_feed_sync_inner(feed_id: str, feed_slug: str, connector_path: str
         # session closes here — connection returned to pool before HTTP fetch
 
     connector = connector_class(api_key=api_key)
+    # Hand the connector the position the last SUCCESSFUL sync reached. Read in the
+    # session above alongside the API key, so no extra round-trip. A connector that does
+    # not use a cursor simply ignores it.
+    connector.sync_cursor = stored_cursor
 
     # Fetch (no DB connection held during network I/O)
     try:
@@ -177,6 +183,21 @@ async def _run_feed_sync_inner(feed_id: str, feed_slug: str, connector_path: str
                 # ingest_iocs already sets last_sync_status, last_sync_at, and ioc_count
                 feed.last_sync_error = None  # Clear any previous error
                 feed.consecutive_failures = 0  # a success ends any back-off streak
+
+                # Persist the cursor ONLY after a successful ingest, and only if the
+                # connector's fetch walked to completion (it leaves next_cursor None
+                # otherwise). Two conditions, both required:
+                #
+                #   fetch completed  — else the un-fetched remainder would be skipped
+                #                      permanently while the sync reported success
+                #   ingest succeeded — else the rows are not stored, and advancing past
+                #                      them would lose them just as thoroughly
+                #
+                # Writing it here, inside the same transaction that commits the ingest,
+                # is what makes those two facts atomic.
+                new_cursor = getattr(connector, "next_cursor", None)
+                if new_cursor:
+                    feed.sync_cursor = new_cursor
                 _check_window_continuity(feed, connector)
                 await session.commit()
                 logger.info("run_feed_sync_complete", feed=feed_slug, iocs_ingested=count)

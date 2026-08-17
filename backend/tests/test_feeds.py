@@ -232,6 +232,9 @@ class TestSchedulerAllowlistEnforcement:
             last_sync_status = None
             last_sync_error = None
             consecutive_failures = 0
+            # Added when Section D introduced the cursor. Second time this stub has
+            # broken on a new column, and both times that was the right outcome.
+            sync_cursor = None
 
         class _Session:
             async def __aenter__(self):
