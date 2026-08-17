@@ -71,6 +71,25 @@ _OPERATIONAL = (
     "is_enabled", "last_sync_at", "last_sync_status", "last_sync_error",
     "last_ingest_watermark", "last_ingest_gap", "ioc_count", "config",
     "created_at", "slug", "id",
+    # Phase 4 Section A (revision a7b8c9d00004). All five are machine-managed and
+    # all five are operational, but the reasons differ and are worth stating because
+    # `sync_frequency` sits one line above in _CODE_DERIVED and looks similar:
+    #
+    #   last_attempt_at       scheduling state. Resetting it makes every feed
+    #                         instantly overdue, so a deploy would fire all 8 at once
+    #                         against a shared host.
+    #   consecutive_failures  back-off state. Zeroing it on deploy would restart
+    #                         aggressive retries against a feed that is still down.
+    #   sync_cursor           OTX's modified_since position. Clearing it means a full
+    #                         re-fetch from the beginning of history.
+    #   http_etag /           conditional-request state. Clearing them costs a
+    #   http_last_modified    needless full download, not correctness.
+    #
+    # The cadence VALUE (`sync_frequency`) is code-derived and refreshed; the cadence
+    # STATE (`last_attempt_at`) is operational and preserved. That distinction is the
+    # whole reason the split exists.
+    "last_attempt_at", "consecutive_failures", "sync_cursor",
+    "http_etag", "http_last_modified",
 )
 
 
