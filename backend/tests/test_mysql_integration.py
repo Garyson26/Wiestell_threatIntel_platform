@@ -573,6 +573,125 @@ class TestIdleConnectionRecovery:
             engine.dispose()
 
 
+@pytest.mark.mysql
+class TestCreateIocHoldsAWriteLockThroughEnrichment:
+    """`create_ioc` inserts, then enriches, and only then does `get_db()` commit.
+
+    That is structurally different from its five siblings, which READ an existing row and
+    then enrich: this one holds a write lock on a brand-new row for the whole enrichment —
+    WHOIS through the executor, DNS, external APIs, plus any wait for the process-wide
+    `_enrichment_semaphore` (5 slots, shared with a running backfill or `sync-all`). Tens
+    of seconds is reachable; per-enricher timeouts are 15 s and 30 s.
+
+    Feed ingestion is the plausible victim, and it is exactly the workload tuned around
+    lock contention: `INSERT ... IGNORE` in ~30-row chunks with 1205 retry and back-off.
+
+    **Measured 2026-08-17 rather than reasoned about, and the blast radius is NARROW.**
+    Only a concurrent insert of the *same* `(type, value)` blocks. An unrelated value and
+    a value adjacent in index order both proceed in ~6 ms, so there is no gap lock to
+    worry about, and ingestion of every other row in the chunk is unaffected.
+
+    That is why this stayed with option (a): the contention is one row wide, the victim
+    already retries 1205 with back-off by design, and the alternative (BackgroundTasks)
+    needs its own session because the request session closes on return — machinery that
+    exists nowhere else in this codebase. **The constraint to preserve is the narrowness.**
+    If `create_ioc` ever grows a second write before enrichment, or the unique index gains
+    a gap-locking range predicate, the hold stops being one row wide and the trade changes.
+    """
+
+    def _cols(self):
+        return ("id, type, value, threat_score, confidence, sighting_count, "
+                "tags, metadata, mitre_techniques")
+
+    def _vals(self):
+        return (":id, :type, :value, :threat_score, :confidence, :sighting_count, "
+                ":tags, :metadata, :mitre_techniques")
+
+    def _row(self, value):
+        import uuid
+
+        return {"id": str(uuid.uuid4()), "type": "domain", "value": value,
+                "threat_score": 10, "confidence": 50, "sighting_count": 1,
+                "tags": "[]", "metadata": "{}", "mitre_techniques": "[]"}
+
+    def _try_ingest(self, Session, value, timeout=2):
+        """Feed ingestion's own statement shape, with a short timeout."""
+        s = Session()
+        s.execute(sa.text("SET innodb_lock_wait_timeout = :t"), {"t": timeout})
+        try:
+            s.execute(
+                sa.text(f"INSERT IGNORE INTO iocs ({self._cols()}) VALUES ({self._vals()})"),
+                self._row(value),
+            )
+            s.commit()
+            return None
+        except Exception as exc:  # noqa: BLE001
+            s.rollback()
+            return getattr(getattr(exc, "orig", None), "args", [None])[0]
+        finally:
+            s.close()
+
+    def test_only_the_duplicate_blocks_not_the_table(self, mysql_engine):
+        import uuid
+
+        from sqlalchemy.orm import sessionmaker
+
+        Session = sessionmaker(bind=mysql_engine, future=True)
+        tag = uuid.uuid4().hex[:8]
+        same = f"locktest-same-{tag}.example"
+        other = f"locktest-other-{tag}.example"
+        adjacent = f"locktest-same-{tag}.exampld"  # neighbouring key, gap-lock probe
+
+        holder = Session()
+        try:
+            # create_ioc: INSERT, then hold the transaction open across "enrichment".
+            holder.execute(
+                sa.text(f"INSERT INTO iocs ({self._cols()}) VALUES ({self._vals()})"),
+                self._row(same),
+            )
+
+            assert self._try_ingest(Session, same) == 1205, (
+                "a concurrent insert of the SAME (type, value) should block on the "
+                "uncommitted row and surface as 1205 — if it no longer does, the "
+                "contention profile this test documents has changed"
+            )
+            assert self._try_ingest(Session, other) is None, (
+                "an UNRELATED value blocked. That would mean create_ioc stalls feed "
+                "ingestion broadly rather than one row, and the in-request enrichment "
+                "trade-off must be revisited (BackgroundTasks, or commit before enriching)."
+            )
+            assert self._try_ingest(Session, adjacent) is None, (
+                "a value ADJACENT in index order blocked, i.e. a gap lock is now being "
+                "taken. Same conclusion as above: the hold is no longer one row wide."
+            )
+        finally:
+            holder.rollback()
+            holder.close()
+
+    def test_the_lock_is_released_once_the_holder_finishes(self, mysql_engine):
+        """The control. Without it the test above passes if inserts block permanently."""
+        import uuid
+
+        from sqlalchemy.orm import sessionmaker
+
+        Session = sessionmaker(bind=mysql_engine, future=True)
+        value = f"locktest-release-{uuid.uuid4().hex[:8]}.example"
+
+        holder = Session()
+        holder.execute(
+            sa.text(f"INSERT INTO iocs ({self._cols()}) VALUES ({self._vals()})"),
+            self._row(value),
+        )
+        assert self._try_ingest(Session, value) == 1205
+        holder.rollback()
+        holder.close()
+
+        assert self._try_ingest(Session, value) is None, (
+            "the duplicate still blocked after the holder rolled back, so the 1205 above "
+            "was not caused by the holder and this test proves nothing"
+        )
+
+
 def mysql_test_url_for(engine) -> str:
     return str(engine.url.render_as_string(hide_password=False))
 

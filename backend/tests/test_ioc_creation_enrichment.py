@@ -53,8 +53,72 @@ def _enrichment_payload_sites():
     return sites
 
 
+def _unnormalised_data_accesses():
+    """Every `X.data` in `app/api` that is NOT an argument to the normaliser.
+
+    This is the CLASS check. The dict-literal check below is the SHAPE check, and shape
+    was not enough: the `get_enrichment` bug happened to be written as a dict literal, but
+    the same defect reintroduced as ``dict(data=e.data)``, ``Model(data=e.data)``,
+    ``payload["data"] = e.data`` or a comprehension over ``e.data`` is invisible to it.
+    All four were measured slipping through on 2026-08-17.
+
+    So this asserts on the VALUE rather than the container: an enrichment payload reaches
+    a response only through an attribute access, whatever syntax wraps it.
+
+    **There is deliberately no allowlist.** At the time of writing there are zero
+    unnormalised `.data` accesses in `app/api`, so the rule needs no exceptions — and an
+    allowlist is a maintenance surface that gets appended to under deadline, which is
+    how the original per-handler guards ended up missing a handler. If a legitimate
+    non-enrichment `.data` ever appears here (say `response.data` from some client), the
+    correct fix is to narrow this predicate to the enrichment types, not to add a name to
+    a skip list. It fails loudly, which is the point.
+    """
+    found, normalised = [], 0
+    for path, tree in _api_modules():
+        source = path.read_text(encoding="utf-8")
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+                if name == "normalize_enrichment_for_display":
+                    for arg in node.args:
+                        for sub in ast.walk(arg):
+                            if isinstance(sub, ast.Attribute) and sub.attr == "data":
+                                sub._normalised = True
+                                normalised += 1
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr == "data":
+                if not getattr(node, "_normalised", False):
+                    snippet = (ast.get_source_segment(source, node) or "?")
+                    found.append(f"{path.name}:{node.lineno}  {snippet}")
+    return found, normalised
+
+
 class TestNoHandlerServesARawEnrichmentPayload:
     """The property `get_enrichment` violated for two and a half weeks."""
+
+    def test_the_value_flow_extractor_sees_the_normalised_accesses(self):
+        """Non-emptiness for the CLASS check, same reasoning as the shape check."""
+        _, normalised = _unnormalised_data_accesses()
+        assert normalised >= 5, (
+            f"the value-flow walker found only {normalised} normalised `.data` accesses; "
+            "it previously found 5+. It has stopped matching, which would make "
+            "test_no_raw_enrichment_payload_reaches_a_response vacuous."
+        )
+
+    def test_no_raw_enrichment_payload_reaches_a_response(self):
+        """Catches the defect regardless of the syntax used to reintroduce it.
+
+        Verified on 2026-08-17 by reintroducing it four ways — `dict(data=e.data)`,
+        `_wrap(data=e.data)`, `payload["data"] = e.data`, and a comprehension over
+        `e.data`. The dict-literal check missed all four; this one catches all four.
+        """
+        found, _ = _unnormalised_data_accesses()
+        assert not found, (
+            "these read an enrichment payload without normalize_enrichment_for_display, "
+            f"so the response would carry the pre-2026-07-31 reputation MEAN: {found}. "
+            "The container does not matter — dict literal, kwarg, subscript assignment "
+            "or comprehension all reach the client the same way."
+        )
 
     def test_the_extractor_actually_finds_the_known_sites(self):
         """Non-emptiness first. If this regex-equivalent stops matching, everything
