@@ -390,16 +390,22 @@ async def create_ioc(ioc_data: IOCCreate, db: AsyncSession = Depends(get_db)):
     # `_enrichment_semaphore` (5 slots, shared with a backfill or `sync-all`). Per-enricher
     # timeouts are 15 s and 30 s, so tens of seconds is reachable.
     #
-    # Measured 2026-08-17, not reasoned about: the blast radius is ONE ROW. A concurrent
-    # `INSERT ... IGNORE` of the same (type, value) blocks and surfaces as 1205; an
-    # unrelated value and a value adjacent in index order both proceed in ~6 ms, so no gap
-    # lock is taken. Feed ingestion -- the plausible victim -- already retries 1205 with
-    # back-off by design, and only the colliding chunk is affected.
+    # Measured 2026-08-17 on MariaDB 11.8 (production's engine) against the real
+    # full-column uq_ioc_type_value: the blast radius is THE GAP AROUND THE NEW KEY.
+    # A concurrent `INSERT ... IGNORE` of the same (type, value) blocks on the duplicate,
+    # and a key ADJACENT in index order blocks on InnoDB's gap lock; a key sorting among
+    # existing records proceeds in single-digit ms. So it is wider than one row and far
+    # narrower than the table.
     #
-    # That narrowness is what makes in-request enrichment acceptable here. Pinned by
-    # tests/test_mysql_integration.py::TestCreateIocHoldsAWriteLockThroughEnrichment. If a
-    # second write is ever added before enrichment, or the unique index starts gap-locking,
-    # the hold stops being one row wide and this decision needs revisiting.
+    # (An earlier comment here claimed "one row" and that neighbouring keys proceed. That
+    # was measured on the wrong engine with a prefix index and is corrected.)
+    #
+    # Acceptable because feed ingestion -- the plausible victim -- already retries 1205
+    # with back-off by design, and only the chunk holding a neighbouring key is affected.
+    # Pinned by tests/test_mysql_integration.py::TestCreateIocHoldsAWriteLockThroughEnrichment,
+    # which seeds its own rows because on a near-empty table InnoDB gap-locks the entire
+    # range and every concurrent insert blocks. If a second write is ever added before
+    # enrichment, revisit -- two gaps held across a 30 s enrichment is a different trade.
     try:
         await enrich_ioc(db, ioc)
         await db.flush()  # Flush, not commit - get_db() owns the unit of work.
