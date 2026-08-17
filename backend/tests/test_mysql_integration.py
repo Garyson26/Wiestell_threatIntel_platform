@@ -586,10 +586,42 @@ class TestCreateIocHoldsAWriteLockThroughEnrichment:
     Feed ingestion is the plausible victim, and it is exactly the workload tuned around
     lock contention: `INSERT ... IGNORE` in ~30-row chunks with 1205 retry and back-off.
 
-    **Measured 2026-08-17 rather than reasoned about, and the blast radius is NARROW.**
-    Only a concurrent insert of the *same* `(type, value)` blocks. An unrelated value and
-    a value adjacent in index order both proceed in ~6 ms, so there is no gap lock to
-    worry about, and ingestion of every other row in the chunk is unaffected.
+    **Measured 2026-08-17. The blast radius is THE GAP AROUND THE NEW KEY** — wider than
+    one row, far narrower than the table. A concurrent insert of the same `(type, value)`
+    blocks on the duplicate; a key adjacent in index order blocks on InnoDB's gap lock;
+    a key that sorts among existing records proceeds in single-digit ms.
+
+    An earlier version of this docstring claimed the radius was "one row" and that a
+    neighbouring key proceeds. **That was wrong**, and wrong for an instructive reason:
+    it was measured against a `(type, value(700))` prefix index on MySQL 8, which is not
+    the production index, on a table whose row population happened to put the probe keys
+    in different gaps. Both the engine and the index are now correct here.
+
+    **CORRECTED 2026-08-17 (same day), twice, and both corrections matter.**
+
+    1. The first measurement ran against MySQL 8 with a ``(type, value(700))`` prefix
+       index, because the container image and the test fixture were both wrong (see
+       ``conftest_mysql``). Production is MariaDB 11.8.8 with a full-column index.
+       Re-measured on the real engine and the real index, the conclusion held.
+
+    2. More importantly, the result **depends on the table not being empty**, and the
+       original version of this test did not ensure that — it passed only because
+       earlier tests happened to leave rows behind. On a near-empty table InnoDB has no
+       index records to lock between, so an uncommitted INSERT gap-locks the entire
+       range and *every* concurrent insert blocks. Measured on MariaDB 11.8 against the
+       production index:
+
+       ===========  ==========================
+       rows in iocs  unrelated insert
+       ===========  ==========================
+       1             BLOCKED (1205) — whole-range gap lock
+       1,001         proceeded, 7.4 ms
+       21,003        proceeded, 8.9 ms
+       ===========  ==========================
+
+       Production holds 217,485 rows, so the narrow behaviour is the real one. This test
+       now seeds its own rows rather than inheriting them, so it asserts the production
+       condition deterministically instead of by luck of ordering.
 
     That is why this stayed with option (a): the contention is one row wide, the victim
     already retries 1205 with back-off by design, and the alternative (BackgroundTasks)
@@ -631,16 +663,46 @@ class TestCreateIocHoldsAWriteLockThroughEnrichment:
         finally:
             s.close()
 
+    def _seed_corpus(self, Session, n=1200):
+        """Populate `iocs` so the index has records to lock BETWEEN.
+
+        Not optional and not tidiness. Below roughly a thousand rows the whole-range
+        gap lock dominates and `test_only_the_duplicate_blocks_not_the_table` fails --
+        correctly, because on an empty table the narrow behaviour genuinely does not
+        hold. Production has 217,485 rows; this seeds enough to be on the same side of
+        the transition, verified at 1,001 rows behaving identically to 21,003.
+        """
+        import uuid
+
+        s = Session()
+        tag = uuid.uuid4().hex[:6]
+        batch = [self._row(f"lockseed-{tag}-{i:06d}.example") for i in range(n)]
+        for start in range(0, len(batch), 400):
+            s.execute(
+                sa.text(f"INSERT IGNORE INTO iocs ({self._cols()}) VALUES ({self._vals()})"),
+                batch[start:start + 400],
+            )
+            s.commit()
+        total = s.execute(sa.text("SELECT COUNT(*) FROM iocs")).scalar()
+        s.close()
+        assert total >= 1000, (
+            f"only {total} rows seeded; below ~1000 InnoDB gap-locks the whole range and "
+            "this test would assert the wrong behaviour"
+        )
+        return total
+
     def test_only_the_duplicate_blocks_not_the_table(self, mysql_engine):
         import uuid
 
         from sqlalchemy.orm import sessionmaker
 
         Session = sessionmaker(bind=mysql_engine, future=True)
+        self._seed_corpus(Session)
         tag = uuid.uuid4().hex[:8]
         same = f"locktest-same-{tag}.example"
-        other = f"locktest-other-{tag}.example"
         adjacent = f"locktest-same-{tag}.exampld"  # neighbouring key, gap-lock probe
+        # Distant: sorts among the seeded rows rather than beside the holder's key.
+        other = f"lockseed-distant-{tag}.example"
 
         holder = Session()
         try:
@@ -655,14 +717,18 @@ class TestCreateIocHoldsAWriteLockThroughEnrichment:
                 "uncommitted row and surface as 1205 — if it no longer does, the "
                 "contention profile this test documents has changed"
             )
-            assert self._try_ingest(Session, other) is None, (
-                "an UNRELATED value blocked. That would mean create_ioc stalls feed "
-                "ingestion broadly rather than one row, and the in-request enrichment "
-                "trade-off must be revisited (BackgroundTasks, or commit before enriching)."
+            assert self._try_ingest(Session, adjacent) == 1205, (
+                "a value ADJACENT in index order did NOT block. That is a WIDENING of "
+                "what this test documents, not a fix: the measured behaviour is that "
+                "InnoDB's gap lock covers the range around the uncommitted key, so a "
+                "neighbouring key blocks too. If that stopped being true the lock model "
+                "changed and the sizing below needs redoing."
             )
-            assert self._try_ingest(Session, adjacent) is None, (
-                "a value ADJACENT in index order blocked, i.e. a gap lock is now being "
-                "taken. Same conclusion as above: the hold is no longer one row wide."
+            assert self._try_ingest(Session, other) is None, (
+                "a DISTANT value blocked. That would mean create_ioc stalls feed "
+                "ingestion broadly rather than within one gap, and the in-request "
+                "enrichment trade-off must be revisited (BackgroundTasks, or commit "
+                "before enriching)."
             )
         finally:
             holder.rollback()

@@ -95,10 +95,14 @@ test exercises the shipped classifier rather than a copy).
 
 **`docker compose` gotchas.** Host ports are configurable (`BACKEND_PORT`,
 `DB_PORT`, `FRONTEND_PORT`, `NGINX_PORT`, `REDIS_PORT`) so the stack can coexist
-with others. `DB_IMAGE` defaults to `mysql:8.0` and **must be changed to the
-matching MariaDB tag if production turns out to be MariaDB** — their JSON function
-semantics differ, and testing MySQL 8 behaviour against a MariaDB host is worse than
-not testing. The backend service carries Render free-instance limits
+with others. **Production is MariaDB 11.8.8** (owner-confirmed 2026-08-17), so
+`DB_IMAGE` defaults to `mariadb:11.8`. It defaulted to `mysql:8.0` from Spec 4 until
+then, meaning the `-m mysql` tier validated the **wrong dialect** for that whole period —
+their JSON function semantics differ, and MySQL 8 additionally rejects the real schema
+with error 1170 (TEXT column in a key without a prefix length), which forced a test-only
+prefix-index workaround that changed which key space InnoDB locked. Both are gone; the
+tier now builds the production schema and `alembic upgrade head` runs clean. See
+`tests/conftest_mysql.py`. The backend service carries Render free-instance limits
 (`mem_limit: 512m`, `cpus: 0.1`); both the legacy top-level keys and the
 `deploy.resources.limits` block are present, and Compose v5.1.2 honours them — 
 verified via `docker inspect` (`Memory=536870912`, `NanoCpus=100000000`).
@@ -231,8 +235,8 @@ snippet, because the failure surfaces mid-task rather than while writing it.
 
   **Better still, avoid the dependency entirely:** `DATE(col + INTERVAL 330 MINUTE)` is
   pure arithmetic, needs no timezone tables, and behaves identically on MySQL and
-  MariaDB — which matters because `DB_IMAGE` may have to change if production turns out
-  to be MariaDB. Whichever form is used, **put the offset behind one named constant**
+  MariaDB — which matters because production **is** MariaDB (11.8.8, confirmed
+  2026-08-17). Whichever form is used, **put the offset behind one named constant**
   rather than repeating `330` or `'+05:30'` at each call site.
 
   **Answer the prior question first: is IST-day bucketing actually required?** Nothing

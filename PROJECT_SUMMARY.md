@@ -320,7 +320,20 @@ Password → OTP → JWT. After this review the flow enforces: purpose-bound sin
     | 50,000 | 877 KB | 207 ms | **~2 s** |
     | 200,000 | 3.5 MB | 1.15 s | **~11 s** |
 
-    **The curve is measured; the position on it is not.** Nobody has counted the corpus, so "comfortable at today's tens of thousands" is an assumption, not a finding — `SELECT COUNT(*) FROM iocs WHERE JSON_LENGTH(mitre_techniques) > 0` is the actual input and it is now on the owner query list (§5.4 of the migration-chain design). **Treat the sizing conclusion as provisional until that lands.** If the tagged population is already past ~100,000, the join table in §6.1 stops being a future improvement and becomes the fix.
+    **UPDATED 2026-08-17 — "comfortable at today's scale" is falsified, and the join table is now the fix rather than a future improvement.** `iocs` holds **217,485 rows** (owner). One distinction matters before reading that across: the table above is indexed by **tagged** IOCs, and 217,485 is the **total**, so it is an upper bound on the input rather than the input itself. `SELECT COUNT(*) FROM iocs WHERE JSON_LENGTH(mitre_techniques) > 0` is still the exact number and is still an owner query.
+
+    But the conclusion no longer depends on it. Five of the eleven connectors populate `mitre_techniques` at all — `feodo_tracker`, `malwarebazaar`, `otx_alienvault`, `threatfox`, `urlhaus` — and interpolating the measured curve:
+
+    | Tagged fraction | Tagged IOCs | ≈ at Render's 0.1 CPU |
+    |---|---|---|
+    | 10% | ~21,700 | ~0.9 s |
+    | 25% | ~54,400 | **~2.2 s** |
+    | 50% | ~108,700 | **~6 s** |
+    | 100% (bound) | 217,485 | **~12 s** |
+
+    **Every fraction at or above ~25% is already past the point this document called unacceptable**, uncached and per request. For it to still be "comfortable" the tagged population would have to be under roughly 10% — under 21,700 of 217,485 — which is possible but is now the *narrow* case rather than the assumed one. The burden has flipped: the sizing is a problem unless the count shows otherwise.
+
+    So the normalised `ioc_techniques(ioc_id, technique_id)` join table in §6.1 is promoted from "the right long-term fix" to **the fix**, and the interim cache below stops being optional if `/attack/*` is exercised in UAT before the schema work lands.
 
     Measured with a 650-entry catalogue (ATT&CK enterprise scale) and 1–3 techniques per IOC. Peak Python memory for the counter is tens of KB and negligible; the real memory cost is the driver's row buffer, roughly the payload size, so single-digit MB against a 512 MB instance — not a concern. **Wall-clock is the constraint, and it is linear in corpus size**, so this is comfortable at today's tens of thousands and unacceptable in the low hundreds of thousands. Network transfer time is on top and not included above.
 
