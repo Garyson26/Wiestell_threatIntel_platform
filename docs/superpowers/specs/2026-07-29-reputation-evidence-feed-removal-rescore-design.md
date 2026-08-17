@@ -587,9 +587,17 @@ never in a URL.
 ## 9. Verification
 
 ```bash
-cd backend && python -m pytest && python -m compileall -q app alembic tests ../scripts
-cd ../frontend && npx tsc --noEmit && npm run build
+cd backend
+python -m pytest
+python -m compileall -q app alembic tests ../scripts
+cd ../frontend
+npx tsc --noEmit
+npm run build
 ```
+
+(Split rather than `&&`-chained: `&&` is a parse error in Windows PowerShell 5.1, the
+owner's shell. The chain's short-circuit is lost, so read each result rather than relying
+on a later step not running; PowerShell's equivalent is `A; if ($?) { B }`.)
 
 Plus: the four fixtures re-run with numbers; the CVE trajectory (monotone non-increasing,
 peak at day 0); a grep for `virustotal`/`phishtank` with the three pivot-link exceptions
