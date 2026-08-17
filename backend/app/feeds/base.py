@@ -187,6 +187,32 @@ class BaseFeed(abc.ABC):
         # (earliest, latest) record timestamps seen in this run, or None.
         self.observed_window: Optional[Tuple[datetime, datetime]] = None
 
+        # ── Incremental cursor (Phase 4 Section D) ───────────────────────────
+        # `sync_cursor` is the position the LAST successful sync reached; the scheduler
+        # loads it from `feed_sources.sync_cursor` before calling `run()`. None means
+        # "no cursor yet", and an INCREMENTAL connector must bootstrap from something
+        # sensible rather than fetching all of history.
+        #
+        # `next_cursor` is what this run wants persisted. It stays None unless the
+        # fetch completed IN FULL, and that condition is the whole design:
+        #
+        #   * A partial walk that advanced the cursor would skip everything it failed to
+        #     fetch — permanently, silently, with the sync still reporting success. That
+        #     is the same silent-loss shape as the rolling-window gap this codebase
+        #     already guards against, except unrecoverable.
+        #   * Leaving it None means the next sync re-fetches from the same position.
+        #     Re-fetching is harmless: ingestion is `INSERT ... IGNORE` plus the re-read
+        #     gate, so a duplicate page costs reads and writes nothing.
+        #
+        # At-least-once, never at-most-once. The overlap is the price of not losing data.
+        #
+        # WHY THIS SHAPE MATTERS BEYOND CORRECTNESS: because the cursor is written once,
+        # after the walk, adding intra-feed checkpointing later (if the Phase 6 latency
+        # measurement shows a sync cannot finish inside Render's idle window) changes
+        # only WHEN this value is written, not what it means or what reads it.
+        self.sync_cursor: Optional[str] = None
+        self.next_cursor: Optional[str] = None
+
     def record_observed_window(self, timestamps: List[Optional[datetime]]) -> None:
         """Record the min/max of the timestamps a rolling-window parse saw.
 

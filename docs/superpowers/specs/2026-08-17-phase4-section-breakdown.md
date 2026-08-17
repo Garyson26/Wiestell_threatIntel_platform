@@ -170,9 +170,47 @@ a second HTTP call and a UUID→date map.
 **C4.** `SCORING_MODEL_VERSION` bump. Per the freeze-trap design §6.5 this is an acceptance
 criterion for C2/C3, not a judgement call.
 
-> **GATE 3 — score movement characterised before proceeding.** C2 and C3 move recency for
-> the cumulative feeds. Quantify the distribution shift on a sample before Section D adds
-> more moving parts.
+> **GATE 3 — PASSED 2026-08-17. Measured against the live catalogues, and the headline
+> is that Section C moves NOTHING in the existing corpus.**
+>
+> **CISA KEV** (fetched from CISA directly, 1,665 entries, every one with a parseable
+> `dateAdded`):
+>
+> | | days since dateAdded |
+> |---|---|
+> | min / p25 / median | 6 / 580 / 1,417 |
+> | p75 / p90 / max | 1,628 / 1,748 / 1,748 |
+>
+> 69.1% of the catalogue is 2–5 years old and only 1.1% is under 30 days. Before the fix
+> every entry scored recency **100.0** (ingest date); after, the mean is 5.9 —
+> **−94.1 recency points**, or **−9.41 composite** at the `cve` profile's 10% recency
+> weight.
+>
+> **MISP CERT-FR** (18 events, stated exactly rather than sampled): span 2020-01-10 to
+> 2024-06-04, ages 804–2,411 days. **Every single event is older than 90 days, so all 18
+> land on the recency floor of 5.0** — a uniform **−95.0** recency delta, **−14.25
+> composite** at the default profile's 15% weight. No distribution to sample; it is one
+> value.
+>
+> **BUT NEITHER POPULATION EXISTS YET.** `cisa-kev` and `misp-cert-fr` are two of the
+> three feeds never seeded to production, so there are no rows to move — and no
+> `dateAdded` values in the database to have queried in the first place. The CVE rows that
+> do exist arrived incidentally via OTX pulses and carry no KEV dates.
+>
+> **C1 moves nothing either**, and that is by construction rather than luck: AbuseIPDB and
+> Feodo Tracker are the only C1-affected feeds that production actually ingests, and both
+> branches are gated on `_source_timestamped` precisely so their behaviour is unchanged.
+>
+> **So Section C's entire score impact is PROSPECTIVE.** It lands with Section G's first
+> sync, not with the rescore in Section H. `SCORING_MODEL_VERSION = 10` is still correct —
+> the model did change — but the rescore's expected-movement notes must not promise a
+> CVE/hash shift that has nothing to act on.
+>
+> Incidental finding: `cisa_kev.py` uses the GitHub mirror because "direct CISA URLs
+> return 403 from Cloudflare". Measured today, the opposite held — the mirror returned
+> **429 Too Many Requests** and CISA's canonical URL returned 200. Not changed here (it is
+> one observation, not a pattern), but recorded: the stated reason for the mirror no longer
+> reproduces, and the mirror is the one that rate-limits.
 
 ---
 

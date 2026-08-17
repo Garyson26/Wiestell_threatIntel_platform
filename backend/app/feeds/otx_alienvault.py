@@ -62,15 +62,37 @@ class OTXAlienVaultFeed(BaseFeed):
         masked = self.api_key[:4] + "****" if len(self.api_key) > 4 else "****"
         logger.info("otx_fetch_start", api_key=masked)
 
-        # Only fetch pulses modified in the last 7 days to keep syncs fast.
-        # OTX docs confirm "modified_since" filters on pulse modification date.
-        modified_since = (
-            datetime.now(timezone.utc) - timedelta(days=7)
-        ).strftime("%Y-%m-%dT%H:%M:%S.%f")
+        # ── The cursor (Phase 4 Section D) ───────────────────────────────────
+        # `modified_since` used to be a fixed `now - 7 days` on every sync. That is a
+        # WINDOW, not a cursor, and it has both failure modes at once: it re-fetches a
+        # week of pulses every run, and it loses anything modified more than 7 days
+        # before a sync that did not happen — an outage longer than a week is silent
+        # data loss.
+        #
+        # `self.sync_cursor` is the position the last SUCCESSFUL sync reached, loaded by
+        # the scheduler from `feed_sources.sync_cursor`.
+        started_at = datetime.now(timezone.utc)
+        if self.sync_cursor:
+            modified_since = self.sync_cursor
+            bootstrapped = False
+        else:
+            # No cursor yet: first run, or the column was cleared. Seven days back is
+            # the previous behaviour and a deliberate bound — OTX's subscribed-pulse
+            # history is large and fetching all of it would be a very long first sync
+            # against a 15-minute idle window.
+            modified_since = (
+                started_at - timedelta(days=7)
+            ).strftime("%Y-%m-%dT%H:%M:%S.%f")
+            bootstrapped = True
+
+        logger.info(
+            "otx_cursor", modified_since=modified_since, bootstrapped=bootstrapped
+        )
 
         all_pulses: List[Dict] = []
         next_url: Optional[str] = self.url
         page = 0
+        walk_completed = True
 
         while next_url and page < _MAX_PAGES:
             page += 1
@@ -100,9 +122,36 @@ class OTXAlienVaultFeed(BaseFeed):
 
             except Exception as exc:
                 logger.warning("otx_fetch_page_failed", page=page, error=str(exc))
+                walk_completed = False
                 break
 
-        logger.info("otx_fetch_complete", total_pulses=len(all_pulses), pages=page)
+        if next_url and page >= _MAX_PAGES:
+            # Hit the safety cap with pages still outstanding. Same as a failure for
+            # cursor purposes: there is more to fetch, so the cursor must not move past
+            # what we have. Otherwise a backlog larger than 10,000 pulses would be
+            # permanently skipped, one cap's worth per sync, while every sync succeeded.
+            logger.warning("otx_page_cap_reached", pages=page, cap=_MAX_PAGES)
+            walk_completed = False
+
+        if walk_completed:
+            # CURSOR ADVANCES ONLY HERE, and to the time the fetch STARTED rather than
+            # the time it finished. Anything modified DURING the walk is therefore
+            # re-fetched next sync instead of being skipped — the same
+            # take-the-timestamp-before-the-work reasoning as the Section A cadence fix.
+            # Re-fetching is free; skipping is unrecoverable.
+            self.next_cursor = started_at.strftime("%Y-%m-%dT%H:%M:%S.%f")
+        else:
+            # Explicit: a partial walk leaves next_cursor None, so the scheduler writes
+            # nothing and the next sync resumes from the same position.
+            self.next_cursor = None
+
+        logger.info(
+            "otx_fetch_complete",
+            total_pulses=len(all_pulses),
+            pages=page,
+            walk_completed=walk_completed,
+            cursor_advanced=self.next_cursor is not None,
+        )
         return {"results": all_pulses}
 
     # ── parse ────────────────────────────────────────────────────────────────
