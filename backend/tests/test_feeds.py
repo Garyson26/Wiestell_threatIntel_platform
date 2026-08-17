@@ -130,7 +130,10 @@ class TestIngestionCompatibility:
 
 
 class TestApiKeyEnvAllowlist:
-    @pytest.mark.parametrize("env", ["SECRET_KEY", "DATABASE_URL", "EMAIL_PASSWORD", "PATH", "HOME"])
+    # RESEND_API_KEY replaced EMAIL_PASSWORD here when SMTP was removed: it is the current
+    # service credential and therefore the current thing that must not be reachable from
+    # a feed row. Spec 7 section 1.5 asks for this to be confirmed rather than assumed.
+    @pytest.mark.parametrize("env", ["SECRET_KEY", "DATABASE_URL", "RESEND_API_KEY", "PATH", "HOME"])
     def test_sensitive_env_names_rejected_on_create(self, env):
         """Otherwise the value is forwarded to a third-party API as a key."""
         with pytest.raises(ValidationError):
