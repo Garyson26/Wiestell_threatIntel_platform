@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import structlog
 
-from app.feeds.base import BaseFeed
+from app.feeds.base import BaseFeed, SHAPE_SLIDING_WINDOW
 from app.utils.sanitize import redact_secrets
 
 logger = structlog.get_logger()
@@ -48,7 +48,9 @@ class URLhausFeed(BaseFeed):
     api_key_env = "URLHAUS_API_KEY"
     # csv_recent is a rolling window, so an interval longer than it loses URLs
     # silently. Measured per sync rather than assumed — see BaseFeed.rolling_window.
-    rolling_window = True
+    # A rolling window: csv_recent holds the last N hours, so a sync interval longer
+    # than the window loses records silently. Gap monitoring is on for this shape.
+    source_shape = SHAPE_SLIDING_WINDOW
 
     # MEASURED 2026-07-30 from csv_recent itself: 15,524 URLs spanning
     #   2026-06-30 00:00:15Z .. 2026-07-30 13:23:30Z  =  30d 13h  (733.39 hours)

@@ -5,7 +5,7 @@ import io
 from datetime import datetime
 from typing import Any, List, Dict, Optional
 
-from app.feeds.base import BaseFeed
+from app.feeds.base import SHAPE_CURRENT_STATE_LIST, BaseFeed
 
 # CSV endpoint provides malware family, C2 status, port, and timestamps
 _CSV_URL = "https://feodotracker.abuse.ch/downloads/ipblocklist.csv"
@@ -14,6 +14,12 @@ _CSV_URL = "https://feodotracker.abuse.ch/downloads/ipblocklist.csv"
 class FeodoTrackerFeed(BaseFeed):
     name = "Feodo Tracker"
     slug = "feodo-tracker"
+
+    # The recommended blocklist holds currently-active C2s; entries are removed when a
+    # botnet is taken down. Presence re-asserts liveness, so `last_seen` advances and the
+    # counter stays put. Timestamped, like AbuseIPDB -- see the note there for why this
+    # could not be declared before.
+    source_shape = SHAPE_CURRENT_STATE_LIST
     feed_type = "csv"
     url = _CSV_URL
     description = "Feodo Tracker tracks botnet C2 infrastructure"

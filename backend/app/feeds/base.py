@@ -10,11 +10,54 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 
 logger = structlog.get_logger()
 
-# ── Full-list export kinds — see BaseFeed.full_list_kind ─────────────────────
+# ── Source shape — ONE declaration of how a source's record set changes ──────
+#
+# Phase 4 Section C. This replaces the pair `rolling_window: bool` +
+# `full_list_kind: Optional[str]`, which answered two questions with two attributes and
+# left three connectors (AbuseIPDB, Feodo Tracker, OTX) able to declare NEITHER — getting
+# their behaviour by accident rather than by statement.
+#
+# Timestamp-ness is deliberately NOT folded in. It stays a separate per-record fact via
+# `_source_timestamped`, because "does the record carry a date" is a scoring question and
+# "does the record set slide" is a monitoring question; collapsing them into one enum
+# would conflate the two and have to be re-split.
+SHAPE_SLIDING_WINDOW = "sliding-window"
+SHAPE_CURRENT_STATE_LIST = "current-state-list"
+SHAPE_CUMULATIVE_CATALOGUE = "cumulative-catalogue"
+SHAPE_INCREMENTAL = "incremental"
+
+SOURCE_SHAPES = frozenset({
+    SHAPE_SLIDING_WINDOW,
+    SHAPE_CURRENT_STATE_LIST,
+    SHAPE_CUMULATIVE_CATALOGUE,
+    SHAPE_INCREMENTAL,
+})
+
+# Behaviour table, so the four values are not just labels:
+#
+#   shape                  gap monitoring   last_seen              sighting counter
+#   ---------------------  ---------------  ---------------------  ------------------
+#   SLIDING_WINDOW         YES              from source            on source advance
+#   CURRENT_STATE_LIST     no               advances (presence     frozen
+#                                           re-asserts liveness)
+#   CUMULATIVE_CATALOGUE   no               from source if any,    frozen
+#                                           else frozen
+#   INCREMENTAL            no               from source            on reappearance
+#
+# Only SLIDING_WINDOW needs gap monitoring: records age out, so a sync interval longer
+# than the window loses them silently. CURRENT_STATE and CUMULATIVE lose nothing because
+# the whole list is republished. INCREMENTAL loses nothing because the cursor guarantees
+# continuity — the next fetch starts where the last one ended, which is a stronger
+# guarantee than the watermark check provides.
+
+
+# ── Legacy full-list kinds — RETIRED 2026-08-17, kept as aliases ─────────────
+# The old names map onto the new shapes exactly. Retained only so an out-of-tree
+# connector does not break silently; every in-tree connector uses `source_shape`.
 # A list that expires entries: presence re-asserts liveness.
-FULL_LIST_CURRENT_STATE = "current-state"
+FULL_LIST_CURRENT_STATE = SHAPE_CURRENT_STATE_LIST
 # A list that only grows: presence says nothing about today.
-FULL_LIST_CUMULATIVE = "cumulative"
+FULL_LIST_CUMULATIVE = SHAPE_CUMULATIVE_CATALOGUE
 FULL_LIST_KINDS = frozenset({FULL_LIST_CURRENT_STATE, FULL_LIST_CUMULATIVE})
 
 
@@ -44,25 +87,51 @@ class BaseFeed(abc.ABC):
     api_key_env: Optional[str] = None
     default_sync_frequency: int = 3600
 
-    # ── Rolling-window exports ───────────────────────────────────────────────
-    # Set True by a connector whose source is a *rolling window* rather than a
-    # full catalogue — a file holding "the last N hours" of records, where an
-    # interval longer than the window means records fall through the gap unseen
-    # and unlogged. MalwareBazaar's public export is the case that prompted this:
-    # 881 samples over a measured 47.78 hours, and the file appears entry-capped
-    # rather than time-bounded, so a campaign spike shrinks the window without
-    # anything changing on our side.
+    # ── THE one shape declaration ────────────────────────────────────────────
+    # None means "not declared", which `tests/test_feeds.py` rejects for every
+    # registered connector. Left as None rather than defaulting to a shape because a
+    # default would let a new connector inherit behaviour silently — and the three
+    # connectors that used to declare nothing are precisely how this problem showed up.
     #
-    # A connector that opts in must populate `observed_window` during parse().
-    # `run_feed_sync` then compares the new file's earliest record against the
-    # previous sync's latest and records a gap on the feed row.
+    # Read via `_require_shape()` at the consuming call sites, never `getattr(..., default)`:
+    # a getattr default would turn "someone deleted the declaration" into "gap monitoring
+    # is off", which is the silent-failure shape this whole file argues against.
     #
-    # Opt-in rather than derived from the parsed IOCs on purpose: `_make_ioc`
-    # defaults an absent first_seen to now(), so a feed whose source carries no
-    # timestamps (blocklist.de, emergingthreats) would report a gap on *every*
-    # sync. Only a connector that actually read timestamps out of a file can say
-    # what the window was.
-    rolling_window: bool = False
+    # A SLIDING_WINDOW connector must also populate `observed_window` during parse();
+    # `run_feed_sync` compares the new file's earliest record against the previous sync's
+    # latest and records a gap on the feed row. Declared rather than derived because
+    # `_make_ioc` defaults an absent first_seen to now(), so a timestamp-free source would
+    # otherwise report a gap on every sync — only a connector that actually read
+    # timestamps out of a file can say what the window was.
+    source_shape: Optional[str] = None
+
+    @classmethod
+    def _require_shape(cls) -> str:
+        """The declared shape, or a loud failure.
+
+        Deliberately not tolerant. Gap monitoring, `last_seen` semantics and the sighting
+        counter all branch on this value, so an absent declaration is not a small problem
+        with a sensible default — it is three behaviours silently picking one.
+        """
+        shape = getattr(cls, "source_shape", None)
+        if shape not in SOURCE_SHAPES:
+            raise ValueError(
+                f"{cls.__name__} declares source_shape={shape!r}; expected one of "
+                f"{sorted(SOURCE_SHAPES)}. Every connector must state how its source's "
+                f"record set changes between fetches — see BaseFeed.source_shape."
+            )
+        return shape
+
+    @property
+    def rolling_window(self) -> bool:
+        """Compatibility shim. Prefer ``source_shape == SHAPE_SLIDING_WINDOW``.
+
+        Kept because `_check_window_continuity` and several tests read it, and because
+        removing it while any caller still used `getattr(connector, "rolling_window",
+        False)` would silently disable gap detection rather than fail — the exact
+        failure mode the shape declaration exists to prevent.
+        """
+        return getattr(type(self), "source_shape", None) == SHAPE_SLIDING_WINDOW
 
     # ── Full-list exports ────────────────────────────────────────────────────
     # Set by a connector whose source publishes its ENTIRE current list every time,
@@ -106,7 +175,11 @@ class BaseFeed(abc.ABC):
     #       Verified rather than assumed for MISP CERT-FR: its MISP manifest holds 18
     #       events spanning 2020-2024 and the hashes CSV carries no date column, so
     #       it is cumulative. Incident-response hashes do not stop being bad.
-    full_list_kind: Optional[str] = None
+    @property
+    def full_list_kind(self) -> Optional[str]:
+        """Compatibility shim; the shapes ARE the kinds now, under new names."""
+        shape = getattr(type(self), "source_shape", None)
+        return shape if shape in FULL_LIST_KINDS else None
 
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key
