@@ -12,7 +12,7 @@ import logging
 import re
 from typing import Any, Dict, List
 
-from app.feeds.base import FULL_LIST_CUMULATIVE, BaseFeed
+from app.feeds.base import BaseFeed, SHAPE_CUMULATIVE_CATALOGUE
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class ECrimeLabsCVEFeed(BaseFeed):
     # 3,195 CVEs measured 2026-07-31. A CVE with a public Metasploit module keeps
     # having one, so the list accumulates.
     # See BaseFeed.full_list_kind for what each kind does.
-    full_list_kind = FULL_LIST_CUMULATIVE
+    source_shape = SHAPE_CUMULATIVE_CATALOGUE
     default_sync_frequency = 86400
 
     async def fetch(self) -> str:

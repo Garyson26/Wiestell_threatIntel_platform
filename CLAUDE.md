@@ -250,6 +250,22 @@ snippet, because the failure surfaces mid-task rather than while writing it.
 
 **Transaction ownership:** `get_db()` commits when the request handler returns. Handlers therefore call `await db.flush()`, not `commit()` — an inner `commit()` breaks the outer unit of work. `enrichment_engine.enrich_ioc` writes inside `session.begin_nested()` so a duplicate-key race rolls back only the enrichment and leaves the request's transaction usable.
 
+**`AsyncSessionLocal` sets `expire_on_commit=False`, and that is load-bearing rather than
+stylistic.** Since Phase 4 Section B, `feed_ingestion` prefetches the three lock-free reads
+once per **500-row read chunk** and then writes in **30-row sub-batches**, each of which
+commits. The prefetched map holds ORM objects that must survive those commits. Under
+SQLAlchemy's default (`True`) every one of them expires at the first sub-batch commit, and
+the next attribute access issues a refresh `SELECT` — **a per-row N+1 that no test detects
+unless it counts statements**, because the results are still correct and only the wire
+traffic changes. Measured shape: 450 rows in steady state cost 64 statements decoupled
+against 106 coupled; an expiry regression would push it past both. Pinned by
+`tests/test_read_chunk_sizing.py`, which counts on a real server for exactly this reason.
+
+This is a **seventh** thing whose behaviour hangs off a non-obvious setting — but it is *not*
+one of the six single-process subsystems below, which are about the uvicorn worker count.
+Different failure mode, same lesson: the setting is invisible at the call site, and the
+symptom is a performance cliff rather than a wrong answer. Don't "tidy" it to the default.
+
 ## Authorization model
 
 Authentication is enforced **server-side, at router registration** in `app/api/__init__.py`, with role dependencies on individual routes. The React guards (`components/auth/*Route.tsx`) are UX only — never rely on them.

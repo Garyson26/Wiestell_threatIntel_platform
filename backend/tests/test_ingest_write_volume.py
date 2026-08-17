@@ -381,82 +381,104 @@ class TestFullListExports:
     """
 
     def test_current_state_lists_are_declared_as_such(self):
-        from app.feeds.base import FULL_LIST_CURRENT_STATE
+        from app.feeds.base import SHAPE_CURRENT_STATE_LIST
         from app.feeds.blocklist_de import BlocklistDeFeed
         from app.feeds.emergingthreats import EmergingThreatsFeed
 
         for connector in (BlocklistDeFeed, EmergingThreatsFeed):
-            assert connector.full_list_kind == FULL_LIST_CURRENT_STATE, connector.__name__
+            assert connector.source_shape == SHAPE_CURRENT_STATE_LIST, connector.__name__
 
     def test_cumulative_catalogues_are_declared_as_such(self):
         """KEV, eCrimeLabs and MISP CERT-FR only ever grow.
 
-        MISP CERT-FR was verified rather than assumed: its MISP manifest holds 18
-        events spanning 2020-2024 and the hashes CSV carries no date column.
+        Still cumulative after Section C gave two of them real source dates: a date
+        tells you WHEN the entry was added, not that the list expires entries. KEV's
+        `dateAdded` and MISP's event date never move for an existing entry, so both
+        stamps stay frozen and only their accuracy changed.
         """
-        from app.feeds.base import FULL_LIST_CUMULATIVE
+        from app.feeds.base import SHAPE_CUMULATIVE_CATALOGUE
         from app.feeds.cisa_kev import CISAKEVFeed
         from app.feeds.ecrimelabs import ECrimeLabsCVEFeed
         from app.feeds.misp_cert_fr import MISPCertFRFeed
 
         for connector in (CISAKEVFeed, ECrimeLabsCVEFeed, MISPCertFRFeed):
-            assert connector.full_list_kind == FULL_LIST_CUMULATIVE, connector.__name__
+            assert connector.source_shape == SHAPE_CUMULATIVE_CATALOGUE, connector.__name__
 
-    def test_timestamped_connectors_declare_no_kind(self):
+    def test_sliding_windows_are_declared_as_such(self):
+        """REPLACES `test_timestamped_connectors_declare_no_kind`, whose premise died.
+
+        That test asserted a timestamped connector declares no list kind, which was
+        true only because the old two-attribute scheme could not express "timestamped
+        AND current-state". AbuseIPDB and Feodo Tracker are exactly that, and now
+        declare it. So the assertable property is the positive one: the three rolling
+        exports declare SLIDING_WINDOW, which is what turns gap monitoring on.
+        """
+        from app.feeds.base import SHAPE_SLIDING_WINDOW
         from app.feeds.malwarebazaar import MalwareBazaarFeed
         from app.feeds.threatfox import ThreatFoxFeed
         from app.feeds.urlhaus import URLhausFeed
 
         for connector in (URLhausFeed, ThreatFoxFeed, MalwareBazaarFeed):
-            assert connector.full_list_kind is None, connector.__name__
+            assert connector.source_shape == SHAPE_SLIDING_WINDOW, connector.__name__
 
-    def test_every_timestamp_free_connector_declares_WHICH_KIND(self):
-        """The invariant. Declaring "full list" is not enough — it must say which.
+    def test_every_timestamp_free_connector_declares_a_freezing_shape(self):
+        """The invariant. A timestamp-free connector must declare a shape that freezes.
 
-        A connector supplying no timestamps and no kind falls through to the
-        always-increment fallback, which is the inflation this fixes. Declaring the
-        wrong kind is worse than not declaring: `current-state` on a cumulative
-        catalogue pins recency at 100.0 permanently.
+        Without per-record timestamps the re-read gate has nothing to compare, so the
+        counter increments on every sync — the inflation this whole class exists to
+        prevent. Only CURRENT_STATE_LIST and CUMULATIVE_CATALOGUE handle that case;
+        SLIDING_WINDOW and INCREMENTAL both *require* timestamps to work.
         """
         import importlib
         import inspect
         import pkgutil
 
         from app import feeds as feeds_pkg
-        from app.feeds.base import FULL_LIST_KINDS, BaseFeed
+        from app.feeds.base import (
+            SHAPE_CUMULATIVE_CATALOGUE,
+            SHAPE_CURRENT_STATE_LIST,
+            BaseFeed,
+        )
 
-        offenders = []
+        freezing = {SHAPE_CURRENT_STATE_LIST, SHAPE_CUMULATIVE_CATALOGUE}
+        checked, offenders = 0, []
         for mod in pkgutil.iter_modules(feeds_pkg.__path__):
             module = importlib.import_module("app.feeds." + mod.name)
             for obj in vars(module).values():
                 if not (isinstance(obj, type) and issubclass(obj, BaseFeed)
                         and obj is not BaseFeed):
                     continue
+                checked += 1
                 src = inspect.getsource(obj)
                 supplies_ts = "first_seen=" in src or "last_seen=" in src
-                if not supplies_ts and obj.full_list_kind not in FULL_LIST_KINDS:
-                    offenders.append((obj.__name__, obj.full_list_kind))
+                if not supplies_ts and obj.source_shape not in freezing:
+                    offenders.append((obj.__name__, obj.source_shape))
+        assert checked >= 11, f"only {checked} connectors inspected"
         assert not offenders, (
-            "these connectors supply no per-record timestamps and do not declare a "
-            "valid full_list_kind, so their sighting counters will inflate: "
+            "these connectors supply no per-record timestamps and declare a shape that "
+            "does not freeze the counter, so it will inflate on every sync: "
             + repr(offenders)
         )
 
-    def test_declared_kinds_are_valid_values(self):
-        """A typo would silently fall through to the increment fallback."""
+    def test_declared_shapes_are_valid_values(self):
+        """A typo would fail loudly via _require_shape, but only when called."""
         import importlib
         import pkgutil
 
         from app import feeds as feeds_pkg
-        from app.feeds.base import FULL_LIST_KINDS, BaseFeed
+        from app.feeds.base import SOURCE_SHAPES, BaseFeed
 
+        checked = 0
         for mod in pkgutil.iter_modules(feeds_pkg.__path__):
             module = importlib.import_module("app.feeds." + mod.name)
             for obj in vars(module).values():
-                if isinstance(obj, type) and issubclass(obj, BaseFeed):
-                    assert obj.full_list_kind is None or obj.full_list_kind in FULL_LIST_KINDS, (
-                        obj.__name__ + " has full_list_kind=" + repr(obj.full_list_kind)
+                if (isinstance(obj, type) and issubclass(obj, BaseFeed)
+                        and obj is not BaseFeed):
+                    checked += 1
+                    assert obj.source_shape in SOURCE_SHAPES, (
+                        obj.__name__ + " has source_shape=" + repr(obj.source_shape)
                     )
+        assert checked >= 11, f"only {checked} connectors inspected"
 
     async def test_a_current_state_list_freezes_the_counter_but_advances_last_seen(
         self, ingest

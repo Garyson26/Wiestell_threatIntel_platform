@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import structlog
 
-from app.feeds.base import BaseFeed
+from app.feeds.base import BaseFeed, SHAPE_SLIDING_WINDOW
 from app.utils.sanitize import redact_secrets
 
 logger = structlog.get_logger()
@@ -35,7 +35,7 @@ class ThreatFoxFeed(BaseFeed):
     description = "ThreatFox shares IOCs associated with malware families"
     requires_api_key = False  # Optional - works without key but limited features
     api_key_env = "THREATFOX_API_KEY"
-    rolling_window = True
+    source_shape = SHAPE_SLIDING_WINDOW
 
     # MEASURED 2026-07-30 across all four CSV exports: 2,486 IOCs spanning
     #   2026-02-04 00:02:27Z .. 2026-07-30 13:05:05Z  =  176d 13h  (4237.04 hours)

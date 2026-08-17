@@ -9,11 +9,30 @@ License: CC0 (public domain)
 """
 
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from app.feeds.base import FULL_LIST_CUMULATIVE, BaseFeed
+from app.feeds.base import BaseFeed, SHAPE_CUMULATIVE_CATALOGUE
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_kev_date(value: Optional[str]) -> Optional[datetime]:
+    """CISA's ``dateAdded`` / ``dueDate``, which are plain ``YYYY-MM-DD``.
+
+    Returns None on anything unparseable rather than guessing. A None flows into
+    ``_make_ioc``, which defaults to ``now()`` — the pre-2026-08-17 behaviour — so a
+    format change degrades to what we had rather than to a crash or a wrong date.
+    Timezone-naive UTC to match the column convention; a date has no time-of-day, so
+    midnight UTC is the only honest reading of it.
+    """
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value.strip(), "%Y-%m-%d")
+    except (ValueError, AttributeError):
+        logger.warning("cisa_kev_unparseable_date value=%r", value)
+        return None
 
 _CATALOG_URL = (
     "https://raw.githubusercontent.com/cisagov/kev-data/"
@@ -37,7 +56,7 @@ class CISAKEVFeed(BaseFeed):
     # 1,656 CVEs measured 2026-07-31. The KEV catalogue only grows; a CVE added in
     # 2021 is still listed, so presence today is not an observation today.
     # See BaseFeed.full_list_kind for what each kind does.
-    full_list_kind = FULL_LIST_CUMULATIVE
+    source_shape = SHAPE_CUMULATIVE_CATALOGUE
     default_sync_frequency = 86400  # catalogue updates at most daily
 
     async def fetch(self) -> Dict[str, Any]:
@@ -92,10 +111,27 @@ class CISAKEVFeed(BaseFeed):
             "source":             "cisa-kev",
         }
 
+        # `dateAdded` was parsed into metadata and then dropped on the floor. Because
+        # `_make_ioc` defaults an absent stamp to now(), `last_seen` recorded the date WE
+        # ingested the entry rather than the date CISA added it — for a catalogue going
+        # back to 2021, potentially years off. Fixed 2026-08-17 (Phase 4 Section C).
+        #
+        # This does NOT unfreeze the counter. `dateAdded` never moves for an existing
+        # entry, so the re-read gate still never fires and CUMULATIVE_CATALOGUE still
+        # freezes both stamps. What changes is that recency is now ACCURATE: a KEV CVE
+        # added last week reads fresh and a 2021 entry decays correctly, instead of every
+        # entry looking as though it were first seen on the day we happened to sync.
+        #
+        # That is the difference between "frozen because we have no information" and
+        # "frozen because the source says nothing changed".
+        added = _parse_kev_date(entry.get("dateAdded"))
+
         return self._make_ioc(
             ioc_type="cve",
             value=cve_id,
             confidence=95,
             tags=tags,
             metadata=metadata,
+            first_seen=added,
+            last_seen=added,
         )

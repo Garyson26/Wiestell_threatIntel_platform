@@ -2,7 +2,7 @@
 
 from typing import Any, List, Dict
 
-from app.feeds.base import FULL_LIST_CURRENT_STATE, BaseFeed
+from app.feeds.base import BaseFeed, SHAPE_CURRENT_STATE_LIST
 
 # Emerging Threats publishes several complementary blocklists
 _ET_FEEDS = [
@@ -30,7 +30,7 @@ class EmergingThreatsFeed(BaseFeed):
     # 586 compromised IPs measured 2026-07-31. The list is current-state — entries
     # drop off when no longer seen compromised.
     # See BaseFeed.full_list_kind for what each kind does.
-    full_list_kind = FULL_LIST_CURRENT_STATE
+    source_shape = SHAPE_CURRENT_STATE_LIST
     default_sync_frequency = 3600
 
     async def fetch(self) -> Any:

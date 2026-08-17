@@ -170,7 +170,30 @@ NEUTRAL_REPUTATION = 30.0
 #      anywhere besides the reputation fallback; it is, and neither read is vestigial.
 #      Affects legacy rows of every IOC type that carry a reputation payload with
 #      `details`. No effect on rows written after §6b, where stored and recomputed agree.
-SCORING_MODEL_VERSION = 9
+#   10  2026-08-17  two feeds gained real source dates, so RECENCY moves for their
+#      whole populations (Phase 4 Section C). Neither change touches a formula; both change
+#      the inputs, which is exactly the case the fingerprint guard cannot see.
+#
+#      CISA KEV: `dateAdded` was parsed into metadata and never passed to `_make_ioc`,
+#      so `last_seen` recorded OUR ingest date rather than CISA's — for a catalogue
+#      reaching back to 2021, potentially years off, and always in the "looks fresher
+#      than it is" direction. 1,656 CVEs. The counter does not unfreeze: `dateAdded`
+#      never moves for an existing entry, so the cumulative shape still freezes both
+#      stamps. What changes is that a 2021 entry now decays instead of reading as though
+#      first seen on sync day.
+#
+#      MISP CERT-FR: hashes now carry their MISP event date, joined from the feed
+#      manifest on the event UUID the CSV already contained. 2,277 hashes across ~18
+#      events spanning 2020-2024, so the shift is large and downward for the older ones.
+#      A hash whose UUID is absent from the manifest — or every hash, if the manifest is
+#      unreachable — gets NO date rather than a substituted now(), which leaves it in the
+#      pre-existing frozen-cumulative state.
+#
+#      Both populations are CVE/hash types, so the `cve` weight profile (recency 10%)
+#      and the default profile (recency 15%) are the affected terms. Direction is
+#      downward for anything genuinely old, which is a correction, not a regression —
+#      but a tester who has seen the old dashboard will read it as one.
+SCORING_MODEL_VERSION = 10
 
 # SHA-256 over the score-determining code, docstrings and formatting excluded. Moves
 # together with SCORING_MODEL_VERSION in review; see

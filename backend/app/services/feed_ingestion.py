@@ -318,12 +318,20 @@ def _rescore_reason(
     """
     list_kind = raw.get("_full_list_kind")
 
-    if list_kind == FULL_LIST_CURRENT_STATE:
+    if list_kind == FULL_LIST_CURRENT_STATE and not raw.get("_source_timestamped"):
         # `last_seen` advances every sync for these (presence re-asserts liveness),
         # so the row genuinely changes and must be re-scored. The write saving below
         # therefore does not extend to them — a deliberate trade, since recency
         # accuracy is the only signal these feeds carry, and it is unchanged from
         # before the gate. What did change is that their counter stopped inflating.
+        #
+        # Gated on `_source_timestamped` for the same reason as
+        # `_next_sighting_and_last_seen`: a TIMESTAMPED current-state list (AbuseIPDB,
+        # Feodo Tracker) has a real observation time, so it should take the timestamped
+        # gate below and be re-scored only when that time advances. Without the gate,
+        # declaring their shape would have forced a re-score of every row on every sync —
+        # a write-volume regression on two feeds, arriving as a side effect of a
+        # taxonomy change.
         return "full-list-current-state"
 
     # Checks that apply to every feed, timestamped or not. These come first so the
@@ -386,11 +394,24 @@ def _next_sighting_and_last_seen(
     """
     list_kind = raw.get("_full_list_kind")
 
-    if list_kind == FULL_LIST_CURRENT_STATE:
+    if list_kind == FULL_LIST_CURRENT_STATE and not raw.get("_source_timestamped"):
         # The list expires entries, so remaining on it is the source re-asserting
         # that the indicator is live — genuine recency information, and the only
         # signal these feeds carry. Advance `last_seen`; the counter stays put,
         # because presence is not an observation *event*.
+        #
+        # GATED ON `_source_timestamped` since 2026-08-17 (Phase 4 Section C), and the
+        # gate is the whole point of keeping shape and timestamp-ness separate.
+        # AbuseIPDB and Feodo Tracker are current-state lists that ALSO carry per-record
+        # timestamps. Without this condition, declaring their shape would have replaced a
+        # real source observation time with `now()` and frozen their counters — trading
+        # accurate recency for a shape label. Measured: AbuseIPDB passes `last_seen` and
+        # Feodo Tracker passes `first_seen` from the source.
+        #
+        # So shape decides gap monitoring and whether PRESENCE ALONE is evidence; the
+        # record's own timestamp, when it has one, still decides recency. blocklist.de and
+        # Emerging Threats carry no timestamps and are unaffected — they take this branch
+        # exactly as before.
         return (existing.sighting_count or 0), _now(), True
 
     if list_kind == FULL_LIST_CUMULATIVE:
