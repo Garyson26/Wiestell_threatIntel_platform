@@ -41,6 +41,23 @@ look for. ``get_ioc`` enriches unconditionally when ``not ioc.enrichments``
 page. **So these self-repair on first view** — the fix is to open them, not to rescore
 them, and after that a rescore will move them like anything else.
 
+WHAT SECTION C DOES *NOT* MOVE EITHER — the CVE and hash date fixes (added 2026-08-17)
+------------------------------------------------------------------------------------
+Phase 4 Section C gave CISA KEV entries their real ``dateAdded`` and MISP CERT-FR hashes
+their MISP event date, replacing ingest time. Measured against the live catalogues the
+movement is large — KEV −94.1 recency points (−9.41 composite at the ``cve`` profile),
+MISP a uniform −95.0 (−14.25 composite) because all 18 events predate the 90-day floor.
+
+**None of it appears in this rescore.** Neither feed has ever been seeded to production,
+so there are no rows to move. Both populations arrive with the first sync after
+``seed_feeds.py`` adds them, already scored under the current model — a rescore is not
+what delivers them. ``SCORING_MODEL_VERSION`` moved to 10 because the model changed, not
+because stored rows became stale.
+
+The AbuseIPDB and Feodo Tracker shape declarations in the same section were deliberately
+gated on ``_source_timestamped`` so their behaviour did not change, so they contribute
+nothing here either.
+
 OWNER QUERY — the count is not determinable from this repo. Feed ingestion writes an
 ``ioc_sources`` row and manual creation does not, so the two are separable:
 
