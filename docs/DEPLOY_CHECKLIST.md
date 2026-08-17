@@ -260,7 +260,7 @@ cannot be demonstrated to a UAT audience as-is. (§8 item 16)
   silence. (§8 item 15)
 - Provider corroboration is measured nowhere in the composite. Deliberate and explicit
   rather than fixed. (§8 item 15)
-- Three background mechanisms exist; only the HTTP cron runs. Do not assume a change to the
-  asyncio scheduler or Celery affects production.
+- Two background mechanisms exist; only the HTTP cron runs. Do not assume a change to the
+  asyncio scheduler affects production. (Celery was the third and was deleted 2026-08-17.)
 - Feed cadence drifts by one cron period when `sync_frequency` is a multiple of the cron
   interval. (§8 item 12 — Phase 4)

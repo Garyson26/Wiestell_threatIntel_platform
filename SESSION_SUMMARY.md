@@ -142,7 +142,7 @@ Strongly recommended: one abuse.ch Auth-Key from <https://auth.abuse.ch/>, place
 - Token storage in `localStorage` (XSS-reachable) and no token revocation on logout — both are architectural changes affecting both tiers.
 - CSP still permits `'unsafe-inline'` for scripts, required by the Next App Router without nonce support.
 - Rate limiting is per-process without Redis; set `REDIS_URL` for it to be global on serverless.
-- Three competing schedulers exist (asyncio loop, Celery beat, HTTP cron); only the HTTP cron runs.
+- Two schedulers exist (asyncio loop, HTTP cron); only the HTTP cron runs. Celery beat was the third and was deleted 2026-08-17.
 - `_base_reputation_score`'s flat 30 compresses the achievable score range for CVE-only indicators — a product decision.
 
 ---

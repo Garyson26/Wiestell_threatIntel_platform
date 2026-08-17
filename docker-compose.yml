@@ -63,38 +63,14 @@ services:
           memory: 512M
           cpus: '0.1'
 
-  celery-worker:
-    build: ./backend
-    command: celery -A app.tasks.celery_app worker -l info -c 4
-    environment:
-      # Required — set in .env (never commit real credentials)
-      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL is required}
-      - REDIS_URL=redis://redis:6379/0
-      - OTX_API_KEY=${OTX_API_KEY:-}
-      - ABUSEIPDB_API_KEY=${ABUSEIPDB_API_KEY:-}
-      - SHODAN_API_KEY=${SHODAN_API_KEY:-}
-      - THREATFOX_API_KEY=${THREATFOX_API_KEY:-}
-      - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required (min 32 random chars)}
-      - RESEND_API_KEY=${RESEND_API_KEY:-}
-      - EMAIL_FROM=${EMAIL_FROM:-Wiestell <noreply@wiestell.com>}
-    depends_on:
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-
-  celery-beat:
-    build: ./backend
-    command: celery -A app.tasks.celery_app beat -l info
-    environment:
-      # Required — set in .env (never commit real credentials)
-      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL is required}
-      - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required (min 32 random chars)}
-    depends_on:
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
+  # The `celery-worker` and `celery-beat` services were deleted on 2026-08-17 along with
+  # `app/tasks/`. The beat schedule had been fully commented out, and the one live caller
+  # — `enrich_ioc_task.delay()` in `create_ioc` — had been silently failing into a bare
+  # `except: pass` because REDIS_URL is unset in the deployed environment. That handler
+  # now awaits `enrich_ioc` in-request like its five siblings.
+  #
+  # The `redis` service below STAYS: `utils/rate_limiter` still reads REDIS_URL, so it is
+  # a live consumer, not an orphan left behind by this deletion.
 
   # ── Local database for the `-m mysql` test tier ──────────────────────────
   #

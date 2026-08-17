@@ -19,6 +19,43 @@ particular was inflating diversity for most of the corpus. That is a correction,
 not a regression — but a tester who has seen the old dashboard will read it as
 one, which is why ``--dry-run`` prints the before/after bands.
 
+WHAT THIS SCRIPT DOES *NOT* MOVE — analyst-submitted IOCs (added 2026-08-17)
+---------------------------------------------------------------------------
+Until 2026-08-17, ``POST /api/v1/iocs`` dispatched enrichment to Celery via
+``enrich_ioc_task.delay()``. ``REDIS_URL`` is unset in the deployed environment, so that
+call raised a refused connection into a bare ``except Exception: pass`` — no log line, no
+retry. Every IOC created through that endpoint has **no enrichment rows at all**.
+
+**They will not move in this rescore, and that is expected rather than a bug in the
+run.** With no enrichment rows the zero-evidence guard in ``_risk_enrichment_signals``
+returns the 20.0 neutral, and it will return exactly 20.0 again on recompute. Rescoring
+cannot repair them because the missing thing is *evidence*, not arithmetic. Do not read a
+flat band here as the script having skipped rows.
+
+**This is NOT the Section 4 frozen population, and the distinction matters.** That one is
+frozen *because* it has enrichment rows — ``WHERE Enrichment.id IS NULL`` excludes already
+-enriched IOCs from the escape hatch, so cached payloads never refresh. This population is
+the mirror image: it has no enrichment rows, which is precisely what the auto-enrich paths
+look for. ``get_ioc`` enriches unconditionally when ``not ioc.enrichments``
+(``api/ioc.py``), and ``list_iocs`` does the same under ``enrich=true``, capped at ten per
+page. **So these self-repair on first view** — the fix is to open them, not to rescore
+them, and after that a rescore will move them like anything else.
+
+OWNER QUERY — the count is not determinable from this repo. Feed ingestion writes an
+``ioc_sources`` row and manual creation does not, so the two are separable:
+
+.. code-block:: sql
+
+    SELECT COUNT(*) FROM iocs i
+     LEFT JOIN ioc_sources s ON s.ioc_id = i.id
+     LEFT JOIN enrichments e ON e.ioc_id = i.id
+     WHERE s.ioc_id IS NULL AND e.ioc_id IS NULL;
+
+Expect a small number, possibly zero: the frontend has **no caller for this endpoint at
+all** — there is no ``createIOC`` wrapper in ``src/lib/api.ts`` — so it is reachable only
+by direct API access. The upper bound is every IOC ever submitted by hand and never
+opened since.
+
 WHERE TO RUN IT
 ---------------
 From a developer machine, against the Hostinger DSN. **Not on Render**: free
