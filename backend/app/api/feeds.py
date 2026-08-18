@@ -9,7 +9,7 @@ from app.api.deps import get_current_user, require_admin, require_admin_or_cron
 from app.database import get_db
 from app.models.feed import FeedSource
 from app.schemas.feed import FeedCreate, FeedUpdate, FeedResponse
-from app.services.feed_scheduler import FEED_CONNECTORS, run_feed_sync
+from app.services.feed_scheduler import FEED_CONNECTORS, _effective_interval, run_feed_sync
 from app.utils import to_ist_str
 
 logger = structlog.get_logger()
@@ -153,11 +153,25 @@ async def _run_sync_all_background(
 
             # Check if feed should be synced
             if not force:
-                # Only sync if overdue (smart mode)
+                # SMART MODE, and this is THE LIVE PATH -- the asyncio scheduler in
+                # feed_scheduler.py is never started (see CLAUDE.md), so this endpoint
+                # is what the deploy cron drives. The cadence fix and back-off therefore
+                # have to be applied HERE, not only in `_tick`.
+                #
+                # Found by the 2026-08-17 deploy rehearsal: Section A moved the
+                # scheduling input to `last_attempt_at` and stopped stamping
+                # `last_sync_at` on failure, but this check still read `last_sync_at`.
+                # The combination was a REGRESSION on the live path, not merely a missed
+                # improvement: a failing feed's `last_sync_at` is now frozen at its last
+                # SUCCESS, so `overdue` was permanently true and the feed would be
+                # retried on every single cron run forever -- exactly the behaviour
+                # back-off exists to prevent, made worse by the very change that
+                # introduced back-off.
                 freq = feed.sync_frequency or 3600  # default 1 hour
-                last = feed.last_sync_at
-                overdue = last is None or (now - last).total_seconds() >= freq
-                
+                last = feed.last_attempt_at
+                interval = _effective_interval(freq, feed.consecutive_failures or 0)
+                overdue = last is None or (now - last).total_seconds() >= interval
+
                 if not overdue:
                     skipped_count += 1
                     continue
