@@ -61,6 +61,22 @@ def _geoip_database_available() -> bool:
     return False
 
 
+def _shodan_library_available() -> bool:
+    """Whether the `shodan` package can actually be imported.
+
+    Checked with `find_spec` rather than a real import so building the registry does not
+    pull a heavyweight dependency into every process that merely asks what enrichers
+    exist. `find_spec` raises ModuleNotFoundError for a missing PARENT package, so the
+    call is guarded rather than trusted to return None.
+    """
+    from importlib.util import find_spec
+
+    try:
+        return find_spec("shodan") is not None
+    except (ImportError, ValueError):
+        return False
+
+
 def build_registry() -> Dict[str, BaseEnricher]:
     """Instantiate every enricher whose configuration requirements are met."""
     from app.enrichers.cvedetails_enricher import CVEDetailsEnricher
@@ -100,7 +116,28 @@ def build_registry() -> Dict[str, BaseEnricher]:
     add(WhoisEnricher())
     add(DNSEnricher())
     add(ReputationEnricher())     # skips providers whose keys are unset
-    add(ShodanEnricher())         # reports "key not configured" rather than vanishing
+    # SHODAN IS GATED ON THE LIBRARY BEING IMPORTABLE, since 2026-08-17. It used to be
+    # registered unconditionally as the documented exception to the gating rule, on the
+    # grounds that it "stays registered and returns an explanatory payload, preserving
+    # pre-existing dashboard behaviour".
+    #
+    # THE EXCEPTION WAS RETIRED BECAUSE ITS PREMISE STOPPED HOLDING. An explanatory
+    # payload is useful when the reader could plausibly act on it — "add a key". But
+    # `shodan` is commented out of requirements.txt ("not compatible with Vercel
+    # serverless (no binary wheels)") and is not pulled in transitively, so in the
+    # deployed environment the payload is {"error": "Shodan library not installed"} even
+    # when the key IS set. That is not explanatory, it is misleading: it points an
+    # operator at the credential when the package is the problem.
+    #
+    # Measured cost of leaving it: 5,947 rows, 12.4% of the enrichment table, none of
+    # which have ever carried data — and each with a 6-hour expires_at, so Section E's
+    # refresh selection would re-attempt every one of them four times a day forever.
+    #
+    # The key check stays inside enrich() as a second barrier: importable but
+    # unconfigured is a real state locally, and there the explanatory payload IS
+    # actionable.
+    if _shodan_library_available():
+        add(ShodanEnricher())
 
     # MalwareBazaar is credential-gated **in its original registration position**,
     # so the attempt order pinned by tests/test_enrichers.py::TestEngineDispatch is

@@ -87,9 +87,23 @@ def _unnormalised_data_accesses():
                                 normalised += 1
         for node in ast.walk(tree):
             if isinstance(node, ast.Attribute) and node.attr == "data":
-                if not getattr(node, "_normalised", False):
-                    snippet = (ast.get_source_segment(source, node) or "?")
-                    found.append(f"{path.name}:{node.lineno}  {snippet}")
+                if getattr(node, "_normalised", False):
+                    continue
+                # NARROWED 2026-08-17, not skip-listed. `Enrichment.data` on the MODEL
+                # CLASS is a Column descriptor used to build a SQL expression — it
+                # cannot be serialised into a response, because it is a query construct
+                # rather than a row value. `e.data` on an instance IS a row value and
+                # stays flagged.
+                #
+                # This is the narrowing the docstring above anticipated: when a
+                # legitimate non-serving `.data` appeared (Section E's error-payload
+                # predicate), the fix was to make the predicate precise, not to add a
+                # name to a skip list. A skip list would have exempted the file; this
+                # exempts only the construct that provably cannot reach a client.
+                if isinstance(node.value, ast.Name) and node.value.id == "Enrichment":
+                    continue
+                snippet = (ast.get_source_segment(source, node) or "?")
+                found.append(f"{path.name}:{node.lineno}  {snippet}")
     return found, normalised
 
 
