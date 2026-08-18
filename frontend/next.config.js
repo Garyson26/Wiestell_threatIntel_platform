@@ -148,7 +148,10 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL || 'https://wiestellthreatintelligencebackend.vercel.app'}/api/:path*`,
+        // Fallback only. NEXT_PUBLIC_API_URL is set in the Vercel dashboard and wins.
+        // Updated 2026-08-17 at cutover: the old origin is dead, so an unset env
+        // var would have silently proxied to nothing.
+        destination: `${process.env.NEXT_PUBLIC_API_URL || 'https://wiestell-backend.onrender.com'}/api/:path*`,
       },
     ];
   },

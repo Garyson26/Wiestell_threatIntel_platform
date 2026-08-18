@@ -419,78 +419,44 @@ build step has them. The `|| echo` fail-open remains, as above.
 
 ## 4. Deploy the service
 
-> ### 4.0 CUTOVER — every place the old backend origin appears
+> ### 4.0 CUTOVER — DONE 2026-08-17, and one constraint that outlives it
 >
-> The frontend proxies to `wiestellthreatintelligencebackend.vercel.app`. **Three
-> occurrences, and they do not all behave the same** — swept 2026-08-17 with `git grep`
-> over tracked files:
+> All three references to the old origin (`wiestellthreatintelligencebackend.vercel.app`)
+> were repointed to **`https://wiestell-backend.onrender.com`**. Verified: zero
+> occurrences of the old host remain in tracked files.
 >
-> | File | Line | Overridable? |
-> |---|---|---|
-> | `frontend/vercel.json` | 5 | **NO — hard-coded.** This is the one that gets missed. |
-> | `frontend/next.config.js` | 151 | Yes — `NEXT_PUBLIC_API_URL` wins if set |
-> | `scripts/verify-security-headers.sh` | 12 | Yes — `BACKEND_URL` or `$2` wins |
+> | File | What it is now |
+> |---|---|
+> | `frontend/vercel.json` | destination repointed — **still a committed literal, see below** |
+> | `frontend/next.config.js` | fallback repointed; `NEXT_PUBLIC_API_URL` still wins |
+> | `scripts/verify-security-headers.sh` | default repointed; `BACKEND_URL` / `$2` still win |
 >
-> **`vercel.json` is the trap.** Its rewrite is applied at Vercel's edge and takes
-> precedence over `next.config.js`, so setting `NEXT_PUBLIC_API_URL` in Vercel looks like
-> it should be sufficient and is not: traffic would keep going to the old origin while
-> every other signal said the cutover was done.
+> #### `vercel.json` CANNOT reference an environment variable, and that is why it was the one that got missed
 >
-> - [ ] `frontend/vercel.json` — repoint to the Render URL (or delete the rewrite and let
->       `next.config.js` handle it from the env var, which removes the duplication).
-> - [ ] `frontend/next.config.js` — update the literal fallback, or leave it and rely on
->       `NEXT_PUBLIC_API_URL` being set in Vercel.
-> - [ ] `scripts/verify-security-headers.sh` — update the default, or always pass `$2`.
-> - [ ] Set `NEXT_PUBLIC_API_URL` in **Vercel**, not Render — the frontend is not
->       deploying to Render.
+> Vercel does not interpolate environment variables into `rewrites` destinations — they
+> are static strings. There is no `$VAR` or `${VAR}` form that works there. **So this
+> origin is committed to the repository and every future cutover is a CODE CHANGE**:
+> edit, commit, push, redeploy. It cannot be done from the Vercel dashboard, and nothing
+> about the dashboard hints that it can't.
 >
-> Also note the CORS direction: `CORS_ORIGINS` on the **backend** must list the Vercel
-> origins, and `NEXT_PUBLIC_API_URL` on the **frontend** must point at Render. They are
-> two different variables in two different dashboards and both must change.
-
-
-
-- [ ] Set every `sync: false` variable in the Render dashboard. `tests/test_deploy_config.py`
-      asserts none of them carry literal values in `render.yaml`.
-- [ ] Deploy, and confirm the build log shows the GeoLite2 download **succeeding** — it is
-      `|| echo "...continuing"`, so a failure is not a build failure.
-- [ ] **Verify the actual running start command, not the one in `render.yaml`.** The
-      dashboard can override it, and that override lives in no file any test can read. Four
-      subsystems assume one process; `main.py::_assert_single_worker` refuses to boot at
-      `--workers > 1`, so a refused start is the symptom to recognise. (CLAUDE.md invariant)
-- [ ] **Measure the hop count — do this EARLY, not last.** Log the raw `X-Forwarded-For`
-      from the deployed instance and count the entries, then set `TRUSTED_PROXY_HOPS`. This
-      closes a bypass *and* fixes an availability problem: until it is set, every caller
-      buckets under Render's edge address, so the per-IP limits are global limits and one
-      noisy client locks out login and the AI endpoints for everyone (R-06).
-      **Also establish whether the origin is reachable off-edge** (R-03). If `*.onrender.com`
-      answers directly, a request straight to the origin satisfies a count measured through
-      a CDN while supplying its own entry — and 0 may be the only honest value, which makes
-      the per-account counter the sole credential control rather than a complement.
-      Err **low** if you must err: too high indexes into the client-supplied portion.
-- [ ] `GET /api/v1/health` — expect 200. Deliberately **minimal**: it must stay
-      unauthenticated for Render's health checker, so anything on it is world-readable.
-      (Render reads only the status *code*, not the body.)
-- [ ] **`GET /api/v1/cron-status` with an admin token, and read the `degradations` array.**
-      Empty on a correct deployment. It reports the two states where the app runs but is not
-      doing what the design assumes — both settable in Render's dashboard, invisible in the
-      repository, and otherwise evidenced only by a boot log line that scrolls away:
-
-      | `id` | Means |
-      |---|---|
-      | `geoip_database_missing` | the `.mmdb` is absent, so **every** IP indicator is enriched with no country or ASN data |
-      | `multiple_workers_allowed` | `ALLOW_MULTIPLE_WORKERS` is set, so rate limits, the DB pool, enrichment concurrency and any cache are all per worker |
-
-      **Admin-gated on purpose.** This was briefly on the public `/health` payload, which
-      was a poor trade: `multiple_workers_allowed` tells an unauthenticated reader that the
-      login rate limit is N times weaker than it appears — precisely the fact worth having
-      before starting a credential-stuffing run. Publishing one's own mitigation gap for
-      post-deploy convenience is not worth it, so it moved here, where operational state
-      already lives behind admin auth.
-
-      Note `/health`'s `status` stays `"healthy"` even when a degradation is present. That
-      is deliberate: `"degraded"` drives orchestrator restarts and neither of these is fixed
-      by restarting, so flipping it would train uptime monitoring to ignore the field.
+> That asymmetry is the whole trap. The other two references read an environment variable
+> first, so an operator who sets `NEXT_PUBLIC_API_URL` sees two of the three obey and
+> reasonably concludes the cutover is done — while `vercel.json`'s rewrite, applied at
+> **Vercel's edge before the Next.js function**, keeps sending traffic to the old origin.
+> Every signal says success; the traffic disagrees.
+>
+> - [ ] **At any future backend move, grep for the origin — do not trust the env var.**
+>       `git grep -n "onrender.com"` is the check.
+> - [ ] Set `NEXT_PUBLIC_API_URL` in the **Vercel** dashboard as well. It governs
+>       `next.config.js` and is read at BUILD time, so changing it needs a redeploy, not
+>       just a save.
+>
+> **Why the duplication is kept rather than removed.** Deleting the `vercel.json` rewrite
+> and relying solely on `next.config.js` would make the origin fully env-driven — but the
+> two are not equivalent: a `vercel.json` rewrite is handled at the edge and never invokes
+> the Next.js function, while a `next.config.js` rewrite routes through it. That is a real
+> latency and invocation-count difference, so removing it is a decision about routing, not
+> a cleanup. Left as-is, documented.
 
 ## 5. Wire the cron
 
