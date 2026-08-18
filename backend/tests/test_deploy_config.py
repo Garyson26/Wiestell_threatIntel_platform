@@ -653,11 +653,40 @@ class TestTheFreePlanSizingHoldsTogether:
         assert self._backend().get("plan") == "free"
 
     def test_previews_are_disabled(self):
-        """Free instance-hours are one account-wide pool; a preview spends production's."""
-        assert self._backend().get("previewsEnabled") is False, (
+        """Free instance-hours are one account-wide pool; a preview spends production's.
+
+        The key changed on 2026-08-17: `previewsEnabled: false` was REJECTED by Render's
+        current schema ("field previewsEnabled not found in type file.Service"), so the
+        supported `previews.generation` block replaced it.
+        """
+        backend = self._backend()
+        assert "previewsEnabled" not in backend, (
+            "previewsEnabled is back. Render's schema rejects it — the Blueprint will "
+            "not deploy. Use the previews.generation block instead."
+        )
+        generation = (backend.get("previews") or {}).get("generation")
+        assert generation is not None, (
             "previews are not explicitly disabled. Off is Render's default, but the "
             "default is not the reason — every preview service draws from the same "
             "750-hour monthly pool the production service needs."
+        )
+        assert generation == "off", f"previews.generation is {generation!r}, expected 'off'"
+
+    def test_the_previews_generation_value_is_a_string_not_a_boolean(self):
+        """`off` is a BOOLEAN in YAML 1.1, and the quotes are what prevent that.
+
+        Verified: PyYAML parses bare `off`, `Off` and `OFF` all to False. Render's
+        schema error names a Go struct, and whether an unquoted value coerces depends on
+        which YAML library they use — v2 implements 1.1 and would hand the struct a bool
+        where an enum string is expected; v3 implements 1.2 and would not. A quoted
+        string is the safe side of that uncertainty, so the quoting is asserted rather
+        than left to survive a reformat.
+        """
+        generation = (self._backend().get("previews") or {}).get("generation")
+        assert isinstance(generation, str), (
+            f"previews.generation parsed as {type(generation).__name__} "
+            f"({generation!r}), not a string. Bare `off` is a YAML 1.1 boolean — quote "
+            'it as "off".'
         )
 
     def test_the_start_command_declares_one_worker_and_no_proxy_headers(self):
