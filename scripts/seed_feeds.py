@@ -198,7 +198,10 @@ FEEDS = [
         "slug": "cisa-kev",
         "description": "CISA Known Exploited Vulnerabilities - CVEs with confirmed in-the-wild exploitation",
         "feed_type": "api",
-        "url": "https://raw.githubusercontent.com/cisagov/kev-data/develop/known_exploited_vulnerabilities.json",
+        # Must match CISAKEVFeed.url. Changed 2026-08-17 with the connector: CISA's
+        # canonical URL is tried first and the GitHub mirror is the fallback, because
+        # the mirror is now the one that rate-limits.
+        "url": "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
         "is_enabled": True,
         "sync_frequency": 86400,
     },

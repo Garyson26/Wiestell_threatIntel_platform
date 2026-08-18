@@ -1,10 +1,14 @@
 """
 CISA KEV feed connector.
 
-Fetches the Known Exploited Vulnerabilities catalog from CISA via the
-GitHub mirror (direct CISA URLs return 403 from Cloudflare).
+Fetches the Known Exploited Vulnerabilities catalogue, trying CISA's canonical URL
+first and falling back to the GitHub mirror. This module previously used the mirror
+ONLY, on the stated grounds that "direct CISA URLs return 403 from Cloudflare" —
+measured 2026-08-17, that no longer reproduces and the comparison has inverted (CISA
+200, mirror 429). See the note beside `_CANONICAL_URL`.
 
-Source: https://github.com/cisagov/kev-data
+Sources: https://www.cisa.gov/known-exploited-vulnerabilities-catalog
+         https://github.com/cisagov/kev-data (mirror)
 License: CC0 (public domain)
 """
 
@@ -34,10 +38,34 @@ def _parse_kev_date(value: Optional[str]) -> Optional[datetime]:
         logger.warning("cisa_kev_unparseable_date value=%r", value)
         return None
 
-_CATALOG_URL = (
+# CANONICAL FIRST, MIRROR AS FALLBACK — changed 2026-08-17.
+#
+# This module used to fetch the GitHub mirror only, justified by "direct CISA URLs return
+# 403 from Cloudflare". Measured on 2026-08-17 that no longer reproduces, and the
+# comparison inverted: CISA's own URL returned 200 with the full 1.58 MB catalogue, while
+# the mirror returned 429 Too Many Requests.
+#
+# A comment justifying a workaround that does not reproduce is worse than no comment — it
+# tells the next reader the canonical source is unusable when it is not. But one
+# observation is not a pattern, so neither source is trusted alone: try canonical, fall
+# back to the mirror on ANY non-200 or transport error, and log which one served. That is
+# strictly better than either alone and it self-documents, so if CISA's Cloudflare rule
+# returns it shows up as a logged fallback rather than a silent 403.
+#
+# PHASE 6 RE-CHECK: this was measured from a Mumbai workstation. Cloudflare's verdict is
+# a function of the requesting IP, so Render's egress may well be judged differently.
+# Re-run the comparison after deploy rather than assuming this result transfers.
+_CANONICAL_URL = (
+    "https://www.cisa.gov/sites/default/files/feeds/"
+    "known_exploited_vulnerabilities.json"
+)
+_MIRROR_URL = (
     "https://raw.githubusercontent.com/cisagov/kev-data/"
     "develop/known_exploited_vulnerabilities.json"
 )
+# The class-level `url` stays the canonical one: it is what `seed_feeds.py` records and
+# what an operator reads in the feeds UI, and it is now the source actually tried first.
+_CATALOG_URL = _CANONICAL_URL
 
 
 class CISAKEVFeed(BaseFeed):
@@ -60,9 +88,37 @@ class CISAKEVFeed(BaseFeed):
     default_sync_frequency = 86400  # catalogue updates at most daily
 
     async def fetch(self) -> Dict[str, Any]:
-        """GET the KEV JSON catalog from the GitHub mirror."""
-        response = await self._fetch_url(_CATALOG_URL)
-        return response.json()
+        """GET the KEV catalogue: CISA canonical first, GitHub mirror on failure.
+
+        Logs which source served so the working path is visible in production rather than
+        inferred. See the note beside `_CANONICAL_URL` for why neither is trusted alone.
+        """
+        errors: List[str] = []
+        for label, url in (("canonical", _CANONICAL_URL), ("mirror", _MIRROR_URL)):
+            try:
+                response = await self._fetch_url(url)
+                payload = response.json()
+            except Exception as exc:  # noqa: BLE001 — any failure falls through
+                errors.append(f"{label}: {type(exc).__name__}: {str(exc)[:120]}")
+                logger.warning("cisa_kev_source_failed source=%s error=%s",
+                               label, errors[-1])
+                continue
+
+            count = len((payload or {}).get("vulnerabilities") or [])
+            if not count:
+                # A 200 carrying no entries is a failure for our purposes: ingesting it
+                # would look like a successful sync of an empty catalogue. Fall through
+                # rather than accepting it.
+                errors.append(f"{label}: 200 but 0 vulnerabilities")
+                logger.warning("cisa_kev_source_empty source=%s", label)
+                continue
+
+            logger.info("cisa_kev_source_served source=%s entries=%d", label, count)
+            return payload
+
+        raise RuntimeError(
+            "CISA KEV unavailable from both sources — " + "; ".join(errors)
+        )
 
     async def parse(self, raw: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Parse the KEV catalog into normalised CVE IOC dicts."""

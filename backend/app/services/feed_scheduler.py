@@ -68,6 +68,44 @@ FEED_CONNECTORS: dict[str, str] = {
 # ── Constants ─────────────────────────────────────────────────────────────────
 _POLL_INTERVAL = 60  # seconds between scheduler ticks
 
+# Exponential back-off ceiling (Spec 2 §4.6). Three days, so a feed that has been dead
+# for a week is still retried twice a week rather than never — the point is to stop a
+# broken feed consuming a slot in EVERY window, not to give up on it.
+_BACKOFF_CAP_SECONDS = 3 * 24 * 3600
+
+# `2 ** n` is exact for arbitrarily large n in Python, so a feed with 5,000 consecutive
+# failures would compute a 1,500-digit integer before `min()` discarded it. Clamping the
+# exponent keeps the arithmetic bounded; 2**32 * any sane interval is already far past
+# the cap, so this changes no reachable outcome.
+_BACKOFF_MAX_EXPONENT = 32
+
+
+def _effective_interval(sync_frequency: int, consecutive_failures: int) -> int:
+    """The interval this feed must actually wait, including back-off.
+
+    ``sync_frequency * 2 ** consecutive_failures``, capped at three days.
+
+    WHY BACK-OFF AT ALL. Without it a permanently broken feed is retried on every tick
+    forever: it holds one of the five concurrent sync slots, burns a connection from a
+    pool sized for a shared host, and writes a `failed` row every window. One dead feed
+    degrades the others. With it, a feed failing at a 1-hour cadence is retried after
+    1h, 2h, 4h, 8h ... and settles at the 3-day cap.
+
+    COMPUTED FROM ``last_attempt_at``, not ``last_sync_at`` — the caller passes the
+    former. That matters specifically here: a failing feed's ``last_sync_at`` is frozen
+    at its last SUCCESS (Section A), which may be weeks ago, so measuring back-off from
+    it would make every retry instantly due and the back-off would do nothing at all.
+    """
+    if consecutive_failures <= 0:
+        return sync_frequency
+    exponent = min(consecutive_failures, _BACKOFF_MAX_EXPONENT)
+    backed_off = min(sync_frequency * (2 ** exponent), _BACKOFF_CAP_SECONDS)
+    # THE CAP IS A CEILING ON THE BACK-OFF, NOT ON THE INTERVAL. Without this `max`, a
+    # feed whose own cadence exceeds three days (a hand-configured weekly feed) would be
+    # capped BELOW its base interval, so failing would make it retry MORE often than
+    # working. Caught by its own test rather than by review.
+    return max(sync_frequency, backed_off)
+
 # Feed IDs that are currently syncing — prevents duplicate concurrent runs
 _running: set[str] = set()
 
@@ -344,7 +382,12 @@ async def _tick() -> None:
         # genuinely new feed row still has NULL here and fires immediately, which is
         # correct.
         last = feed.last_attempt_at  # naive UTC from MySQL, or None
-        overdue = last is None or (now - last).total_seconds() >= freq
+        # BACK-OFF (Section D4). A feed with consecutive failures waits longer between
+        # attempts, so a dead feed stops consuming a sync slot in every window. The
+        # counter resets to 0 on a successful ingest AND on a no-change sync, so a
+        # working feed never accumulates back-off.
+        interval = _effective_interval(freq, feed.consecutive_failures or 0)
+        overdue = last is None or (now - last).total_seconds() >= interval
 
         if overdue:
             connector_path = FEED_CONNECTORS.get(feed.slug)
@@ -352,7 +395,13 @@ async def _tick() -> None:
                 logger.warning("scheduler_no_connector", slug=feed.slug)
                 continue
 
-            logger.info("scheduler_triggering_sync", feed=feed.slug, freq=freq)
+            logger.info(
+                "scheduler_triggering_sync",
+                feed=feed.slug,
+                freq=freq,
+                effective_interval=interval,
+                consecutive_failures=feed.consecutive_failures or 0,
+            )
             _running.add(feed.id)
             asyncio.create_task(
                 _sync_and_release(str(feed.id), feed.slug, connector_path)
