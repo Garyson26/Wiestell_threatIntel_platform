@@ -240,7 +240,7 @@ variables that are only *read* during the build, not variables that live elsewhe
 
 | Variable | Default | Handling | Consequence if unset |
 |---|---|---|---|
-| `CORS_ORIGINS` | `https://wiestell.com,https://www.wiestell.com` | literal in `render.yaml` | Browser calls from any other origin fail preflight. **Format: comma-separated, no spaces required** (`config.py:179` strips each). A bare `*` entry is **stripped**, not honoured. Currently declares `wiestell.com`, `www.wiestell.com`, `wiestell.vercel.app`. **Vercel preview deployments get per-deploy subdomains and are NOT covered** — add them explicitly, or accept that previews cannot call the API. |
+| `CORS_ORIGINS` | `https://wiestell.com,https://www.wiestell.com` | literal in `render.yaml` | Browser calls from any other origin fail preflight. **Format: comma-separated, no spaces required** (`config.py:179` strips each). A bare `*` entry is **stripped**, not honoured. Currently declares `wiestell.com`, `www.wiestell.com`, `wiestell.vercel.app`. **Vercel preview deployments get per-deploy subdomains and are NOT covered.** Decision 2026-08-17: **not covering them for now** — so preview deploys cannot call the API and every functional test must run against the production frontend origin. A preview will render and then fail on its first API call, which looks like a backend outage rather than a CORS decision; know that before debugging one. |
 | `CRON_SECRET` | `""` | **`generateValue: true`** | `feeds/sync-all` and `enrichment/backfill/start` accept it via `X-Cron-Secret` as an alternative to an admin token. Unset means the GitHub Actions feed-sync workflow cannot authenticate and **the only live background path stops running**. Render generates it; copy it into the workflow's repository secret. |
 | `RESEND_API_KEY` | `""` | `sync: false` | **Nobody can log in, including you.** Auth is password → email OTP → JWT. Without it `_issue_otp` raises 503 on login; on password reset the 503 is swallowed (C-04), so it silently does nothing. |
 | `ADMIN_EMAIL` | `""` | `sync: false` | Only used when `ENABLE_ERROR_EMAILS` is true. Harmless unset. |
@@ -285,7 +285,18 @@ So: paste the one abuse.ch key into `MALWAREBAZAAR_API_KEY`, `THREATFOX_API_KEY`
 | `PYTHON_VERSION` | `value: 3.11.9` | — |
 | `GEOIP_DB_PATH` | `value: /opt/render/project/src/backend/data/GeoLite2-City.mmdb` | Must match the `disk.mountPath` (`geolite-data`, 1 GB). If they diverge the file is downloaded to a path nothing reads. |
 
-> **THE BUILD STILL FAILS OPEN, and declaring the credentials only fixed half of it.**
+> **UPDATED 2026-08-17.** `alembic upgrade head` has been **removed** from the build —
+> it was redundant (§2 runs migrations from a developer machine) and it carried
+> `|| echo "continuing"`, so a failed migration produced a *successful* deploy against an
+> unmigrated database. A redundant line that swallows failures is worse than an absent
+> one. `test_the_migration_is_not_run_from_the_build_command` keeps it out.
+>
+> **GeoLite2 still fails open, deliberately** — a missing geo database must degrade
+> enrichment rather than block a deploy — but the warning is now banner-framed so it is
+> not lost in pip output. Verified rather than assumed: with the file absent,
+> `build_registry()` gates geoip out and `/cron-status` reports `geoip_database_missing`.
+>
+> **Original note, retained for the reasoning:**
 > ```
 > python download_geolite2.py || echo "⚠️  GeoLite2 download failed - continuing..."
 > alembic upgrade head        || echo "⚠️  Database migration failed - continuing..."
@@ -329,14 +340,31 @@ build step has them. The `|| echo` fail-open remains, as above.
 
 ### 3.5.8 Three blockers in `render.yaml` before you create the service
 
-1. **`region: oregon`, twice** (lines 13 and 166). You want **Frankfurt**. The value is
-   `frankfurt`. Changing it after creation is not possible — the service must be recreated.
-2. **`fromService` names a service that does not exist.** The frontend block references
-   `name: sentinel-backend`; the backend is `name: wiestell-backend`. `NEXT_PUBLIC_API_URL`
-   would not resolve. Moot if the frontend stays on Vercel — in which case **delete the
-   `sentinel-frontend` block** rather than leaving a broken reference in the blueprint.
-3. **`plan: starter`, not `free`.** Worth confirming that is the intent; the single-worker
-   reasoning and the 512 MB / 0.1 CPU limits in `docker-compose.yml` were sized for free.
+1. ~~`region: oregon`~~ **FIXED 2026-08-17** — both blocks now `frankfurt`. Asserted by
+   `test_every_service_is_in_frankfurt`, because region is immutable after creation and
+   recreating the service is the only remedy.
+2. ~~dead `fromService`~~ **FIXED 2026-08-17** — removed, with the reason recorded in
+   place. `test_no_dead_fromservice_reference` now fails on any `fromService` naming a
+   service the blueprint does not declare. The `sentinel-frontend` block is left as
+   vestigial-but-harmless since the frontend deploys to Vercel.
+3. **`plan: starter`, not `free`** — **still open, awaiting your decision.** Not changed.
+   Worth confirming: the single-worker reasoning and the 512 MB / 0.1 CPU limits in
+   `docker-compose.yml` were sized for a free instance.
+
+4. **CREATE THE SERVICE FROM THE BLUEPRINT, NOT THE DASHBOARD FORM.** `backend/Dockerfile`
+   exists, and Render's creation form auto-detects it — the owner reports the form
+   defaulting to Docker. `render.yaml` declares `runtime: python`, so a blueprint-created
+   service runs `buildCommand`. A Docker-created one does not, and both consequences are
+   silent:
+
+   * `download_geolite2.py` never executes, so there is no GeoIP for the **entire IP
+     population**. The Dockerfile creates `/app/data` but downloads nothing into it.
+   * `GEOIP_DB_PATH` (`/opt/render/project/src/backend/data/...`) does not exist inside
+     the image at all — the Dockerfile's `WORKDIR` is `/app`.
+
+   If you must create it by hand, choose the **Python** runtime explicitly and paste the
+   `buildCommand`. `test_the_backend_declares_the_python_runtime` guards the blueprint
+   side; nothing can guard the dashboard side, which is why it is written here.
 
 ---
 
