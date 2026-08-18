@@ -18,18 +18,48 @@ Ordering constraints, stated once so the steps below make sense:
 
 ## 0. Before touching anything
 
-- [ ] **Rotate the credentials still in git history.** `9107d1c` carries a literal
-      `EMAIL_PASSWORD`, and SECURITY_REVIEW.md's rotation notice lists a MySQL password and
-      SMTP password. Removing them from the working tree did not make them secret. Rotate,
-      then decide whether to purge history.
-- [ ] **Run the owner queries in one sitting** — four blocking, two not:
-      §5 of [the migration-chain design](superpowers/specs/2026-07-30-migration-chain-repair-design.md)
-      (`SELECT VERSION()`, `SHOW CREATE TABLE iocs`, `SHOW CREATE TABLE feed_sources`,
-      `SELECT * FROM alembic_version`), plus §5.4 (four corpus counts) and §5.5 (the GeoIP
-      `error_city` check). Record the output **verbatim in that document** before anything
-      changes it.
-- [ ] **Confirm `alembic upgrade head` cannot run yet.** It fails at error 1170 on
-      `iocs.value`. Nothing below that depends on migrations can proceed until §2 is done.
+> ### THE FREE PLAN HAS NO SHELL. Read this before planning any step.
+>
+> Confirmed 2026-08-17: the backend runs on Render's **free** plan (`plan: free`). That is
+> not only a cost choice — it removes a capability the rest of this document has to work
+> around:
+>
+> * **No shell, no `render exec`, no one-off jobs.** There is no way to run `alembic`, a
+>   seed script, a repair query or a one-line diagnostic *on the instance*. Everything in
+>   §2, §3 and §6 runs **from a developer machine against the production DSN**.
+> * **No Render cron jobs** — they are a paid feature. That is precisely why the one live
+>   background path is an external GitHub Actions schedule calling
+>   `POST /api/v1/feeds/sync-all` with `X-Cron-Secret` (§5), rather than a `jobs:` block.
+> * **There is no fallback if the developer-machine path fails.** If your workstation
+>   cannot reach Hostinger — firewall, IP allowlist, VPN — you cannot migrate or seed at
+>   all, and there is no in-service alternative to fall back to. **Verify connectivity
+>   before the deploy window**, not during it: a `SELECT 1` against the production DSN is
+>   the whole test.
+> * **Spin-down applies.** Free instances sleep after ~15 minutes without inbound HTTP,
+>   and cold starts are slow. §2.8 of the Phase 4 notes measured that a single URLhaus
+>   sync can exceed the idle window on its own — re-derive after deploy with real latency
+>   (Phase 6).
+> * **750 instance-hours per month, account-wide.** Previews are declared off
+>   (`previewsEnabled: false`) for that reason: every preview service drawn from the same
+>   pool is time the production service does not get.
+
+- [ ] **Verify you can reach the production database from the machine you will deploy
+      from.** `SELECT 1` against the DSN. Everything in §2/§3/§6 depends on it and there
+      is no alternative path.
+- [ ] **Rotate the credentials still in git history**, if not already done. `9107d1c`
+      carries a literal `EMAIL_PASSWORD`; SECURITY_REVIEW.md lists a MySQL and an SMTP
+      password, plus two API keys the review never knew about. Rotation is the mitigation;
+      the history purge is tracked separately as still-open and is **not** a deploy
+      blocker (the repo is private and everything is rotated).
+- [ ] ~~Run the owner queries in one sitting~~ **DONE 2026-08-17.** All answered:
+      MariaDB 11.8.8; `uq_ioc_type_value` spans the full `(type, value)` with
+      `SUB_PART NULL`; `alembic_version` = `c3d4e5f67890`; 217,485 IOCs; 8 feed rows;
+      48,058 enrichment rows. The only one outstanding is the GeoIP `error_city` count,
+      which is no longer load-bearing.
+- [ ] ~~Confirm `alembic upgrade head` cannot run yet~~ **CANCELLED — it runs clean.**
+      Error 1170 was a MySQL-8-only restriction and the test container had been on the
+      wrong engine. Verified end to end on MariaDB 11.8: empty database → 7 revisions →
+      seed → 11 feeds, 11 enabled. The migration-chain repair is not needed.
 
 ## 1. Decisions to make, not discover
 
@@ -494,7 +524,7 @@ cannot be demonstrated to a UAT audience as-is. (§8 item 16)
 - [ ] Review the distribution before writing. A large shift in the wrong direction is
       easier to investigate now than to unpick afterwards.
 - [ ] Run the write pass. Budget from the §5.4.1 table — at 200,000 rows this is **1–2¼
-      hours** from a laptop against Hostinger. Resumable via `--start-after` and idempotent,
+      hours** from a developer machine against Hostinger — **not on Render**, which on the free plan has no shell to run it from and would spin down mid-run anyway. Resumable via `--start-after` and idempotent,
       so an interruption recovers rather than restarts.
 - [ ] **Only now** populate any `manual_score_override` values. Set earlier and those rows
       are skipped by the rescore permanently.
