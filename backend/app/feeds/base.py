@@ -213,6 +213,27 @@ class BaseFeed(abc.ABC):
         self.sync_cursor: Optional[str] = None
         self.next_cursor: Optional[str] = None
 
+        # ── Conditional requests (Phase 4 Section D3) ────────────────────────
+        # Validators from the LAST successful fetch, loaded by the scheduler from
+        # `feed_sources.http_etag` / `http_last_modified`. Sent as If-None-Match /
+        # If-Modified-Since; a 304 means the file has not changed and there is nothing
+        # to download, parse or ingest.
+        #
+        # Implemented in `_fetch_url` rather than per connector, so it applies wherever
+        # the SERVER cooperates. Hard-coding which feeds "should" support ETags would be
+        # a guess about servers rather than a fact about them, and costs nothing where
+        # they do not: a server that ignores the headers simply returns 200 as before.
+        self.http_etag: Optional[str] = None
+        self.http_last_modified: Optional[str] = None
+        # What this run observed, for the scheduler to persist. Set on a 200 (new
+        # validators) and preserved on a 304 (the old ones remain valid).
+        self.next_http_etag: Optional[str] = None
+        self.next_http_last_modified: Optional[str] = None
+        # True when the server answered 304. A `no_change` sync is a SUCCESS -- the
+        # source asserting it has nothing new -- and must never be scored as a failure,
+        # or a reliably-unchanged feed backs off to the 3-day cap while being healthy.
+        self.not_modified: bool = False
+
     def record_observed_window(self, timestamps: List[Optional[datetime]]) -> None:
         """Record the min/max of the timestamps a rolling-window parse saw.
 
@@ -254,6 +275,15 @@ class BaseFeed(abc.ABC):
         try:
             logger.info("feed_fetch_start", feed=self.name)
             raw_data = await self.fetch()
+
+            # SHORT-CIRCUIT ON 304, BEFORE parse(). A 304 body is empty by definition,
+            # so parsing it would return zero IOCs -- indistinguishable from a feed that
+            # had genuinely gone empty, which the scheduler records as `no_data`. The
+            # difference matters: "unchanged" is healthy, "no data" is a symptom.
+            if self.not_modified:
+                logger.info("feed_not_modified_skip_parse", feed=self.name)
+                return []
+
             iocs = await self.parse(raw_data)
             logger.info("feed_fetch_complete", feed=self.name, ioc_count=len(iocs))
             return iocs
@@ -269,9 +299,37 @@ class BaseFeed(abc.ABC):
         reraise=True,
     )
     async def _fetch_url(self, url: str, **kwargs) -> httpx.Response:
-        """Fetch URL with retry logic (retries only on transient errors)."""
-        response = await self.client.get(url, **kwargs)
+        """Fetch a URL, sending conditional-request validators when we hold them.
+
+        A 304 is returned to the caller rather than raised: `raise_for_status()` treats
+        3xx as fine, and `self.not_modified` is set so `run()` can short-circuit. The
+        caller must check it BEFORE reading the body, which on a 304 is empty by
+        definition -- parsing it would yield zero IOCs and look exactly like a feed that
+        had gone empty.
+        """
+        headers = dict(kwargs.pop("headers", None) or {})
+        if self.http_etag:
+            headers.setdefault("If-None-Match", self.http_etag)
+        if self.http_last_modified:
+            headers.setdefault("If-Modified-Since", self.http_last_modified)
+
+        response = await self.client.get(url, headers=headers or None, **kwargs)
+
+        if response.status_code == 304:
+            self.not_modified = True
+            # Carry the validators forward unchanged: they still describe the current
+            # file. A 304 body carries no ETag of its own to replace them with.
+            self.next_http_etag = self.http_etag
+            self.next_http_last_modified = self.http_last_modified
+            logger.info("feed_not_modified", url=url)
+            return response
+
         response.raise_for_status()
+        # 200: record whatever the server offered, so the NEXT sync can ask
+        # conditionally. Absent headers leave these None and the next fetch is
+        # unconditional -- which is correct, not a failure.
+        self.next_http_etag = response.headers.get("ETag")
+        self.next_http_last_modified = response.headers.get("Last-Modified")
         return response
 
     def _make_ioc(
