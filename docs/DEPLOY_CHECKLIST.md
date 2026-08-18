@@ -9,7 +9,7 @@ Ordering constraints, stated once so the steps below make sense:
 | Because | This must precede this |
 |---|---|
 | the rescore script skips rows holding an override | first rescore → any `manual_score_override` |
-| `Base.metadata.create_all()` runs in the seed script and fails on the current schema | migration repair → seeding |
+| the seed script writes `feed_sources` rows, so the table must exist | **`alembic upgrade head` → `seed_feeds.py`** |
 | feed slugs must resolve to connectors before a sync can do anything | `seed_feeds.py` → first sync |
 | scoring changes reach stored rows only via the rescore | deploy code → rescore |
 | a rescore reads *stored* enrichment payloads | see §6 — this one is a **decision**, not an order |
@@ -107,6 +107,34 @@ whatever happens first.
 **REWRITTEN 2026-08-17 after Phase 4 A–E, and after rehearsing the whole sequence on a
 fresh MariaDB 11.8. Most of what this section used to say was wrong.**
 
+> **RUN §2 AND §3 FROM A DEVELOPER MACHINE, AGAINST THE PRODUCTION DSN.** Not on Render:
+> free instances have no shell and no one-off jobs, so there is nowhere to run `alembic`
+> or a seed script. Same constraint as the rescore in §6.
+>
+> **ORDER IS §2 THEN §3, AND IT IS NOT INTERCHANGEABLE.** `seed_feeds.py` writes
+> `feed_sources` rows, so the table must exist first. Verified as one unbroken pass on
+> 2026-08-17 — empty database → 7 revisions → seed → **11 feeds, 11 enabled**.
+>
+> ```bash
+> # bash / zsh
+> cd backend
+> DATABASE_URL="mysql+pymysql://user:pass@host/db" python -m alembic upgrade head
+> cd ..
+> DATABASE_URL="mysql+pymysql://user:pass@host/db" python scripts/seed_feeds.py --dry-run
+> ```
+>
+> ```powershell
+> # PowerShell — the owner's shell. `VAR=value cmd` is a PARSE ERROR here.
+> $env:DATABASE_URL = "mysql+pymysql://user:pass@host/db"
+> cd backend
+> python -m alembic upgrade head
+> cd ..
+> python scripts\seed_feeds.py --dry-run
+> ```
+>
+> Note `python -m alembic`, not `alembic`: the bare entry point is not always on PATH
+> under Git Bash on Windows (measured — it fails with "Permission denied").
+
 The migration-chain repair is **cancelled**: `alembic upgrade head` runs clean from empty
 on MariaDB 11.8, all seven revisions. Error 1170 was a MySQL-8-only restriction, and the
 tier had been running against `mysql:8.0` — the schema was never broken, the container
@@ -134,6 +162,11 @@ was. The test-only prefix-length scaffold is already deleted.
 
 ## 3. Seed
 
+**Runs AFTER §2, from a developer machine.** The script writes `feed_sources` rows, so
+the migrations must have created the table; and Render free instances have no shell to run
+it from. It no longer calls `create_all()` as a fallback — depending on that was how the
+ordering used to be stated, and it hid the real dependency.
+
 - [ ] `python scripts/seed_feeds.py --dry-run` **first**. It now upserts by alias group
       rather than skipping on an exact slug match, and the dry run prints exactly what it
       would insert and update. Against production's 8 rows it reports **3 inserts, 8
@@ -158,11 +191,15 @@ was. The test-only prefix-length scaffold is already deleted.
       than misrouting a fetch.
 - [ ] `python scripts/seed_mitre.py` — the ATT&CK catalogue. `/attack/*` returns empty
       without it.
-- [ ] **On a FRESH database, `otx-alienvault` and `abuseipdb` seed as `is_enabled = 0`**
-      — 9 of 11 feeds enabled. Found in the 2026-08-17 rehearsal. Harmless in production
-      (the seeder preserves the existing enabled state) but wrong for disaster recovery
-      or a new environment, where two feeds would silently never sync. Enable them by
-      hand there, or decide the seed defaults are wrong.
+- [ ] Confirm a fresh seed reports **11 inserted** and all 11 `is_enabled = 1`.
+
+      `otx-alienvault` and `abuseipdb` used to seed as `is_enabled = 0`, giving 9 of 11 —
+      found by the 2026-08-17 rehearsal and **fixed, not documented around**. The default
+      dated from when a keyed feed could not work without credentials at seed time; it had
+      become a real cost, because OTX is the only reputation provider covering hashes at
+      all after VirusTotal's removal, and OTX + AbuseIPDB are the only pair that can
+      corroborate an IP verdict. Production was unaffected either way — `is_enabled` is
+      preserved on existing rows — but a fresh environment silently lost both.
 - [ ] Verify `virustotal` and `phishtank` are `is_enabled = 0` **if they exist at all**.
       Production has neither — its 8 rows are all canonical — so `e5f6a7b80002` matches
       nothing and that is expected, not a failure.
