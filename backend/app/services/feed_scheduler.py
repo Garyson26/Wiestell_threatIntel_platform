@@ -144,6 +144,8 @@ async def _run_feed_sync_inner(feed_id: str, feed_slug: str, connector_path: str
     # Resolve API key and release the connection before the (potentially slow) HTTP fetch.
     api_key: Optional[str] = None
     stored_cursor: Optional[str] = None
+    stored_etag: Optional[str] = None
+    stored_last_modified: Optional[str] = None
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(FeedSource).where(FeedSource.id == feed_id))
         feed = result.scalar_one_or_none()
@@ -157,6 +159,8 @@ async def _run_feed_sync_inner(feed_id: str, feed_slug: str, connector_path: str
         # leave the feed looking un-attempted and it would be retried immediately on
         # every subsequent tick. Written on every attempt, success or failure.
         stored_cursor = feed.sync_cursor
+        stored_etag = feed.http_etag
+        stored_last_modified = feed.http_last_modified
         feed.last_attempt_at = attempt_started_at
         await session.commit()
         if feed.api_key_env:
@@ -182,6 +186,10 @@ async def _run_feed_sync_inner(feed_id: str, feed_slug: str, connector_path: str
     # session above alongside the API key, so no extra round-trip. A connector that does
     # not use a cursor simply ignores it.
     connector.sync_cursor = stored_cursor
+    # Conditional-request validators from the last successful fetch (D3). A connector
+    # whose server ignores them simply gets a 200, exactly as before.
+    connector.http_etag = stored_etag
+    connector.http_last_modified = stored_last_modified
 
     # Fetch (no DB connection held during network I/O)
     try:
@@ -203,6 +211,45 @@ async def _run_feed_sync_inner(feed_id: str, feed_slug: str, connector_path: str
                 # copy since this column is served to API clients.
                 feed.last_sync_error = redact_secrets(exc)[:2000]
                 await session.commit()
+        return
+
+    # ── 304 Not Modified: a SUCCESSFUL sync with nothing to ingest ───────────────
+    #
+    # Distinct from `no_data`. The source has asserted the file is unchanged, so there
+    # is nothing to download, parse or write. Recording it as a failure would back a
+    # healthy feed off to the 3-day cap, and the more reliably unchanged the source, the
+    # worse the back-off.
+    if getattr(connector, "not_modified", False):
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(FeedSource).where(FeedSource.id == feed_id))
+            feed = result.scalar_one_or_none()
+            if feed:
+                # `no_change`, NOT `success`: feed health must be able to distinguish
+                # "checked, unchanged" from "fetched and ingested". A feed showing
+                # no_change for three days is working correctly and must not render as
+                # broken (Spec 2 §4.4).
+                feed.last_sync_status = "no_change"
+                feed.last_sync_at = attempt_started_at   # the check itself succeeded
+                feed.last_sync_error = None
+                feed.consecutive_failures = 0            # a no-change IS a success
+                # ioc_count is deliberately NOT touched. Zeroing it would report the feed
+                # as having contributed nothing, when it contributed exactly what it did
+                # last time and the data is still there.
+                #
+                # The watermark is likewise untouched, and THE GAP CHECK IS SKIPPED
+                # ENTIRELY rather than run against an absent file. `_check_window_continuity`
+                # answers "did records fall through the gap between syncs"; a 304 is the
+                # server asserting no records entered or aged out, so there is nothing to
+                # have missed. Reporting a gap here would claim data loss that provably
+                # did not happen. The stored watermark stays valid precisely because it
+                # describes a file that still exists unchanged -- so a later 200 compares
+                # against the right value however long the 304 streak ran.
+                if getattr(connector, "next_http_etag", None):
+                    feed.http_etag = connector.next_http_etag
+                if getattr(connector, "next_http_last_modified", None):
+                    feed.http_last_modified = connector.next_http_last_modified
+                await session.commit()
+        logger.info("run_feed_sync_not_modified", feed=feed_slug)
         return
 
     # Ingest — fresh session per attempt; ingest_iocs commits in chunks internally
@@ -236,6 +283,15 @@ async def _run_feed_sync_inner(feed_id: str, feed_slug: str, connector_path: str
                 new_cursor = getattr(connector, "next_cursor", None)
                 if new_cursor:
                     feed.sync_cursor = new_cursor
+
+                # Store whatever validators the 200 carried, so the NEXT sync can ask
+                # conditionally. Absent headers leave these unchanged rather than
+                # clearing them: a server that omits ETag on one response has not
+                # invalidated the one it gave us before.
+                if getattr(connector, "next_http_etag", None):
+                    feed.http_etag = connector.next_http_etag
+                if getattr(connector, "next_http_last_modified", None):
+                    feed.http_last_modified = connector.next_http_last_modified
                 _check_window_continuity(feed, connector)
                 await session.commit()
                 logger.info("run_feed_sync_complete", feed=feed_slug, iocs_ingested=count)
