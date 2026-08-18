@@ -22,7 +22,13 @@ services:
     # Create this service FROM THE BLUEPRINT, or if you create it by hand choose the
     # Python runtime explicitly and paste the buildCommand.
     runtime: python
-    plan: starter  # Change to 'standard' or 'pro' for production
+    # FREE, confirmed 2026-08-17. This is not a cost setting alone -- several
+    # decisions elsewhere are sized for a free instance and must move together if it
+    # ever changes: --workers 1 in startCommand (six single-process subsystems),
+    # pool_size/max_overflow in database.py (a SHARED MySQL account allowance), and
+    # ENRICHMENT_CONCURRENCY=5 (third-party rate limits are per key, not per task).
+    # Free also means NO SHELL and no one-off jobs -- see DEPLOY_CHECKLIST s2/s3.
+    plan: free
     region: frankfurt  # eu-central. IMMUTABLE after creation -- recreating the
                        # service is the only way to change it.
     buildCommand: |
@@ -182,6 +188,11 @@ services:
         sync: false
       - key: URLHAUS_API_KEY
         sync: false
+    # PREVIEWS OFF, EXPLICITLY. Free instances draw from one 750-hour monthly pool
+    # across the whole account, so every preview service spun up for a pull request
+    # burns hours the production service needs. Off is Render's default, but the
+    # default is not the reason -- this is a decision, so it is declared.
+    previewsEnabled: false
     healthCheckPath: /health
     healthCheckInterval: 50  # seconds - check every 50s to keep service alive
     healthCheckTimeout: 10   # seconds - timeout for health check response
@@ -197,7 +208,7 @@ services:
   - type: web
     name: sentinel-frontend
     runtime: node
-    plan: starter
+    plan: free
     region: frankfurt
     buildCommand: npm install && npm run build
     startCommand: npm run start
@@ -242,7 +253,9 @@ services:
 # service like cron-job.org pointing to your /api/v1/feeds/sync-all endpoint,
 # sending the CRON_SECRET value in an "X-Cron-Secret" header.
 #
-# Uncomment below if you have a paid plan:
+# Uncomment below if you have a paid plan. Render cron jobs are NOT available on free,
+# which is exactly why the live path is an external GitHub Actions schedule hitting
+# POST /api/v1/feeds/sync-all with X-Cron-Secret instead.
 # jobs:
 #   - type: cron
 #     name: daily-feed-sync
