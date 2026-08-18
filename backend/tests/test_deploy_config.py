@@ -625,3 +625,104 @@ class TestRenderYamlDeployShape:
             f"these sensitive variables carry a committed literal value: {offenders}. "
             "They must use sync: false or generateValue: true."
         )
+
+
+class TestTheFreePlanSizingHoldsTogether:
+    """`plan: free` is not only a cost setting — four decisions are sized for it.
+
+    Confirmed 2026-08-17. Each of these was chosen against a free instance's limits, and
+    raising the plan without revisiting them together is how they drift apart:
+
+      --workers 1            six single-process subsystems (CLAUDE.md)
+      --no-proxy-headers     uvicorn's proxy middleware would fight deps.py::_client_ip
+      pool sizes             a SHARED MySQL account allowance, not a per-app one
+      ENRICHMENT_CONCURRENCY third-party rate limits are per API key, not per task
+      previewsEnabled: false 750 instance-hours/month is account-wide
+    """
+
+    def _backend(self):
+        import pathlib
+
+        import yaml
+
+        path = pathlib.Path(__file__).resolve().parents[2] / "render.yaml"
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        return next(s for s in data["services"] if s["name"] == "wiestell-backend")
+
+    def test_the_backend_is_on_the_free_plan(self):
+        assert self._backend().get("plan") == "free"
+
+    def test_previews_are_disabled(self):
+        """Free instance-hours are one account-wide pool; a preview spends production's."""
+        assert self._backend().get("previewsEnabled") is False, (
+            "previews are not explicitly disabled. Off is Render's default, but the "
+            "default is not the reason — every preview service draws from the same "
+            "750-hour monthly pool the production service needs."
+        )
+
+    def test_the_start_command_declares_one_worker_and_no_proxy_headers(self):
+        cmd = self._backend().get("startCommand", "")
+        assert "--workers 1" in cmd, (
+            "--workers 1 is gone from render.yaml. Six subsystems assume one process "
+            "per instance; main.py refuses to boot above 1, so this would be a crash "
+            "loop rather than a silent degradation — but declare it anyway."
+        )
+        assert "--no-proxy-headers" in cmd, (
+            "--no-proxy-headers is gone. uvicorn's proxy_headers defaults to TRUE, and "
+            "its X-Forwarded-For handling would fight deps.py::_client_ip (finding R-05). "
+            "Note the disable form is --no-proxy-headers; --proxy-headers=false is "
+            "invalid and uvicorn refuses to start."
+        )
+
+    def test_start_sh_agrees_with_render_yaml(self):
+        """Two start paths, and they must not disagree."""
+        import pathlib
+
+        start = (pathlib.Path(__file__).resolve().parents[1] / "start.sh").read_text(
+            encoding="utf-8"
+        )
+        for flag in ("--workers 1", "--no-proxy-headers"):
+            assert flag in start, f"{flag} missing from start.sh"
+
+    def test_the_connection_pools_are_unchanged(self):
+        """Both engines total 5, so one process holds at most 10 connections.
+
+        The values are NOT symmetric and it is worth stating which is which: the ASYNC
+        engine — the one serving requests — is 2 + 3, and the sync engine used by scripts
+        and Alembic is 3 + 2. Both sum to 5 against a shared MySQL account allowance.
+        """
+        import inspect
+
+        from app import database
+
+        source = inspect.getsource(database)
+        assert "pool_size=2" in source and "max_overflow=3" in source, (
+            "the async pool moved off 2 + 3"
+        )
+        assert "pool_size=3" in source and "max_overflow=2" in source, (
+            "the sync pool moved off 3 + 2"
+        )
+
+    def test_the_enrichment_semaphore_is_still_five(self):
+        from app.services.enrichment_engine import ENRICHMENT_CONCURRENCY
+
+        assert ENRICHMENT_CONCURRENCY == 5, (
+            f"ENRICHMENT_CONCURRENCY is {ENRICHMENT_CONCURRENCY}, expected 5. It is "
+            "module-level, so the bound is process-wide; raising it multiplies "
+            "third-party calls in flight against per-key rate limits, and on 0.1 CPU "
+            "the WHOIS executor cannot absorb the fan-out."
+        )
+
+    def test_no_render_cron_job_is_declared(self):
+        """Cron jobs are a paid feature; the live path is external GitHub Actions."""
+        import pathlib
+
+        import yaml
+
+        path = pathlib.Path(__file__).resolve().parents[2] / "render.yaml"
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        assert not data.get("jobs"), (
+            "a Render cron job is declared, but cron jobs are not available on the free "
+            "plan. The live background path is the GitHub Actions schedule calling "
+            "POST /api/v1/feeds/sync-all."
+        )
