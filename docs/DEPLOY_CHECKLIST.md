@@ -381,7 +381,26 @@ build step has them. The `|| echo` fail-open remains, as above.
    Worth confirming: the single-worker reasoning and the 512 MB / 0.1 CPU limits in
    `docker-compose.yml` were sized for a free instance.
 
-4. **CREATE THE SERVICE FROM THE BLUEPRINT, NOT THE DASHBOARD FORM.** `backend/Dockerfile`
+4. ~~Blueprint rejected~~ **FIXED 2026-08-17.** Three things made it invalid or harmful
+   on a free instance, all now removed with the reasons recorded in `render.yaml`:
+
+   * **`disk:` block** — persistent disks are not available on free, which is what the
+     Blueprint was rejected for. It was also actively wrong: it mounted at
+     `/opt/render/project/src/backend/data`, byte-identical to the directory
+     `GEOIP_DB_PATH` points into and where `download_geolite2.py` writes **at build
+     time**. The disk would have mounted over the freshly-built `.mmdb` and hidden it, so
+     GeoIP would have been missing despite a correct, correctly-credentialled download.
+     A test now asserts no disk mount can contain the GeoIP path.
+   * **`healthCheckInterval: 50` / `healthCheckTimeout: 10`** — commented "keep service
+     alive", which is exactly the keep-alive this deployment must not have. A 50-second
+     check means the instance never sleeps and burns ~744 of the 750 monthly hours; the
+     four-window sync cadence is designed around it sleeping between windows. Render's
+     defaults now apply. `healthCheckPath: /health` is kept — the endpoint is still wanted.
+   * **The whole `sentinel-frontend` service** — the frontend deploys to Vercel, so it was
+     vestigial, and leaving it meant Render creating a second free web service drawing
+     from the same 750-hour pool.
+
+5. **CREATE THE SERVICE FROM THE BLUEPRINT, NOT THE DASHBOARD FORM.** `backend/Dockerfile`
    exists, and Render's creation form auto-detects it — the owner reports the form
    defaulting to Docker. `render.yaml` declares `runtime: python`, so a blueprint-created
    service runs `buildCommand`. A Docker-created one does not, and both consequences are

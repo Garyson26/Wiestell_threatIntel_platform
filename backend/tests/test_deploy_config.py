@@ -726,3 +726,95 @@ class TestTheFreePlanSizingHoldsTogether:
             "plan. The live background path is the GitHub Actions schedule calling "
             "POST /api/v1/feeds/sync-all."
         )
+
+
+class TestTheBlueprintIsValidForAFreeInstance:
+    """Three things the Blueprint was rejected or degraded for, 2026-08-17."""
+
+    def _blueprint(self):
+        import pathlib
+
+        import yaml
+
+        path = pathlib.Path(__file__).resolve().parents[2] / "render.yaml"
+        return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+    def _backend(self):
+        return next(
+            s for s in self._blueprint()["services"] if s["name"] == "wiestell-backend"
+        )
+
+    def test_no_service_declares_a_disk(self):
+        """Persistent disks are not available on free instances — the actual rejection.
+
+        And it would have been wrong even on a paid plan: the disk mounted at
+        /opt/render/project/src/backend/data, byte-identical to the directory
+        GEOIP_DB_PATH points into, which is where download_geolite2.py writes AT BUILD
+        TIME. The disk would mount over the freshly-built .mmdb and hide it, so GeoIP
+        would be missing despite a correct download — visible only as
+        `geoip_database_missing` on the admin-gated /cron-status.
+        """
+        offenders = [s["name"] for s in self._blueprint()["services"] if s.get("disk")]
+        assert not offenders, (
+            f"these services declare a disk: {offenders}. Free instances cannot have "
+            "one, and at the GeoIP path it would shadow the build-time download."
+        )
+
+    def test_the_geoip_path_is_not_a_mount_point_for_anything(self):
+        """The shadowing hazard, stated as a property rather than a one-off fix."""
+        backend = self._backend()
+        geoip = next(
+            (v.get("value") for v in backend.get("envVars", [])
+             if v.get("key") == "GEOIP_DB_PATH"),
+            None,
+        )
+        assert geoip, "GEOIP_DB_PATH is not declared"
+        mounts = [
+            (s.get("disk") or {}).get("mountPath")
+            for s in self._blueprint()["services"]
+        ]
+        for mount in filter(None, mounts):
+            assert not geoip.startswith(mount.rstrip("/") + "/"), (
+                f"GEOIP_DB_PATH ({geoip}) sits under a disk mounted at {mount}. The "
+                "database is written at BUILD time into the image; a runtime mount over "
+                "that directory hides it."
+            )
+
+    def test_no_keep_alive_health_check_tuning(self):
+        """A 50s health check means the instance NEVER sleeps.
+
+        Free gives 750 instance-hours per month account-wide; never sleeping burns ~744
+        of them. The four-window sync cadence is designed around the instance sleeping
+        between windows, so this is a design contradiction, not just a cost one.
+        """
+        backend = self._backend()
+        for key in ("healthCheckInterval", "healthCheckTimeout"):
+            assert key not in backend, (
+                f"{key} is declared again. It was removed because tuning it to keep the "
+                "service warm defeats the sleep the free-plan hour budget and the sync "
+                "cadence both assume. Render's defaults are correct."
+            )
+        assert backend.get("healthCheckPath") == "/health", (
+            "healthCheckPath went with the tuning; the endpoint itself is still wanted"
+        )
+
+    def test_only_the_backend_service_is_declared(self):
+        """A second free web service draws from the same 750-hour pool."""
+        names = [s["name"] for s in self._blueprint()["services"]]
+        assert names == ["wiestell-backend"], (
+            f"expected only the backend, got {names}. The frontend deploys to Vercel; a "
+            "Render frontend service would consume instance-hours the backend needs."
+        )
+
+    def test_the_removals_are_documented_in_place(self):
+        """Deleted config with no trace invites someone re-adding it."""
+        import pathlib
+
+        raw = (pathlib.Path(__file__).resolve().parents[2] / "render.yaml").read_text(
+            encoding="utf-8"
+        )
+        for marker in ("disk", "healthCheckInterval", "FRONTEND"):
+            assert marker in raw, (
+                f"{marker!r} vanished without a note. Each was removed for a reason that "
+                "is not obvious from its absence, so the reason has to survive."
+            )
