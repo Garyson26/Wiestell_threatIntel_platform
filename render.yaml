@@ -194,57 +194,47 @@ services:
     # default is not the reason -- this is a decision, so it is declared.
     previewsEnabled: false
     healthCheckPath: /health
-    healthCheckInterval: 50  # seconds - check every 50s to keep service alive
-    healthCheckTimeout: 10   # seconds - timeout for health check response
+    # healthCheckInterval / healthCheckTimeout REMOVED 2026-08-17. They were set to 50s
+    # with the comment "keep service alive" -- which is the keep-alive the deploy design
+    # explicitly rejects. A 50-second health check means the service NEVER sleeps and
+    # burns ~744 of the 750 free instance-hours in a month, leaving nothing for anything
+    # else on the account. The four-window sync cadence is designed around the instance
+    # sleeping between windows. Render's defaults are correct here.
     autoDeploy: true  # Auto-deploy on git push
-    disk:
-      name: geolite-data
-      mountPath: /opt/render/project/src/backend/data
-      sizeGB: 1
+
+    # A `disk:` block was REMOVED here on 2026-08-17, for two independent reasons:
+    #
+    #   1. Persistent disks are not available on free instances. This is what the
+    #      Blueprint was rejected for.
+    #   2. IT WOULD HAVE SHADOWED THE THING IT WAS MEANT TO PRESERVE. The disk mounted at
+    #      /opt/render/project/src/backend/data -- byte-identical to the directory
+    #      GEOIP_DB_PATH points into, which is where `download_geolite2.py` writes AT
+    #      BUILD TIME. The build writes the .mmdb into the image; the disk then mounts
+    #      over that directory at runtime and hides it. GeoIP would have been missing
+    #      despite a successful, correctly-credentialled download -- and the only signal
+    #      is `geoip_database_missing` on the admin-gated /cron-status.
+    #
+    # No disk is needed: the database is baked into the image at build time and is
+    # replaced on every deploy, which is the correct lifecycle for a file that ships
+    # with the code rather than accumulating at runtime.
 
   # ============================================================================
-  # FRONTEND - Next.js
+  # FRONTEND - removed 2026-08-17
   # ============================================================================
-  - type: web
-    name: sentinel-frontend
-    runtime: node
-    plan: free
-    region: frankfurt
-    buildCommand: npm install && npm run build
-    startCommand: npm run start
-    rootDir: frontend
-    envVars:
-      - key: NODE_VERSION
-        value: 20.12.0
-      - key: PORT
-        value: 3000
-      - key: NODE_ENV
-        value: production
-      # NEXT_PUBLIC_API_URL removed 2026-08-17. It used `fromService` to read the
-      # backend's RENDER_EXTERNAL_URL, but named `sentinel-backend` while the backend
-      # block is `wiestell-backend` -- so it referenced a service that does not exist
-      # and would not have resolved.
-      #
-      # Moot either way: the frontend deploys to VERCEL, not Render, so this whole
-      # service block is vestigial. Set NEXT_PUBLIC_API_URL in the Vercel dashboard
-      # instead, and see DEPLOY_CHECKLIST s4.0 -- frontend/vercel.json ALSO hard-codes
-      # the old backend origin with no env override, and its edge rewrite takes
-      # precedence over next.config.js.
-    autoDeploy: true
-
-  # ============================================================================
-  # REDIS - REMOVED 2026-08-04
-  # ============================================================================
-  # The service was named `sentinel-redis` while the backend referenced
-  # `wiestell-redis`, so the wiring never resolved — which is how it was noticed. Rather
-  # than fix the name, the prior question was asked: is Redis needed at all? It is not.
-  # rate_limiter degrades cleanly to process-local state, and that is CORRECT at one
-  # worker per instance. Provisioning it would not have addressed residual risk #5,
-  # whose live cause is the X-Forwarded-For bypass.
+  # A `sentinel-frontend` web service was declared here. Deleted because:
   #
-  # Re-add BOTH this service and the REDIS_URL env entry if the worker count is ever
-  # raised, or if more than one instance is ever run — at that point the in-memory
-  # limiter becomes N independent budgets and a shared store is required.
+  #   * THE FRONTEND DEPLOYS TO VERCEL, not Render. The block was vestigial.
+  #   * Leaving it meant Render would create a SECOND free web service drawing from the
+  #     same 750-hour monthly pool the backend needs -- the same reason previews are
+  #     disabled above.
+  #   * Its NEXT_PUBLIC_API_URL used `fromService` to read RENDER_EXTERNAL_URL from a
+  #     service named `sentinel-backend`, but the backend block is `wiestell-backend`.
+  #     The reference could never have resolved.
+  #
+  # Set NEXT_PUBLIC_API_URL in the VERCEL dashboard instead. And note the cutover trap
+  # recorded in DEPLOY_CHECKLIST s4.0: frontend/vercel.json ALSO hard-codes the old
+  # backend origin with no env override, and its edge rewrite takes precedence over
+  # next.config.js -- so setting the env var alone does not repoint traffic.
 
 # ============================================================================
 # CRON JOBS - Scheduled Tasks
