@@ -261,7 +261,26 @@ cleanup is the specific mistake that section exists to prevent.
 
 ---
 
-## Section F — `ioc_techniques` join table *(promoted: improvement → fix)*
+## Section F — `ioc_techniques` join table — **DEFERRED, its own spec after deploy**
+
+**Decision 2026-08-17: Phase 4 ends at E. F ships separately, after deployment and UAT.**
+Deferred rather than dropped, and the reasoning is the point:
+
+1. **It is not blocking.** `/attack/*` costs ~2 s uncached per request at 25% tagged —
+   slow, not broken. Phase 5 already identified a caching candidate for
+   `/attack/matrix` if it bites during UAT.
+2. **Bundling it delays a deployable state** for something UAT does not need. F is a
+   schema change *plus* a backfill over 217,485 rows, on top of the ~2 h rescore already
+   queued. Two long-running production operations in one window is worse than one.
+3. **It has an unresolved dependency.** The backfill reads `iocs.mitre_techniques` — the
+   same JSON column the rescore touches — and the ordering between the two has not been
+   thought through. Settling that belongs with writing F, not with deferring it.
+
+Everything below stands as the design; only the timing changed.
+
+---
+
+### Original section text *(promoted: improvement → fix)*
 
 At 217,485 rows, item 17's "comfortable at today's scale" is falsified for any tagged fraction
 at or above ~25%. `/attack/matrix` and `/attack/heatmap` fetch every tagged IOC's
@@ -320,8 +339,8 @@ Gate 0  (owner: Q0.1 latency, Q0.2 enrichment counts)   ── blocks D and E on
   │
   D  OTX cursor + INCREMENTAL ──► GATE 4  verified against the live API
   │
-  E  enrichment selection            (needs Q0.2)
-  F  ioc_techniques                  (independent; can land any time after A)
+  E  enrichment selection            DONE -- Phase 4 ends here
+  F  ioc_techniques                  DEFERRED -- own spec, after deploy + UAT
   G  seed 3 feeds + one sync
   H  rescore                         LAST
 ```

@@ -104,30 +104,68 @@ whatever happens first.
 
 ## 2. Schema
 
-- [ ] Apply the migration-chain repair per §4 of its design. **Reconcile `alembic_version`
-      with reality first** — stamping matters more than upgrading here, because replaying
-      revisions that were effectively applied by hand fails partway and leaves a mixed state.
-- [ ] Run the two diagnostic queries (§2.1 prefix-collision count, §3.2 exact-duplicate
-      count) and record the numbers. If duplicates exist, the dedupe **merges** rather than
-      deletes — deleting a loser lowers the survivor's `source_count` and silently changes
-      its score.
-- [ ] **Delete the test-only prefix-length scaffold** in `tests/conftest_mysql.py` once the
-      real schema is fixed, or the `-m mysql` tier keeps testing a schema production does
-      not have.
-- [ ] Add `iocs.scoring_model_version` (what lets the rescore target stale rows) and
-      `iocs.manual_score_override` (inert until it exists).
-- [ ] Confirm `alembic upgrade head` now succeeds from an **empty** database. Disaster
-      recovery is currently untested and impossible; this is the step that changes that.
+**REWRITTEN 2026-08-17 after Phase 4 A–E, and after rehearsing the whole sequence on a
+fresh MariaDB 11.8. Most of what this section used to say was wrong.**
+
+The migration-chain repair is **cancelled**: `alembic upgrade head` runs clean from empty
+on MariaDB 11.8, all seven revisions. Error 1170 was a MySQL-8-only restriction, and the
+tier had been running against `mysql:8.0` — the schema was never broken, the container
+was. The test-only prefix-length scaffold is already deleted.
+
+- [ ] `alembic upgrade head`. Verified end to end on 2026-08-17 from an empty database:
+
+      56fe08259401 → b97d3e9a80e4 → c3d4e5f67890 → d4e5f6a70001
+                   → e5f6a7b80002 → f6a7b8c90003 → a7b8c9d00004
+
+- [ ] Production sits at `c3d4e5f67890`, so **three revisions apply**: `d4e5f6a70001`
+      (OTP hardening), `e5f6a7b80002` (soft-disable removed feeds) and `f6a7b8c90003`
+      (rolling-window continuity) — plus `a7b8c9d00004` (Phase 4 scheduling columns).
+      Rehearsed against a replica of production's exact 8 feed rows: all four apply, every
+      `is_enabled` stays 1, `e5f6a7b80002` matches zero rows and is a clean no-op.
+- [ ] `a7b8c9d00004` **backfills `last_attempt_at` from `last_sync_at`**. Confirm it ran:
+      without it every feed reads as never-attempted and the first cron fires all 11 at
+      once against a shared host.
+- [ ] `iocs.scoring_model_version` and `iocs.manual_score_override` are **still not
+      columns**, and still need owner sign-off. The rescore probes `information_schema`
+      for the override and adapts; the version constant lives in code only.
+- [ ] The §2.1 / §3.2 diagnostic queries are **no longer prerequisites** — they belonged
+      to the cancelled chain repair. Run them if you want the numbers; nothing waits on
+      them.
 
 ## 3. Seed
 
-- [ ] `python scripts/seed_feeds.py` — slugs must match `FEED_CONNECTORS` exactly or the
-      feed cannot sync. Note this script calls `create_all()`, so it cannot run before §2.
+- [ ] `python scripts/seed_feeds.py --dry-run` **first**. It now upserts by alias group
+      rather than skipping on an exact slug match, and the dry run prints exactly what it
+      would insert and update. Against production's 8 rows it reports **3 inserts, 8
+      cadence updates, 0 duplicates**.
+- [ ] Then `python scripts/seed_feeds.py`. It is idempotent — a second run reports
+      `0 inserted, 0 updated, 11 unchanged`.
+
+      **Why the rewrite mattered:** three production rows use ALIAS slugs
+      (`urlhaus-feed`, `emerging-threats-feed`, `feodo-tracker-feed`). The old exact-match
+      logic found no row for the canonical names and would have **inserted three
+      duplicates** — and `COUNT(DISTINCT feed_id)` over `ioc_sources` is the
+      source-diversity term, so every indicator later ingested by both rows would have
+      scored as two independent sources.
+- [ ] It preserves `is_enabled`, `last_sync_at`, `last_attempt_at`, `consecutive_failures`,
+      `sync_cursor`, `http_etag`, `http_last_modified`, `ioc_count`, watermarks and `slug`.
+      **Concrete near-miss:** `seed_feeds.py` declares `otx-alienvault` as
+      `is_enabled=False`, and production has it ENABLED with 9,800 IOCs. A seeder that
+      wrote that column would have switched off a working feed.
+- [ ] `url` drift is **reported, not written**. Expect three lines (malwarebazaar,
+      feodo-tracker-feed, otx-alienvault). Decide each explicitly; the column is
+      descriptive only — no connector reads it, so a drift misinforms an operator rather
+      than misrouting a fetch.
 - [ ] `python scripts/seed_mitre.py` — the ATT&CK catalogue. `/attack/*` returns empty
       without it.
-- [ ] Verify `virustotal` and `phishtank` are `is_enabled = 0`. Revision `e5f6a7b80002`
-      soft-disables them; their connectors are **deleted**, so if the revision has not
-      reached production they sit permanently overdue logging `scheduler_no_connector`.
+- [ ] **On a FRESH database, `otx-alienvault` and `abuseipdb` seed as `is_enabled = 0`**
+      — 9 of 11 feeds enabled. Found in the 2026-08-17 rehearsal. Harmless in production
+      (the seeder preserves the existing enabled state) but wrong for disaster recovery
+      or a new environment, where two feeds would silently never sync. Enable them by
+      hand there, or decide the seed defaults are wrong.
+- [ ] Verify `virustotal` and `phishtank` are `is_enabled = 0` **if they exist at all**.
+      Production has neither — its 8 rows are all canonical — so `e5f6a7b80002` matches
+      nothing and that is expected, not a failure.
 
 ## 4. Deploy the service
 
@@ -234,6 +272,53 @@ cannot be demonstrated to a UAT audience as-is. (§8 item 16)
       `_legacy_assessed` — deliberately conservative, assessing nothing where it cannot
       tell. Those scores change again once the rows refresh. This is a known planned cost,
       not a defect. (§5.4.2)
+
+## 6.5 What Phase 4 changed, and what G asks of you
+
+Sections A–E shipped between 2026-08-17 and this deploy. What behaves differently:
+
+| | before | after |
+|---|---|---|
+| next-due computed from | `last_sync_at` (at completion) | `last_attempt_at` (at **start**) |
+| a failing feed | retried every window forever | backs off 2× per failure, capped at 3 days |
+| `last_sync_at` on failure | advanced, so a dead feed looked healthy | frozen at last success |
+| an unchanged file | re-downloaded and re-parsed | `304` → status `no_change`, nothing ingested |
+| OTX | re-fetched a fixed 7-day window | resumes from `sync_cursor` |
+| enrichment refresh | never-enriched only | + expired rows, minus error payloads |
+| Shodan | registered without its library | gated out; 5,947 rows now orphaned |
+
+**`no_change` is a new `last_sync_status` value.** Feed health must not render it as
+broken — a feed reporting `no_change` for three days is working correctly. If the
+dashboard only knows `success` / `failed` / `no_data`, that is a UI gap to close before
+UAT, not a feed problem.
+
+### Section G — seeding the three feeds, and the wall-clock it costs
+
+`cisa-kev`, `ecrimelabs-metasploit` and `misp-cert-fr` have never been seeded, so
+production has never ingested either CVE source. Seeding them is §3 above. **The cost is
+elapsed time, not effort**, and it gates the rescore:
+
+| feed | seeded cadence | first sync after seeding |
+|---|---|---|
+| `misp-cert-fr` | 21,600 s (**6 h**) | within 6 h |
+| `cisa-kev` | 86,400 s (**24 h**) | within 24 h |
+| `ecrimelabs-metasploit` | 86,400 s (**24 h**) | within 24 h |
+
+**Up to 24 hours**, not 72 — the three-day figure is the back-off *cap*, which applies
+only to a feed that is failing. A newly seeded row has `last_attempt_at = NULL`, so it is
+immediately overdue and syncs on the **first** cron run after seeding. The 24 h is the
+worst case if that run is missed.
+
+**Or force it:** `POST /api/v1/feeds/sync-all?force=true` ignores cadence entirely and
+syncs every enabled feed now. That is the pragmatic route — it turns "wait up to a day"
+into one request — at the cost of syncing all 11 feeds at once rather than spreading them.
+
+- [ ] Seed the three feeds (§3).
+- [ ] Let each complete **one full sync** — check `last_sync_status = 'success'` and
+      `ioc_count > 0` for all three, not just that time has passed.
+- [ ] **Only then** run the rescore (§6). Seeding changes `source_count` for any indicator
+      the new feeds also report, which moves the diversity term. Rescoring first means
+      rescoring twice.
 
 ## 7. After the first sync
 
