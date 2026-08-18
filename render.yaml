@@ -192,7 +192,19 @@ services:
     # across the whole account, so every preview service spun up for a pull request
     # burns hours the production service needs. Off is Render's default, but the
     # default is not the reason -- this is a decision, so it is declared.
-    previewsEnabled: false
+    #
+    # DO NOT REVERT TO `previewsEnabled: false`. Render's current schema rejected it on
+    # 2026-08-17:  "line 195: previewsEnabled: false / field previewsEnabled not found
+    # in type file.Service".  The `previews.generation` block below is the supported form.
+    #
+    # AND THE QUOTES ON "off" ARE LOad-BEARING. Bare `off` is a BOOLEAN in YAML 1.1 --
+    # verified: PyYAML parses `off`, `Off` and `OFF` all to False -- so an unquoted value
+    # would arrive at Render's Go struct as a bool where an enum string is expected.
+    # Whether that breaks depends on which YAML library they use (v2 implements 1.1 and
+    # would coerce; v3 implements 1.2 and would not), and a string is the safer side of
+    # that uncertainty.
+    previews:
+      generation: "off"
     healthCheckPath: /health
     # healthCheckInterval / healthCheckTimeout REMOVED 2026-08-17. They were set to 50s
     # with the comment "keep service alive" -- which is the keep-alive the deploy design
