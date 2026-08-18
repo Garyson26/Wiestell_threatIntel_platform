@@ -267,10 +267,15 @@ async def error_notification_middleware(request: Request, call_next):
 app.include_router(api_router)
 
 
+# `service` is "wiestell-api" at all three public health surfaces (/, /health,
+# /api/v1/health). It read "sentinel-api" until 2026-08-17 -- SENTINEL is the internal
+# name and this is a PUBLIC, unauthenticated field, so it leaked a name the product does
+# not use. Keep the three in step: they answer the same question and a client comparing
+# them would reasonably expect one answer.
 @app.api_route("/", methods=["GET", "HEAD"])
 async def root():
     """Root endpoint - simple health check for Render (supports GET and HEAD)."""
-    return {"status": "ok", "service": "sentinel-api"}
+    return {"status": "ok", "service": "wiestell-api"}
 
 
 def _deployment_degradations() -> list:
@@ -353,7 +358,7 @@ def _deployment_degradations() -> list:
 @app.api_route("/health", methods=["GET", "HEAD"])
 async def health_root():
     """Simple health check at root level for Render (supports GET and HEAD)."""
-    return {"status": "healthy", "service": "sentinel-api", "version": "1.0.0"}
+    return {"status": "healthy", "service": "wiestell-api", "version": "1.0.0"}
 
 
 @app.api_route("/api/v1/health", methods=["GET", "HEAD"])
@@ -369,7 +374,7 @@ async def health_check():
 
     health_status = {
         "status": "healthy",
-        "service": "sentinel-api",
+        "service": "wiestell-api",
         "version": "1.0.0",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }

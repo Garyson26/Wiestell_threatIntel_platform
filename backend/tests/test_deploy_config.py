@@ -847,3 +847,120 @@ class TestTheBlueprintIsValidForAFreeInstance:
                 f"{marker!r} vanished without a note. Each was removed for a reason that "
                 "is not obvious from its absence, so the reason has to survive."
             )
+
+
+class TestTheBackendOriginIsConsistentEverywhere:
+    """Three places name the backend, and they must not drift apart.
+
+    `frontend/vercel.json` is the one that matters most, because it is the ONLY one that
+    cannot read an environment variable — Vercel does not interpolate env vars into
+    rewrite destinations. So its origin is a committed literal and every cutover is a
+    code change, while the other two obey `NEXT_PUBLIC_API_URL` / `BACKEND_URL`.
+
+    That asymmetry is why it was missed at the first cutover: setting the env var makes
+    two of three obey, and `vercel.json`'s rewrite runs at Vercel's EDGE — before the
+    Next.js function — so traffic keeps reaching the old origin while every other signal
+    reports success.
+    """
+
+    def _repo(self):
+        import pathlib
+
+        return pathlib.Path(__file__).resolve().parents[2]
+
+    def _origins(self):
+        import json
+        import re
+
+        repo = self._repo()
+        vercel = json.loads((repo / "frontend" / "vercel.json").read_text(encoding="utf-8"))
+        found = {"vercel.json": vercel["rewrites"][0]["destination"]}
+
+        nextcfg = (repo / "frontend" / "next.config.js").read_text(encoding="utf-8")
+        m = re.search(r"NEXT_PUBLIC_API_URL \|\| '([^']+)'", nextcfg)
+        found["next.config.js"] = m.group(1) if m else None
+
+        sh = (repo / "scripts" / "verify-security-headers.sh").read_text(encoding="utf-8")
+        m2 = re.search(r"BACKEND_DOMAIN=.*?:-([a-z0-9.\-]+)\}\}", sh)
+        found["verify-security-headers.sh"] = m2.group(1) if m2 else None
+        return found
+
+    def test_the_extractor_finds_all_three(self):
+        """Non-emptiness first — a regex that stops matching makes the rest vacuous."""
+        origins = self._origins()
+        missing = [k for k, v in origins.items() if not v]
+        assert not missing, f"could not extract the origin from: {missing}"
+
+    def test_no_file_still_names_the_dead_vercel_backend(self):
+        origins = self._origins()
+        stale = {k: v for k, v in origins.items() if "wiestellthreatintelligencebackend" in v}
+        assert not stale, (
+            f"these still point at the retired Vercel backend: {stale}. It no longer "
+            "serves the API."
+        )
+
+    def test_all_three_agree_on_the_host(self):
+        """They can differ in scheme/path shape; the HOST must match."""
+        import re
+
+        hosts = {
+            k: re.sub(r"^https?://", "", v).split("/")[0]
+            for k, v in self._origins().items()
+        }
+        assert len(set(hosts.values())) == 1, (
+            f"the three references disagree on the backend host: {hosts}. Whichever is "
+            "wrong will be found only by traffic going somewhere unexpected."
+        )
+
+    def test_vercel_json_does_not_pretend_to_use_an_env_var(self):
+        """It cannot, so a `$VAR` there would silently proxy to a literal dollar-string."""
+        import json
+
+        dest = json.loads(
+            (self._repo() / "frontend" / "vercel.json").read_text(encoding="utf-8")
+        )["rewrites"][0]["destination"]
+        assert "$" not in dest and "{" not in dest, (
+            f"vercel.json's destination ({dest!r}) looks like it interpolates an "
+            "environment variable. Vercel does NOT interpolate env vars into rewrite "
+            "destinations — the value would be used literally and every API call would "
+            "fail in a way that looks like a backend outage."
+        )
+
+
+class TestThePublicServiceNameIsTheProductName:
+    """`service` is public and unauthenticated at three endpoints.
+
+    It read "sentinel-api" until 2026-08-17. SENTINEL is the INTERNAL name, so a public
+    field was disclosing a name the product does not use.
+    """
+
+    def test_no_public_health_surface_reports_the_internal_name(self):
+        """Matches the served VALUE, not the source text.
+
+        My first version substring-searched the module for "sentinel-api" and tripped on
+        the COMMENT explaining the rename — the same comment-matching slip this project
+        has now logged about a dozen times. Extracting the `"service": "..."` values
+        cannot make that mistake.
+        """
+        import inspect
+        import re
+
+        from app import main
+
+        names = set(re.findall(r'"service":\s*"([^"]+)"', inspect.getsource(main)))
+        assert names, "no service name found; the check would be vacuous"
+        assert "sentinel-api" not in names, (
+            "a health endpoint still SERVES the internal name SENTINEL on a public, "
+            f"unauthenticated field. Values found: {sorted(names)}"
+        )
+
+    def test_all_three_surfaces_agree(self):
+        """They answer the same question; a client comparing them expects one answer."""
+        import inspect
+        import re
+
+        from app import main
+
+        names = set(re.findall(r'"service":\s*"([^"]+)"', inspect.getsource(main)))
+        assert names, "no service name found; the check would be vacuous"
+        assert names == {"wiestell-api"}, f"health surfaces disagree: {names}"
