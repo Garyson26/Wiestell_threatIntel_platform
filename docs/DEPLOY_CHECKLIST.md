@@ -204,7 +204,174 @@ ordering used to be stated, and it hid the real dependency.
       Production has neither — its 8 rows are all canonical — so `e5f6a7b80002` matches
       nothing and that is expected, not a failure.
 
+## 3.5 Environment variable reference — AUTHORITATIVE
+
+Generated 2026-08-17 **from `backend/app/config.py` and `render.yaml` directly**, not from
+any spec. The lists in the handback documents were reconstructed and several were stale.
+
+Render exposes a service's `envVars` to **both** the build command and the runtime, so
+there is no separate build-time section to fill in — the build-time flag below marks
+variables that are only *read* during the build, not variables that live elsewhere.
+
+### 3.5.1 Must set, or the service will not start
+
+| Variable | Default | Handling | What breaks without it |
+|---|---|---|---|
+| `DATABASE_URL` | **none** (`Field(...)`) | `sync: false` | **Import-time crash.** `app.config` raises `ValidationError` before FastAPI starts; the deploy fails at boot, not at first request. Deliberate — a hardcoded production DSN used to live here. |
+| `SECRET_KEY` | `""` | **`generateValue: true`** | **Refuses to boot in production.** `model_post_init` raises if the value is <32 chars or in `INSECURE_SECRET_KEYS` while `ENVIRONMENT` is production/staging. Render generates it — **do not set it by hand**, and note that regenerating it invalidates every issued JWT and every outstanding OTP. |
+| `ENVIRONMENT` | `development` | `value: production` | Not a crash, but leaving it `development` **disables the `SECRET_KEY` refusal above** and mints an ephemeral key per process, so tokens stop surviving a restart. |
+
+> **`DATABASE_URL` MUST BE WRITTEN `mysql+pymysql://…`.** Measured, not assumed:
+> `DATABASE_ASYNC_URL` is derived by `model_post_init` as a literal string replace of
+> `mysql+pymysql://` → `mysql+aiomysql://`. Anything else passes through **unchanged**:
+>
+> | `DATABASE_URL` | derived `DATABASE_ASYNC_URL` | |
+> |---|---|---|
+> | `mysql+pymysql://u:p@h/db` | `mysql+aiomysql://u:p@h/db` | correct |
+> | `mysql+pymysql://…?ssl_ca=…` | `mysql+aiomysql://…?ssl_ca=…` | correct, query string preserved |
+> | `mysql://u:p@h/db` | `mysql://u:p@h/db` | **BROKEN** — async engine gets a sync driver |
+> | `mysql+mysqldb://u:p@h/db` | `mysql+mysqldb://u:p@h/db` | **BROKEN** |
+>
+> The failure is at first async query, not at boot. `render.yaml` also declares
+> `DATABASE_ASYNC_URL` as `sync: false`, so you may set it explicitly instead — do that if
+> Hostinger hands you a bare `mysql://` DSN rather than editing the prefix by hand.
+
+### 3.5.2 Should set
+
+| Variable | Default | Handling | Consequence if unset |
+|---|---|---|---|
+| `CORS_ORIGINS` | `https://wiestell.com,https://www.wiestell.com` | literal in `render.yaml` | Browser calls from any other origin fail preflight. **Format: comma-separated, no spaces required** (`config.py:179` strips each). A bare `*` entry is **stripped**, not honoured. Currently declares `wiestell.com`, `www.wiestell.com`, `wiestell.vercel.app`. **Vercel preview deployments get per-deploy subdomains and are NOT covered** — add them explicitly, or accept that previews cannot call the API. |
+| `CRON_SECRET` | `""` | **`generateValue: true`** | `feeds/sync-all` and `enrichment/backfill/start` accept it via `X-Cron-Secret` as an alternative to an admin token. Unset means the GitHub Actions feed-sync workflow cannot authenticate and **the only live background path stops running**. Render generates it; copy it into the workflow's repository secret. |
+| `RESEND_API_KEY` | `""` | `sync: false` | **Nobody can log in, including you.** Auth is password → email OTP → JWT. Without it `_issue_otp` raises 503 on login; on password reset the 503 is swallowed (C-04), so it silently does nothing. |
+| `ADMIN_EMAIL` | `""` | `sync: false` | Only used when `ENABLE_ERROR_EMAILS` is true. Harmless unset. |
+| `ENABLE_ERROR_EMAILS` | `False` | `value: false` | Leave false. Error emails carry request context. |
+| `TRUSTED_PROXY_HOPS` | `0` | `sync: false` | **Set this to `1` on Render.** At `0`, `deps.py::_client_ip` ignores `X-Forwarded-For` entirely and every request appears to come from Render's proxy — so the per-IP auth rate limiter becomes one global bucket shared by all users. Setting it too high is worse: a client-supplied header value gets trusted and an attacker rotates their own bucket. |
+| `ENABLE_API_DOCS` | `False` | `value: false` | Leave false in production; `/docs` exposes the full schema. |
+| `LOG_LEVEL` | `INFO` | `value: INFO` | — |
+| `PORT` | `8000` | `value: 8000` | Render sets its own; the declared value matches. |
+
+### 3.5.3 Feed and enrichment credentials — all optional
+
+Every one is optional. What differs is **how the system degrades**.
+
+| Variable | Feeds it | Degradation if unset |
+|---|---|---|
+| `OTX_API_KEY` | `otx-alienvault` feed **and** the reputation enricher | Feed fetch raises `ValueError` → `last_sync_status='failed'`. **And** OTX is the only reputation provider covering **hashes** (`_OTX_TYPES` includes `hash`; `_ABUSEIPDB_TYPES` is `{"ip"}`), so hash reputation disappears entirely. |
+| `ABUSEIPDB_API_KEY` | `abuseipdb` feed **and** the reputation enricher | Feed fails. The provider is recorded `configured: false` rather than erroring, so IP reputation rests on OTX alone with nothing to corroborate it — reputation aggregates as **MAX** across providers. |
+| `GROQ_API_KEY` | `api/ai.py` — **this is the name you asked for** | All three AI endpoints return **503 "AI service not configured. Set GROQ_API_KEY."** (`api/ai.py:73,119,152`). Nothing else is affected. |
+| `NVD_API_KEY` | NVD enricher | **Not declared in `render.yaml`** — add it if you want it. Unauthenticated NVD works at 5 req/30 s; a key raises it to 50. Without it CVE enrichment throttles rather than fails. |
+| `SHODAN_API_KEY` | Shodan enricher | **Currently irrelevant** — as of 2026-08-17 the enricher is gated on the `shodan` library being importable, and it is commented out of `requirements.txt`. Setting the key alone will **not** register it. |
+| `CVEDETAILS_ACCESS_TOKEN` | CVE Details enricher | **Not declared in `render.yaml`.** Paid subscription; the enricher is not registered without it. |
+
+**The abuse.ch key mapping — one account key, four variables.** abuse.ch issues a single
+Auth-Key per account. These all take **the same value**:
+
+| Variable | Reader |
+|---|---|
+| `MALWAREBAZAAR_API_KEY` | `malwarebazaar` feed + the MalwareBazaar **enricher** (which is registration-gated on it) |
+| `THREATFOX_API_KEY` | `threatfox` feed |
+| `URLHAUS_API_KEY` | `urlhaus` feed |
+| `YARAIFY_API_KEY` | YARAify enricher — **falls back to `MALWAREBAZAAR_API_KEY`** (`enrichers/__init__.py:168`), so you can leave it unset. **Not declared in `render.yaml`.** |
+
+So: paste the one abuse.ch key into `MALWAREBAZAAR_API_KEY`, `THREATFOX_API_KEY` and
+`URLHAUS_API_KEY`; skip `YARAIFY_API_KEY` and let the fallback handle it.
+
+### 3.5.4 Build-time
+
+| Variable | Handling | Notes |
+|---|---|---|
+| `MAXMIND_ACCOUNT_ID` | `sync: false` | **Declared — the earlier finding IS fixed.** Read by `download_geolite2.py` during `buildCommand`. |
+| `MAXMIND_LICENSE_KEY` | `sync: false` | Same. |
+| `PYTHON_VERSION` | `value: 3.11.9` | — |
+| `GEOIP_DB_PATH` | `value: /opt/render/project/src/backend/data/GeoLite2-City.mmdb` | Must match the `disk.mountPath` (`geolite-data`, 1 GB). If they diverge the file is downloaded to a path nothing reads. |
+
+> **THE BUILD STILL FAILS OPEN, and declaring the credentials only fixed half of it.**
+> ```
+> python download_geolite2.py || echo "⚠️  GeoLite2 download failed - continuing..."
+> alembic upgrade head        || echo "⚠️  Database migration failed - continuing..."
+> ```
+> Both swallow failure. Consequences to know before you deploy:
+> * A GeoLite2 failure (bad credentials, MaxMind outage) produces a **successful deploy
+>   with no GeoIP database**. GeoIP is then unavailable for the **entire IP population**,
+>   and `/cron-status` reports `geoip_database_missing` — admin-gated, so you must look.
+> * A migration failure produces a **successful deploy against an unmigrated database**.
+>   Per §2 you run migrations from a developer machine anyway, so this line is redundant;
+>   consider removing it rather than leaving a swallowed failure in the deploy path.
+
+### 3.5.5 Deliberately unset — setting these is the mistake
+
+| Variable | Why unset | If you set it |
+|---|---|---|
+| `REDIS_URL` | The blueprint provisions no Redis. `utils/rate_limiter` falls back to **process-local** counters, which is correct **only** at one worker. | Pointing it at an unreachable Redis makes the limiter fail at request time. It is the correct fix *if* the worker count ever rises — but then five other single-process assumptions need revisiting together (see CLAUDE.md). |
+| `DATABASE_ASYNC_URL` | Derived from `DATABASE_URL`. | Only set it deliberately, per §3.5.1 — a value inconsistent with `DATABASE_URL` means sync and async paths hit **different databases**, which will not announce itself. |
+| `ALLOW_MULTIPLE_WORKERS` | Not in `config.py`; read directly by `main.py::_assert_single_worker`. | Setting it `true` disables the startup refusal and lets the six single-process subsystems degrade silently. |
+
+### 3.5.6 Not declared in `render.yaml`, and fine as defaults
+
+`JWT_ALGORITHM`, `JWT_EXPIRE_MINUTES` (720 = 12 h), `OTP_TTL_MINUTES` (5),
+`OTP_RESET_TTL_MINUTES` (10), `OTP_MAX_ATTEMPTS` (5), `AUTH_RATE_LIMIT_MAX` (10),
+`AUTH_RATE_LIMIT_WINDOW` (300 s), `DEFAULT_PAGE_SIZE` (50), `MAX_PAGE_SIZE` (500),
+`CACHE_TTL_WHOIS/DNS/GEOIP/REPUTATION/DASHBOARD`, `FEED_SYNC_INTERVAL`.
+
+`JWT_EXPIRE_MINUTES` is worth knowing rather than changing: at 12 h every tester logs in
+at least twice a day, which is what makes Resend's 100/day free cap reachable.
+
+### 3.5.7 Two audits you asked for
+
+**Secrets handling — clean.** Every sensitive variable carries `sync: false` or
+`generateValue: true`. The 13 literal values committed are all non-sensitive
+(`PYTHON_VERSION`, `PORT`, `ENVIRONMENT`, `LOG_LEVEL`, `FEED_SYNC_INTERVAL`,
+`GEOIP_DB_PATH`, `CORS_ORIGINS`, `ENABLE_API_DOCS`, `ENABLE_ERROR_EMAILS`, `EMAIL_FROM`,
+`NODE_VERSION`, `NODE_ENV`). No credential is committed.
+
+**MaxMind declaration — fixed.** Both variables are declared with `sync: false`, so the
+build step has them. The `|| echo` fail-open remains, as above.
+
+### 3.5.8 Three blockers in `render.yaml` before you create the service
+
+1. **`region: oregon`, twice** (lines 13 and 166). You want **Frankfurt**. The value is
+   `frankfurt`. Changing it after creation is not possible — the service must be recreated.
+2. **`fromService` names a service that does not exist.** The frontend block references
+   `name: sentinel-backend`; the backend is `name: wiestell-backend`. `NEXT_PUBLIC_API_URL`
+   would not resolve. Moot if the frontend stays on Vercel — in which case **delete the
+   `sentinel-frontend` block** rather than leaving a broken reference in the blueprint.
+3. **`plan: starter`, not `free`.** Worth confirming that is the intent; the single-worker
+   reasoning and the 512 MB / 0.1 CPU limits in `docker-compose.yml` were sized for free.
+
+---
+
 ## 4. Deploy the service
+
+> ### 4.0 CUTOVER — every place the old backend origin appears
+>
+> The frontend proxies to `wiestellthreatintelligencebackend.vercel.app`. **Three
+> occurrences, and they do not all behave the same** — swept 2026-08-17 with `git grep`
+> over tracked files:
+>
+> | File | Line | Overridable? |
+> |---|---|---|
+> | `frontend/vercel.json` | 5 | **NO — hard-coded.** This is the one that gets missed. |
+> | `frontend/next.config.js` | 151 | Yes — `NEXT_PUBLIC_API_URL` wins if set |
+> | `scripts/verify-security-headers.sh` | 12 | Yes — `BACKEND_URL` or `$2` wins |
+>
+> **`vercel.json` is the trap.** Its rewrite is applied at Vercel's edge and takes
+> precedence over `next.config.js`, so setting `NEXT_PUBLIC_API_URL` in Vercel looks like
+> it should be sufficient and is not: traffic would keep going to the old origin while
+> every other signal said the cutover was done.
+>
+> - [ ] `frontend/vercel.json` — repoint to the Render URL (or delete the rewrite and let
+>       `next.config.js` handle it from the env var, which removes the duplication).
+> - [ ] `frontend/next.config.js` — update the literal fallback, or leave it and rely on
+>       `NEXT_PUBLIC_API_URL` being set in Vercel.
+> - [ ] `scripts/verify-security-headers.sh` — update the default, or always pass `$2`.
+> - [ ] Set `NEXT_PUBLIC_API_URL` in **Vercel**, not Render — the frontend is not
+>       deploying to Render.
+>
+> Also note the CORS direction: `CORS_ORIGINS` on the **backend** must list the Vercel
+> origins, and `NEXT_PUBLIC_API_URL` on the **frontend** must point at Render. They are
+> two different variables in two different dashboards and both must change.
+
+
 
 - [ ] Set every `sync: false` variable in the Render dashboard. `tests/test_deploy_config.py`
       asserts none of them carry literal values in `render.yaml`.
