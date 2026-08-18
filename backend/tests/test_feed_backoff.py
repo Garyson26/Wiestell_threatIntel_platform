@@ -133,3 +133,76 @@ class TestTheCounterResetsOnEverySuccessfulOutcome:
                 f"{name} does not increment the failure counter, so back-off never "
                 "engages for failures reaching that path"
             )
+
+
+class TestTheLIVEPathUsesTheSameCadenceAndBackOff:
+    """`_tick` is not what production runs.
+
+    The asyncio scheduler is implemented but never started (CLAUDE.md); the deploy cron
+    drives ``POST /api/v1/feeds/sync-all``, whose smart-mode check lives in
+    ``api/feeds.py``. Sections A and D4 were applied to ``_tick`` first, and the
+    2026-08-17 deploy rehearsal caught that the live path still read ``last_sync_at``.
+
+    That was a REGRESSION, not a missed improvement. Section A stopped stamping
+    ``last_sync_at`` on failure, so a failing feed's value freezes at its last SUCCESS —
+    and a check reading it therefore sees "overdue" forever and retries on every cron
+    run. The change that introduced back-off would have removed the only thing that
+    previously spaced out retries on the live path.
+    """
+
+    def _source(self):
+        import inspect
+
+        from app.api import feeds
+
+        return inspect.getsource(feeds)
+
+    def test_the_live_check_uses_last_attempt_at(self):
+        assert "feed.last_attempt_at" in self._source(), (
+            "sync-all's smart mode does not read last_attempt_at, so the Phase 4 cadence "
+            "fix does not reach the path production actually runs"
+        )
+
+    def test_the_live_check_does_not_use_last_sync_at_for_scheduling(self):
+        """`last_sync_at` may still be DISPLAYED; it must not gate the sync."""
+        import ast
+        import inspect
+        import textwrap
+
+        from app.api import feeds
+
+        source = inspect.getsource(feeds)
+        start = source.index("# Check if feed should be synced")
+        block = textwrap.dedent(source[start:source.index("connector_path", start)])
+        tree = ast.parse("if True:\n" + textwrap.indent(block, "    "))
+        reads = {
+            n.attr for n in ast.walk(tree)
+            if isinstance(n, ast.Attribute) and n.attr.startswith("last_")
+        }
+        assert reads, "no last_* reads extracted; the check would be vacuous"
+        assert "last_attempt_at" in reads
+        assert "last_sync_at" not in reads, (
+            "the live smart-mode check reads last_sync_at, which is frozen at the last "
+            "SUCCESS — a failing feed would be judged overdue on every cron run"
+        )
+
+    def test_the_live_check_applies_back_off(self):
+        assert "_effective_interval(" in self._source(), (
+            "sync-all ignores consecutive_failures, so back-off exists only in the "
+            "scheduler that never runs"
+        )
+
+    def test_both_paths_share_one_formula(self):
+        """Two copies of the back-off arithmetic is how they drift."""
+        import inspect
+
+        from app.api import feeds
+        from app.services import feed_scheduler
+
+        assert "_effective_interval" in inspect.getsource(feeds)
+        assert feed_scheduler._effective_interval is not None
+        # feeds.py must IMPORT it rather than define its own.
+        assert "def _effective_interval" not in inspect.getsource(feeds), (
+            "api/feeds.py defines its own back-off formula instead of importing the "
+            "shared one"
+        )
