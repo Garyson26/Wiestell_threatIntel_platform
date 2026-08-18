@@ -236,3 +236,67 @@ class TestSeededUrlsMatchTheConnectors:
             "feed.url there, an admin-settable column becomes an SSRF primitive on an "
             "authenticated endpoint — feed CRUD lets an admin write any value."
         )
+
+
+class TestAFreshSeedEnablesEveryFeed:
+    """A feed seeded disabled never syncs, and nothing reports it as a problem.
+
+    `otx-alienvault` and `abuseipdb` seeded as `is_enabled: False` until 2026-08-17 —
+    almost certainly a leftover from when a keyed feed could not work without credentials
+    present at seed time. Found by the deploy rehearsal, which ran the sequence against an
+    empty database and got 9 of 11 enabled.
+
+    **This is not confined to disaster recovery.** The three feeds Section G adds are NEW
+    rows, so whatever this file declares is exactly what production gets. A `False` on one
+    of those would produce a feed that never syncs, and the only symptom would be a CVE
+    population that stayed empty — indistinguishable from a source having nothing to say.
+
+    `is_enabled` is `_OPERATIONAL`, so this changes nothing for feeds that already exist;
+    an operator's decision to disable a misbehaving feed still survives a reseed.
+    """
+
+    def test_every_seeded_feed_is_enabled(self):
+        mod = _seeder_module()
+        assert mod.FEEDS, "FEEDS is empty; the check would be vacuous"
+        disabled = [f["slug"] for f in mod.FEEDS if f.get("is_enabled") is not True]
+        assert not disabled, (
+            f"these feeds seed DISABLED and would never sync in a fresh environment: "
+            f"{disabled}. If a feed genuinely should ship off, say so explicitly here "
+            "with the reason — silence reads as an oversight, which is what it was."
+        )
+
+    def test_a_fresh_seed_would_produce_eleven_enabled_feeds(self):
+        """The rehearsal's assertion, pinned: 11/11, not 9/11."""
+        mod = _seeder_module()
+        enabled = [f for f in mod.FEEDS if f.get("is_enabled") is True]
+        assert len(enabled) == 11, (
+            f"a fresh seed produces {len(enabled)} enabled feeds, expected 11"
+        )
+
+    @pytest.mark.parametrize("slug", ["cisa-kev", "ecrimelabs-metasploit", "misp-cert-fr"])
+    def test_the_section_g_feeds_are_enabled(self, slug):
+        """Called out separately because these are the rows G actually creates.
+
+        For the other eight, production already holds an enabled row and the seeder
+        preserves it — so a wrong default there is latent. For these three there is no
+        existing row to preserve, so the declaration here IS the production value.
+        """
+        mod = _seeder_module()
+        feed = next(f for f in mod.FEEDS if f["slug"] == slug)
+        assert feed.get("is_enabled") is True, (
+            f"{slug} seeds disabled, so Section G would create a feed that never syncs "
+            "and the CVE/hash population would stay empty with no error anywhere"
+        )
+
+    @pytest.mark.parametrize("slug", ["otx-alienvault", "abuseipdb"])
+    def test_the_two_reputation_feeds_are_enabled(self, slug):
+        """These two are why the default mattered.
+
+        `_OTX_TYPES` covers hash; `_ABUSEIPDB_TYPES` is {"ip"} — so OTX is the only
+        reputation provider covering hashes at all after VirusTotal's removal, and the
+        two together are the only pair that can corroborate an IP verdict, which matters
+        because reputation aggregates as MAX across providers.
+        """
+        mod = _seeder_module()
+        feed = next(f for f in mod.FEEDS if f["slug"] == slug)
+        assert feed.get("is_enabled") is True

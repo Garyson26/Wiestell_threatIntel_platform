@@ -180,7 +180,13 @@ FEEDS = [
         "feed_type": "api",
         "url": "https://otx.alienvault.com/api/v1/pulses/subscribed",
         "api_key_env": "OTX_API_KEY",
-        "is_enabled": False,
+        # ENABLED 2026-08-17. It seeded as False, which almost certainly dates from when
+        # a keyed feed could not work without credentials being present at seed time.
+        # That reasoning no longer holds and the cost is now concrete: OTX is the ONLY
+        # reputation provider that covers hashes at all (_OTX_TYPES includes "hash",
+        # _ABUSEIPDB_TYPES is {"ip"}), so a fresh environment seeding it disabled has no
+        # hash reputation whatsoever after VirusTotal's removal.
+        "is_enabled": True,
         "sync_frequency": 3600,
     },
     {
@@ -190,7 +196,11 @@ FEEDS = [
         "feed_type": "api",
         "url": "https://api.abuseipdb.com/api/v2/blacklist",
         "api_key_env": "ABUSEIPDB_API_KEY",
-        "is_enabled": False,
+        # ENABLED 2026-08-17, same reasoning as OTX above. AbuseIPDB and OTX are the only
+        # two providers that both cover IPs, and reputation aggregates as MAX across
+        # providers -- so seeding this disabled leaves IP reputation resting on a single
+        # source with nothing to corroborate it.
+        "is_enabled": True,
         "sync_frequency": 86400,
     },
     {
