@@ -175,12 +175,28 @@ class TestFailureDoesNotLookLikeSuccess:
 
         source = textwrap.dedent(inspect.getsource(getattr(feed_scheduler, func_name)))
         tree = ast.parse(source)
+
+        # SCOPED TO FAILURE BRANCHES ONLY. An earlier version walked the whole function
+        # and broke when D3 added the 304 path, which legitimately DOES stamp
+        # last_sync_at -- a 304 is a successful check, not a failure. Widening the test
+        # to allow it everywhere would have destroyed the property; narrowing it to the
+        # branches the property is actually about keeps it.
+        #
+        # `_mark_failed` is entirely a failure path, so the whole body counts. In
+        # `_run_feed_sync_inner` only the except handlers are.
+        if func_name == "_mark_failed":
+            scopes = [tree]
+        else:
+            scopes = [n for n in ast.walk(tree) if isinstance(n, ast.ExceptHandler)]
+            assert scopes, "no except handlers found; the scope extraction is broken"
+
         assigned = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Assign):
-                for target in node.targets:
-                    if isinstance(target, ast.Attribute):
-                        assigned.add(target.attr)
+        for scope in scopes:
+            for node in ast.walk(scope):
+                if isinstance(node, ast.Assign):
+                    for target in node.targets:
+                        if isinstance(target, ast.Attribute):
+                            assigned.add(target.attr)
         assert assigned, f"no attribute assignments found in {func_name}; check is vacuous"
         assert "last_sync_at" not in assigned, (
             f"{func_name} assigns last_sync_at on a failure path, so a permanently "
