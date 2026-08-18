@@ -5,7 +5,7 @@ from typing import Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import structlog
@@ -37,6 +37,80 @@ _backfill_stats: dict = {
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+# ── Which IOCs the cron should enrich (Phase 4 Section E) ────────────────────
+#
+# The selection was ``WHERE Enrichment.id IS NULL`` — never-enriched only. Three
+# consequences, all live until 2026-08-17:
+#
+#   * an IOC enriched ONCE was never re-enriched, so `_rescore_from_enrichment`
+#     never fired for it again;
+#   * `expires_at` never caused a refresh on this path, so CACHE_TTL_* rolled over
+#     nothing and every "transitional until the cache expires" fallback became
+#     permanent (see the three listed in the design notes §2.7);
+#   * the freeze trap Spec 5 §4 described as a FUTURE risk already existed.
+#
+# The corrected condition is "no enrichment row, OR a row that has expired" — but
+# with one exclusion that materially changes the arithmetic.
+#
+# ERROR PAYLOADS ARE EXCLUDED FROM THE REFRESH. An enricher that failed stores its
+# {"error": ...} with a full TTL, so a permanently-broken source would be re-attempted
+# every time that TTL lapses — four times a day at the 6-hour reputation/shodan TTL,
+# forever, each attempt reproducing the identical failure and consuming a slot in
+# `enrich_limit` that real work needs. Measured case: 5,947 shodan rows, 12.4% of the
+# enrichment table, none of which ever carried data.
+#
+# KNOWN GAP, RECORDED RATHER THAN SOLVED: a genuinely TRANSIENT error is therefore
+# never retried by the cron path. A rate-limited OTX or a briefly unreachable NVD stays
+# un-retried until something else enriches that IOC. Acceptable for UAT because
+# `get_ioc` enriches on view (api/ioc.py), so opening an indicator repairs it — but
+# "errors are never retried by the cron" is exactly the kind of property that becomes
+# surprising six months later, so it is written down here rather than left implicit.
+# The fix, when it matters, is an attempt counter or an error-specific TTL, not
+# removing this exclusion.
+
+#: Error-marker keys an enrichment payload can carry.
+#:
+#: Mirrors `scoring_engine._reached_a_verdict`, which prefix-matches `error` and
+#: `error_*` — the prefix exists because geoip writes `error_city` rather than `error`.
+#: Enumerated rather than prefix-matched here because SQL cannot cheaply ask "any key
+#: starting with", and `tests/test_enrichment_selection.py` fails if an enricher ever
+#: emits a marker not listed, so the two definitions cannot drift apart silently.
+_ERROR_MARKER_KEYS = ("error", "error_city")
+
+
+def _records_a_failure():
+    """SQL predicate: TRUE when this enrichment row is an error payload.
+
+    `json_extract(col, '$.key') IS NOT NULL` rather than a LIKE on the serialised JSON.
+    Verified against MariaDB 11.8: a naive `data LIKE '%error%'` also matches a payload
+    whose free text merely contains the word, and matches `error_city` when only
+    `error` was meant — the JSON path form distinguishes them.
+    """
+    return or_(*[
+        func.json_extract(Enrichment.data, f"$.{key}").isnot(None)
+        for key in _ERROR_MARKER_KEYS
+    ])
+
+
+def _needs_enrichment():
+    """SQL predicate over a LEFT JOIN of IOC -> Enrichment: should the cron pick this up?
+
+    Either the IOC has no enrichment row at all, or it has one that has expired and did
+    NOT record a failure. `expires_at IS NULL` counts as expired: a row with no TTL was
+    written before TTLs existed and will otherwise never refresh.
+    """
+    return or_(
+        Enrichment.id.is_(None),
+        and_(
+            or_(
+                Enrichment.expires_at.is_(None),
+                Enrichment.expires_at <= _utcnow(),
+            ),
+            ~_records_a_failure(),
+        ),
+    )
+
 
 
 # ── Response schemas ──────────────────────────────────────────────────────────
@@ -92,7 +166,7 @@ async def backfill_status(
         unenriched_q = (
             select(func.count(IOC.id))
             .outerjoin(Enrichment, IOC.id == Enrichment.ioc_id)
-            .where(Enrichment.id.is_(None))
+            .where(_needs_enrichment())
         )
         if ioc_type:
             total_q = total_q.where(IOC.type == ioc_type)
@@ -174,7 +248,7 @@ async def backfill_start(
             q = (
                 select(func.count(IOC.id))
                 .outerjoin(Enrichment, IOC.id == Enrichment.ioc_id)
-                .where(Enrichment.id.is_(None))
+                .where(_needs_enrichment())
             )
             if ioc_type:
                 q = q.where(IOC.type == ioc_type)
@@ -194,7 +268,7 @@ async def backfill_start(
         q = (
             select(func.count(IOC.id))
             .outerjoin(Enrichment, IOC.id == Enrichment.ioc_id)
-            .where(Enrichment.id.is_(None))
+            .where(_needs_enrichment())
         )
         if not force and ioc_type:
             q = q.where(IOC.type == ioc_type)
@@ -257,7 +331,7 @@ async def _run_backfill(
                 count_q = (
                     select(func.count(IOC.id))
                     .outerjoin(Enrichment, IOC.id == Enrichment.ioc_id)
-                    .where(Enrichment.id.is_(None))
+                    .where(_needs_enrichment())
                 )
             if ioc_type:
                 count_q = count_q.where(IOC.type == ioc_type)
@@ -303,7 +377,7 @@ async def _run_backfill(
                     q = (
                         select(IOC.id, IOC.type, IOC.value)
                         .outerjoin(Enrichment, IOC.id == Enrichment.ioc_id)
-                        .where(Enrichment.id.is_(None))
+                        .where(_needs_enrichment())
                         .order_by(IOC.id)
                     )
                 if ioc_type:
