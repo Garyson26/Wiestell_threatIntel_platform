@@ -487,3 +487,141 @@ class TestDependabotConfig:
             "directive, so `pip install -r requirements-dev.txt && python -m pytest` no "
             f"longer bootstraps a fresh clone in one command. Active lines: {directives}"
         )
+
+
+class TestTheAsyncDSNFailsAtBootNotAtFirstQuery:
+    """`DATABASE_ASYNC_URL` is derived by a LITERAL prefix replace.
+
+    Only `mysql+pymysql://` is rewritten. A DSN written `mysql://` or `mysql+mysqldb://`
+    falls through unchanged and hands the async engine a synchronous driver — which does
+    not fail until the first `await session.execute(...)`, by which point the service is
+    up, healthy and serving errors. Measured across four shapes on 2026-08-17; two fell
+    through silently.
+    """
+
+    def _settings_with(self, dsn):
+        """Construct a Settings instance directly — do NOT reload the module.
+
+        `importlib.reload(app.config)` replaces the module-level `settings` singleton,
+        and every other module holds a `from app.config import settings` reference to the
+        OLD object. Fixture state applied to that object (the GeoIP path, for one) is
+        then silently discarded, which made `test_a_correct_deployment_reports_nothing`
+        fail in the full suite while passing alone. Instantiating exercises the same
+        `model_post_init` validator with no global mutation.
+        """
+        from app.config import Settings
+
+        return Settings(DATABASE_URL=dsn, SECRET_KEY="x" * 40, DATABASE_ASYNC_URL="")
+
+    def test_a_pymysql_dsn_derives_correctly(self):
+        cfg = self._settings_with("mysql+pymysql://u:p@h/db")
+        assert cfg.DATABASE_ASYNC_URL == "mysql+aiomysql://u:p@h/db"
+
+    def test_a_query_string_survives_the_rewrite(self):
+        cfg = self._settings_with("mysql+pymysql://u:p@h/db?ssl_ca=/x.pem")
+        assert cfg.DATABASE_ASYNC_URL.endswith("?ssl_ca=/x.pem")
+        assert cfg.DATABASE_ASYNC_URL.startswith("mysql+aiomysql://")
+
+    @pytest.mark.parametrize("dsn", [
+        "mysql://u:p@h/db",
+        "mysql+mysqldb://u:p@h/db",
+        "postgresql://u:p@h/db",
+    ])
+    def test_a_dsn_that_cannot_be_rewritten_raises_at_import(self, dsn):
+        with pytest.raises(Exception) as exc:
+            self._settings_with(dsn)
+        assert "aiomysql" in str(exc.value), (
+            "the error does not name the driver, so an operator reading it cannot tell "
+            "what to change"
+        )
+
+    def test_the_global_settings_object_is_untouched(self):
+        """The reason this class instantiates rather than reloads.
+
+        A reload swaps `app.config.settings`, and modules holding a reference to the old
+        object lose any fixture state applied to it — which is exactly how the first
+        version of these tests broke test_process_model in the full suite while passing
+        in isolation.
+        """
+        from app.config import settings
+
+        before = settings.DATABASE_ASYNC_URL
+        self._settings_with("mysql+pymysql://other:other@elsewhere/db")
+        assert settings.DATABASE_ASYNC_URL == before
+
+
+class TestRenderYamlDeployShape:
+    """Blueprint facts that are expensive to get wrong and cheap to assert."""
+
+    def _render_yaml(self):
+        import pathlib
+
+        import yaml
+
+        path = pathlib.Path(__file__).resolve().parents[2] / "render.yaml"
+        return yaml.safe_load(path.read_text(encoding="utf-8")), path.read_text(encoding="utf-8")
+
+    def test_every_service_is_in_frankfurt(self):
+        """Region is IMMUTABLE after creation — recreating is the only way to change it."""
+        data, _ = self._render_yaml()
+        regions = {s["name"]: s.get("region") for s in data["services"]}
+        assert regions, "no services parsed"
+        wrong = {n: r for n, r in regions.items() if r != "frankfurt"}
+        assert not wrong, f"these services are not in frankfurt: {wrong}"
+
+    def test_the_backend_declares_the_python_runtime(self):
+        """backend/Dockerfile EXISTS, so a Docker-built service would skip buildCommand
+        entirely — and with it the GeoLite2 download."""
+        data, _ = self._render_yaml()
+        backend = next(s for s in data["services"] if s["name"] == "wiestell-backend")
+        assert backend.get("runtime") == "python", (
+            "the backend no longer declares runtime: python. If Render builds from "
+            "backend/Dockerfile instead, buildCommand never runs, download_geolite2.py "
+            "never executes, and GeoIP is silently unavailable for the whole IP population."
+        )
+
+    def test_the_migration_is_not_run_from_the_build_command(self):
+        """Removed 2026-08-17: redundant (§2 runs it from a developer machine) AND it
+        swallowed failure, so a failed migration produced a successful deploy."""
+        data, _ = self._render_yaml()
+        backend = next(s for s in data["services"] if s["name"] == "wiestell-backend")
+        build = backend.get("buildCommand", "")
+        lines = [
+            ln.strip() for ln in build.splitlines()
+            if ln.strip() and not ln.strip().startswith("#")
+        ]
+        assert lines, "buildCommand parsed as empty; the check would be vacuous"
+        offenders = [ln for ln in lines if ln.startswith("alembic")]
+        assert not offenders, (
+            f"alembic runs in the build command again: {offenders}. Migrations run from "
+            "a developer machine per DEPLOY_CHECKLIST §2, and a build-time migration "
+            "that fails open deploys against an unmigrated database."
+        )
+
+    def test_no_dead_fromservice_reference(self):
+        """It named `sentinel-backend`; the backend is `wiestell-backend`."""
+        data, raw = self._render_yaml()
+        names = {s["name"] for s in data["services"]}
+        for service in data["services"]:
+            for var in service.get("envVars") or []:
+                ref = (var.get("fromService") or {}).get("name")
+                if ref:
+                    assert ref in names, (
+                        f"{service['name']}.{var.get('key')} references service {ref!r}, "
+                        f"which does not exist. Declared services: {sorted(names)}"
+                    )
+
+    def test_no_sensitive_variable_carries_a_committed_literal(self):
+        data, _ = self._render_yaml()
+        sensitive = ("KEY", "SECRET", "TOKEN", "PASSWORD", "DATABASE_URL")
+        offenders = []
+        for service in data["services"]:
+            for var in service.get("envVars") or []:
+                key = var.get("key", "")
+                if any(marker in key.upper() for marker in sensitive):
+                    if "value" in var:
+                        offenders.append(f"{service['name']}.{key}")
+        assert not offenders, (
+            f"these sensitive variables carry a committed literal value: {offenders}. "
+            "They must use sync: false or generateValue: true."
+        )

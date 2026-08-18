@@ -193,6 +193,27 @@ class Settings(BaseSettings):
                 "mysql+pymysql://", "mysql+aiomysql://"
             )
 
+        # FAIL AT BOOT, NOT AT FIRST ASYNC QUERY.
+        #
+        # The line above is a literal prefix replace, so it only rewrites
+        # `mysql+pymysql://`. A DSN written as `mysql://` or `mysql+mysqldb://` passes
+        # through UNCHANGED and the async engine is handed a synchronous driver --
+        # which does not fail until the first `await session.execute(...)`, by which
+        # point the service is up, healthy and serving errors. Measured 2026-08-17
+        # across four DSN shapes; two of them fall through silently.
+        #
+        # A deploy-time typo in a DSN prefix should be a boot failure, and it is cheap
+        # to make it one.
+        if not self.DATABASE_ASYNC_URL.startswith("mysql+aiomysql://"):
+            raise ValueError(
+                "DATABASE_ASYNC_URL must use the aiomysql driver, got "
+                f"{self.DATABASE_ASYNC_URL.split('://', 1)[0]!r}://... . It is derived "
+                "from DATABASE_URL by replacing the 'mysql+pymysql://' prefix, so a "
+                "DATABASE_URL written as 'mysql://' or 'mysql+mysqldb://' falls through "
+                "unchanged. Either write DATABASE_URL as 'mysql+pymysql://...' or set "
+                "DATABASE_ASYNC_URL explicitly."
+            )
+
         if self.SECRET_KEY.strip() in INSECURE_SECRET_KEYS or len(self.SECRET_KEY) < 32:
             if self.is_production:
                 raise ValueError(

@@ -8,15 +8,50 @@ services:
   # ============================================================================
   - type: web
     name: wiestell-backend
+    # runtime: python -- a NATIVE build, so `buildCommand` below runs.
+    #
+    # THIS MATTERS BECAUSE backend/Dockerfile EXISTS. Render's dashboard creation form
+    # auto-detects and will offer Docker; if the service is created that way rather than
+    # from this blueprint, `buildCommand` NEVER RUNS. Consequences, both silent:
+    #
+    #   * download_geolite2.py never executes -> no GeoIP for the entire IP population
+    #   * GEOIP_DB_PATH below points at /opt/render/project/src/backend/data/..., which
+    #     does not exist in the image -- the Dockerfile's WORKDIR is /app and it creates
+    #     /app/data
+    #
+    # Create this service FROM THE BLUEPRINT, or if you create it by hand choose the
+    # Python runtime explicitly and paste the buildCommand.
     runtime: python
     plan: starter  # Change to 'standard' or 'pro' for production
-    region: oregon  # Change to your preferred region (oregon, frankfurt, singapore, etc.)
+    region: frankfurt  # eu-central. IMMUTABLE after creation -- recreating the
+                       # service is the only way to change it.
     buildCommand: |
       python --version
       pip install --upgrade pip
       pip install -r requirements.txt
-      python download_geolite2.py || echo "⚠️  GeoLite2 download failed - continuing..."
-      alembic upgrade head || echo "⚠️  Database migration failed - continuing..."
+      # GeoLite2 FAILS OPEN DELIBERATELY -- a missing geo database degrades enrichment
+      # but must not block a deploy. The warning is banner-framed because the previous
+      # single line was lost in pip output, and the consequence is not small: GeoIP
+      # becomes unavailable for the ENTIRE IP population.
+      #
+      # It is also detectable at runtime, verified 2026-08-17 rather than assumed --
+      # `build_registry()` gates geoip out when the file is absent and
+      # `/cron-status` reports `geoip_database_missing` (admin-gated, so look for it).
+      python download_geolite2.py || {
+        echo "=============================================================="
+        echo "!!  GeoLite2 DOWNLOAD FAILED -- DEPLOY CONTINUING WITHOUT IT  !!"
+        echo "!!                                                            !!"
+        echo "!!  GeoIP is now unavailable for the ENTIRE IP population.    !!"
+        echo "!!  Check MAXMIND_ACCOUNT_ID / MAXMIND_LICENSE_KEY.           !!"
+        echo "!!  Confirm with: GET /cron-status -> geoip_database_missing  !!"
+        echo "=============================================================="
+      }
+      # `alembic upgrade head` REMOVED 2026-08-17, not silenced. Migrations run from a
+      # developer machine (DEPLOY_CHECKLIST s2) because Render free instances have no
+      # shell, so this line was redundant -- and it carried `|| echo "continuing"`,
+      # which meant a failed migration produced a SUCCESSFUL deploy against an
+      # unmigrated database. A redundant line that swallows failures is worse than an
+      # absent one.
     # --workers 1 is DELIBERATE AND LOAD-BEARING, not a throughput oversight. uvicorn
     # already defaults to a single worker, so this is declared rather than relied upon:
     # five separate conclusions elsewhere assume one process per instance, and raising
@@ -163,7 +198,7 @@ services:
     name: sentinel-frontend
     runtime: node
     plan: starter
-    region: oregon
+    region: frankfurt
     buildCommand: npm install && npm run build
     startCommand: npm run start
     rootDir: frontend
@@ -174,11 +209,16 @@ services:
         value: 3000
       - key: NODE_ENV
         value: production
-      - key: NEXT_PUBLIC_API_URL
-        fromService:
-          name: sentinel-backend
-          type: web
-          envVarKey: RENDER_EXTERNAL_URL
+      # NEXT_PUBLIC_API_URL removed 2026-08-17. It used `fromService` to read the
+      # backend's RENDER_EXTERNAL_URL, but named `sentinel-backend` while the backend
+      # block is `wiestell-backend` -- so it referenced a service that does not exist
+      # and would not have resolved.
+      #
+      # Moot either way: the frontend deploys to VERCEL, not Render, so this whole
+      # service block is vestigial. Set NEXT_PUBLIC_API_URL in the Vercel dashboard
+      # instead, and see DEPLOY_CHECKLIST s4.0 -- frontend/vercel.json ALSO hard-codes
+      # the old backend origin with no env override, and its edge rewrite takes
+      # precedence over next.config.js.
     autoDeploy: true
 
   # ============================================================================
