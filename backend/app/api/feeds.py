@@ -110,13 +110,41 @@ async def trigger_sync(feed_id: str, background_tasks: BackgroundTasks, db: Asyn
     }
 
 
+#: Guards the LIVE sweep against overlapping itself. One flag, because one process --
+#: see the single-worker invariant in CLAUDE.md; at N workers this needs a shared store
+#: exactly like the rate limiter does.
+_sweep_running = False
+
+
 async def _run_sync_all_background(
     force: bool,
     feed_slug: str,
     enrich: bool,
     enrich_limit: int
 ):
-    """Background task that performs feed sync and enrichment."""
+    """Background task that performs feed sync and enrichment.
+
+    SINGLE-FLIGHT, added 2026-08-20 after production showed why.
+
+    `feed_scheduler` has a `_running` set that prevents a feed syncing concurrently with
+    itself -- but it is read only by `_tick`, the asyncio scheduler that is never started.
+    THIS is the live path, and it had no guard at all: every POST to `/feeds/sync-all`
+    launched a fresh sweep of all eleven feeds alongside any already in flight.
+
+    Observed 2026-08-20: five `sync-all?force=true` calls landed within 121 seconds
+    (07:34:07, :13, :20, :31, 07:36:08), each logging `background_cron_started`. The
+    result is visible in the ingest log as the same feed replaying the same batches --
+    `batch=10 processed=300` for CISA KEV at 07:34:21, :27, 07:34:46 and 07:35:16.
+
+    Why that is worse than merely wasteful: concurrent sweeps ingest the SAME rows, so
+    they collide on `UNIQUE(type, value)` and serialise on row locks against each other,
+    while sharing one 5-connection async pool. Throughput drops, and the measurement it
+    produces is not a measurement of anything.
+
+    An overlapping call now returns without starting work, which is honest -- the sweep
+    it was asked for is already happening.
+    """
+    global _sweep_running
     from datetime import datetime
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
@@ -125,6 +153,36 @@ async def _run_sync_all_background(
     from app.services.enrichment_engine import enrich_ioc
     from app.database import AsyncSessionLocal
     
+    if _sweep_running:
+        logger.warning(
+            "background_cron_already_running",
+            hint="a sweep is already in flight; this invocation does nothing",
+            force=force,
+            feed_slug=feed_slug,
+        )
+        return
+
+    _sweep_running = True
+    try:
+        await _sync_all_sweep(force, feed_slug, enrich, enrich_limit)
+    finally:
+        # `finally`, not a trailing assignment: an exception anywhere in the sweep would
+        # otherwise leave the flag set and block every future sync until a restart --
+        # trading a throughput bug for a total outage.
+        _sweep_running = False
+
+
+async def _sync_all_sweep(
+    force: bool,
+    feed_slug: str,
+    enrich: bool,
+    enrich_limit: int
+):
+    """The sweep itself. Split out so the single-flight guard wraps it in one place."""
+    from datetime import datetime
+
+    from app.database import AsyncSessionLocal
+
     async with AsyncSessionLocal() as db:
         start_time = datetime.utcnow()
         
