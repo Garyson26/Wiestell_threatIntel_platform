@@ -219,6 +219,42 @@ ordering used to be stated, and it hid the real dependency.
       feodo-tracker-feed, otx-alienvault). Decide each explicitly; the column is
       descriptive only — no connector reads it, so a drift misinforms an operator rather
       than misrouting a fetch.
+- [ ] **Apply the cadence UPDATE.** `seed_feeds.py` refreshes `sync_frequency` on
+      existing rows (it is `_CODE_DERIVED`), so running the seeder is normally enough —
+      but run this explicitly if you seeded before 2026-08-18, and note it covers the
+      **alias slugs** production actually uses:
+
+      ```sql
+      UPDATE feed_sources SET sync_frequency = 18000
+       WHERE slug IN ('blocklist-de', 'cert-fr', 'emerging-threats', 'emerging-threats-feed', 'feodo-tracker', 'feodo-tracker-feed', 'malwarebazaar', 'malwarebazaar-feed', 'misp-cert-fr', 'otx-alienvault', 'threatfox', 'urlhaus', 'urlhaus-feed');
+      
+      UPDATE feed_sources SET sync_frequency = 79200
+       WHERE slug IN ('abuseipdb', 'cisa-kev', 'cisa-kev-feed', 'ecrimelabs', 'ecrimelabs-metasploit');
+      ```
+
+      **Why these numbers.** Every value used to mirror its connector's
+      `default_sync_frequency`, and those were written for the asyncio scheduler's
+      60-second tick — a scheduler that is implemented and never started. Against a
+      6-hourly cron a declared 900s advertised a 15-minute cadence the platform cannot
+      deliver, and 8 of 11 feeds were indistinguishable in effect. The seeded value now
+      describes what the cron actually delivers.
+
+      **And they are deliberately NOT exact multiples of the cron period.** GitHub delays
+      scheduled runs and the delay varies run to run, so a feed declared at exactly 6h
+      skips whenever one firing is delayed more than the next. Simulated over 200 firings
+      at 5 minutes of jitter: **71 skipped, 9.3h effective** — the §1.1 skip-alignment
+      defect, reintroduced by an honest-looking number. Same at 4×: 86400 delivers 27.3h.
+      So each value sits one jitter margin below its multiple:
+
+      | declared | delivered | feeds |
+      |---|---|---|
+      | 18000 (5h) | every firing = **6h** | urlhaus, threatfox, feodo-tracker, malwarebazaar, blocklist-de, emerging-threats, otx-alienvault, misp-cert-fr |
+      | 79200 (22h) | every 4th firing = **24h** | abuseipdb, cisa-kev, ecrimelabs-metasploit |
+
+      `tests/test_deploy_config.py::TestSeededCadencesAreOperationalNotAspirational`
+      enforces the band and re-reads the cron expression from the workflow, so changing
+      the cron cadence fails the suite rather than silently invalidating every value.
+
 - [ ] `python scripts/seed_mitre.py` — the ATT&CK catalogue. `/attack/*` returns empty
       without it.
 - [ ] Confirm a fresh seed reports **11 inserted** and all 11 `is_enabled = 1`.
@@ -459,6 +495,48 @@ build step has them. The `|| echo` fail-open remains, as above.
 > a cleanup. Left as-is, documented.
 
 ## 5. Wire the cron
+
+> ### 5.0 THE SCHEDULE CAN SILENTLY STOP, AND THIS REPO HAS ALREADY EARNED IT
+>
+> **GitHub disables scheduled workflows after 60 days of repository inactivity.** No
+> commits, no pushes — the `schedule:` trigger is switched off. This is an operational
+> failure mode with the worst possible signature:
+>
+> * **No error anywhere.** No failed run, no notification, no red badge. The Actions tab
+>   simply shows nothing new, which is indistinguishable from "nothing was due".
+> * **The backend reports healthy.** `/health` is green, `/cron-status` has no
+>   degradation for it, and each feed's `last_sync_status` still reads `success` — from
+>   whenever it last actually ran. Feeds go stale while every dashboard says fine.
+> * **Scores drift downward silently.** Recency decays with wall-clock time, so a corpus
+>   that stops being re-synced does not freeze — it ages. The dashboard keeps working and
+>   keeps being wrong.
+>
+> **This repository has already had a 92-day gap** (2026-05-03 → 2026-08-03), which is
+> past the threshold. The schedule was added after it (`08099c8`, 2026-08-04), so it has
+> not been disabled yet — but the precedent is that this project goes quiet for months at
+> a time, which is exactly the pattern the rule punishes.
+>
+> - [ ] After deploy, confirm in **Actions → Feed sync** that runs are actually appearing.
+>       An empty list means the schedule never fired; red runs mean it fired and the guard
+>       rejected it (see the two settings below).
+> - [ ] **Detect staleness from the data, not from the scheduler.** The reliable check is
+>       `MAX(last_sync_at)` across `feed_sources` — if the newest successful sync is older
+>       than a day, the cron is not running whatever GitHub's UI says. Worth a periodic
+>       eyeball until something alerts on it.
+> - [ ] If the repo is going to be idle for a while, either push something occasionally or
+>       accept that the schedule will need re-enabling by hand in the Actions tab.
+>
+> Two settings the workflow needs, and they live in **different tabs**:
+>
+> | Setting | Kind | Where |
+> |---|---|---|
+> | `API_BASE_URL` | repository **variable** | Settings → Secrets and variables → Actions → *Variables* |
+> | `CRON_SECRET` | repository **secret** | Settings → Secrets and variables → Actions → *Secrets* |
+>
+> Either missing makes every firing fail at the guard with an explicit error — loudly,
+> which is the good case. `CRON_SECRET` must match Render's generated value exactly.
+
+
 
 - [ ] Set the `API_BASE_URL` repository **variable** and `CRON_SECRET` repository **secret**
       for `.github/workflows/feed-sync.yml`. `CRON_SECRET` must match Render's exactly —

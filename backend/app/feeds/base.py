@@ -250,7 +250,13 @@ class BaseFeed(abc.ABC):
             self._client = httpx.AsyncClient(
                 timeout=30.0,
                 follow_redirects=True,
-                headers={"User-Agent": "SENTINEL-TIP/1.0"},
+                # Every upstream feed sees this. Renamed from "SENTINEL-TIP/1.0" on
+                # 2026-08-18 with the public /health identity: SENTINEL is the internal
+                # name. It matters more here than on a health field -- abuse.ch
+                # associates a User-Agent with an account, so the string upstream
+                # operators see (and may rate-limit or allowlist on) should be the
+                # product's name and reachable.
+                headers={"User-Agent": "Wiestell-TIP/1.0 (+https://wiestell.com)"},
             )
         return self._client
 
