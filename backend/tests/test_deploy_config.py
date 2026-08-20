@@ -1081,3 +1081,98 @@ class TestSeededCadencesAreOperationalNotAspirational:
             "6-hourly cron, so matching them is a sign the operational value was not "
             "chosen. (A coincidental match is possible — if so, adjust within the band.)"
         )
+
+
+class TestTheLiveSweepIsSingleFlight:
+    """`sync-all` had no overlap guard, and production showed the cost.
+
+    `feed_scheduler._running` prevents a feed syncing concurrently with itself, but it is
+    read only by `_tick` — the asyncio scheduler that is never started. The live path is
+    `POST /feeds/sync-all`, and every call launched a fresh sweep of all eleven feeds
+    alongside any already in flight.
+
+    Observed 2026-08-20: five `sync-all?force=true` calls within 121 seconds, each
+    starting a full sweep, visible in the ingest log as the same feed replaying the same
+    batches. Concurrent sweeps ingest the SAME rows, so they collide on
+    `UNIQUE(type, value)`, serialise on row locks against each other, and share one
+    5-connection pool — so the throughput number they produce measures the collision, not
+    the platform.
+    """
+
+    def _source(self):
+        import inspect
+
+        from app.api import feeds
+
+        return inspect.getsource(feeds)
+
+    def test_the_guard_exists(self):
+        from app.api import feeds
+
+        assert hasattr(feeds, "_sweep_running"), (
+            "no single-flight flag; overlapping sync-all calls would each start a full "
+            "sweep of every feed"
+        )
+
+    def test_the_entry_point_checks_it_before_doing_work(self):
+        import inspect
+
+        from app.api import feeds
+
+        src = inspect.getsource(feeds._run_sync_all_background)
+        check = src.index("if _sweep_running")
+        start = src.index("_sweep_running = True")
+        assert check < start, "the flag is set before it is checked, so the guard is inert"
+        assert "return" in src[check:start], (
+            "an overlapping call does not return early, so it proceeds anyway"
+        )
+
+    def test_the_flag_is_released_in_a_finally(self):
+        """Otherwise one exception blocks every future sync until a restart.
+
+        That would trade a throughput bug for a total outage — strictly worse than the
+        bug being fixed.
+        """
+        import ast
+        import inspect
+        import textwrap
+
+        from app.api import feeds
+
+        tree = ast.parse(textwrap.dedent(inspect.getsource(feeds._run_sync_all_background)))
+        tries = [n for n in ast.walk(tree) if isinstance(n, ast.Try)]
+        assert tries, "no try/finally around the sweep"
+        released = False
+        for node in tries:
+            for stmt in node.finalbody:
+                for sub in ast.walk(stmt):
+                    if isinstance(sub, ast.Name) and sub.id == "_sweep_running":
+                        released = True
+        assert released, (
+            "_sweep_running is not cleared in a finally block, so an exception anywhere "
+            "in the sweep leaves it set and blocks all future syncs"
+        )
+
+    def test_the_dead_scheduler_guard_is_not_mistaken_for_this_one(self):
+        """`_running` guards `_tick`, which never runs. Two guards, one live path."""
+        import inspect
+
+        from app.services import feed_scheduler
+
+        tick = inspect.getsource(feed_scheduler._tick)
+        assert "_running" in tick, (
+            "feed_scheduler._running is no longer read by _tick; if the asyncio "
+            "scheduler is ever started it would lose its own dedupe"
+        )
+        # WORD-BOUNDARY match. `_running` is a SUBSTRING of `_sweep_running`, so a plain
+        # `in` check flags the very guard this class exists to verify. `` does not match
+        # between `p` and `_` because both are word characters, so the regex distinguishes
+        # them where a substring test cannot. Same shape as the dozen-odd comment-matching
+        # slips logged in CLAUDE.md, here with one identifier nested in another.
+        import re
+
+        assert not re.search(r"_running", self._source()), (
+            "api/feeds.py references feed_scheduler._running. The live path needs its own "
+            "sweep-level guard — _running is per-FEED and lives in a module whose "
+            "scheduler never starts."
+        )
