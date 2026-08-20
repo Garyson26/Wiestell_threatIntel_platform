@@ -16,9 +16,37 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from app.feeds.base import BaseFeed, SHAPE_CUMULATIVE_CATALOGUE
+from app.feeds.base import BaseFeed, FeedNotModified, SHAPE_CUMULATIVE_CATALOGUE
 
 logger = logging.getLogger(__name__)
+
+
+def _describe_failure(label: str, url: str, exc: BaseException) -> str:
+    """A failure description that names WHAT went wrong, not merely that it did.
+
+    `last_sync_error` is the primary diagnostic for every feed and is served to the admin
+    UI, so "it failed" forces a live probe every time. The three facts that distinguish
+    the realistic causes:
+
+      * the STATUS CODE for an HTTP error -- 403 (blocked), 429 (rate-limited) and 503
+        (upstream down) call for completely different responses, and a status code is not
+        a secret;
+      * the EXCEPTION CLASS for a transport error, because those stringify to the EMPTY
+        STRING. Measured: `str(httpx.ConnectTimeout(""))` is `''`, likewise ReadTimeout,
+        ConnectError and RemoteProtocolError. A message built only from `str(exc)` is
+        therefore blank for exactly the failures hardest to guess at;
+      * WHICH URL was tried, since this connector has two and they fail independently.
+    """
+    import httpx
+
+    detail = str(exc).strip()
+    if isinstance(exc, httpx.HTTPStatusError):
+        code = exc.response.status_code
+        return f"{label} {url} -> HTTP {code} ({exc.response.reason_phrase})"
+    if isinstance(exc, httpx.HTTPError):
+        # Transport failure: the class IS the diagnosis, because str() is empty.
+        return f"{label} {url} -> {type(exc).__name__}" + (f": {detail[:120]}" if detail else "")
+    return f"{label} {url} -> {type(exc).__name__}" + (f": {detail[:120]}" if detail else "")
 
 
 def _parse_kev_date(value: Optional[str]) -> Optional[datetime]:
@@ -98,8 +126,15 @@ class CISAKEVFeed(BaseFeed):
             try:
                 response = await self._fetch_url(url)
                 payload = response.json()
-            except Exception as exc:  # noqa: BLE001 — any failure falls through
-                errors.append(f"{label}: {type(exc).__name__}: {str(exc)[:120]}")
+            except FeedNotModified:
+                # NOT a source failure -- must propagate so run() can short-circuit.
+                # Swallowing it here is the bug that took this feed to
+                # consecutive_failures = 6: the 304 was read as "canonical failed", the
+                # mirror was tried, it also 304'd, and the feed was recorded as FAILED
+                # while both sources were answering correctly.
+                raise
+            except Exception as exc:  # noqa: BLE001 — any other failure falls through
+                errors.append(_describe_failure(label, url, exc))
                 logger.warning("cisa_kev_source_failed source=%s error=%s",
                                label, errors[-1])
                 continue
@@ -109,7 +144,7 @@ class CISAKEVFeed(BaseFeed):
                 # A 200 carrying no entries is a failure for our purposes: ingesting it
                 # would look like a successful sync of an empty catalogue. Fall through
                 # rather than accepting it.
-                errors.append(f"{label}: 200 but 0 vulnerabilities")
+                errors.append(f"{label} {url} -> HTTP 200 but 0 vulnerabilities")
                 logger.warning("cisa_kev_source_empty source=%s", label)
                 continue
 
@@ -117,7 +152,7 @@ class CISAKEVFeed(BaseFeed):
             return payload
 
         raise RuntimeError(
-            "CISA KEV unavailable from both sources — " + "; ".join(errors)
+            "CISA KEV unavailable from both sources: " + "; ".join(errors)
         )
 
     async def parse(self, raw: Dict[str, Any]) -> List[Dict[str, Any]]:
