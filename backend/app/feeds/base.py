@@ -61,6 +61,29 @@ FULL_LIST_CUMULATIVE = SHAPE_CUMULATIVE_CATALOGUE
 FULL_LIST_KINDS = frozenset({FULL_LIST_CURRENT_STATE, FULL_LIST_CUMULATIVE})
 
 
+class FeedNotModified(Exception):
+    """Raised by ``_fetch_url`` when the server answers 304 Not Modified.
+
+    RAISED RATHER THAN RETURNED, and that is the whole point. The first version of the
+    conditional-request work returned the 304 response and set a ``not_modified`` flag for
+    ``run()`` to check after ``fetch()`` returned. That is only safe for a connector whose
+    ``fetch()`` hands the response body straight back — and ``cisa_kev.fetch()`` does not:
+    it calls ``response.json()`` inside ``fetch()`` to pick between its canonical and
+    mirror sources.
+
+    A 304 body is EMPTY, so that call raised
+    ``JSONDecodeError: Expecting value: line 1 column 1 (char 0)``, the fallback loop read
+    it as "this source failed", tried the other source, got another 304, and recorded the
+    feed as FAILED. Observed in production 2026-08-18/19: cisa-kev reached
+    consecutive_failures = 6 with a message that named no status code, because there was
+    no HTTP error to name.
+
+    An exception makes the empty body unreachable instead of merely discouraged: a
+    connector cannot parse a response it never receives. Not retryable — see
+    ``_is_retryable`` — so tenacity passes it straight through.
+    """
+
+
 def _is_retryable(exc: BaseException) -> bool:
     """Return True only for transient failures worth retrying.
 
@@ -280,14 +303,20 @@ class BaseFeed(abc.ABC):
         """
         try:
             logger.info("feed_fetch_start", feed=self.name)
-            raw_data = await self.fetch()
-
-            # SHORT-CIRCUIT ON 304, BEFORE parse(). A 304 body is empty by definition,
-            # so parsing it would return zero IOCs -- indistinguishable from a feed that
-            # had genuinely gone empty, which the scheduler records as `no_data`. The
-            # difference matters: "unchanged" is healthy, "no data" is a symptom.
-            if self.not_modified:
+            try:
+                raw_data = await self.fetch()
+            except FeedNotModified:
+                # The source says the file is unchanged, so there is nothing to parse.
+                # Caught HERE rather than checked as a flag after fetch() returns,
+                # because a connector that parses inside fetch() would already have
+                # crashed on the empty body by then.
                 logger.info("feed_not_modified_skip_parse", feed=self.name)
+                return []
+
+            # Belt and braces: a connector that swallows FeedNotModified itself would
+            # reach here with the flag set and no usable body.
+            if self.not_modified:
+                logger.info("feed_not_modified_skip_parse", feed=self.name, via="flag")
                 return []
 
             iocs = await self.parse(raw_data)
@@ -314,10 +343,22 @@ class BaseFeed(abc.ABC):
         had gone empty.
         """
         headers = dict(kwargs.pop("headers", None) or {})
-        if self.http_etag:
-            headers.setdefault("If-None-Match", self.http_etag)
-        if self.http_last_modified:
-            headers.setdefault("If-Modified-Since", self.http_last_modified)
+
+        # VALIDATORS ARE ONLY SENT FOR THE CONNECTOR'S PRIMARY URL.
+        #
+        # `feed_sources` has ONE http_etag column per feed, but a connector may fetch more
+        # than one origin -- cisa_kev tries CISA and falls back to a GitHub mirror. An
+        # ETag is origin-specific and opaque, so replaying CISA's validator against
+        # GitHub asks a question about a resource that server has never heard of: the
+        # best case is a pointless 200, and a 304 on a mismatched validator would be
+        # actively wrong. Restricting to `self.url` keeps a fallback fetch unconditional,
+        # which costs one full download on a path that is already the exception.
+        is_primary = url == self.url
+        if is_primary:
+            if self.http_etag:
+                headers.setdefault("If-None-Match", self.http_etag)
+            if self.http_last_modified:
+                headers.setdefault("If-Modified-Since", self.http_last_modified)
 
         response = await self.client.get(url, headers=headers or None, **kwargs)
 
@@ -328,7 +369,9 @@ class BaseFeed(abc.ABC):
             self.next_http_etag = self.http_etag
             self.next_http_last_modified = self.http_last_modified
             logger.info("feed_not_modified", url=url)
-            return response
+            # RAISE, do not return. See FeedNotModified -- returning the response let
+            # cisa_kev parse an empty body and record the feed as failed.
+            raise FeedNotModified(url)
 
         response.raise_for_status()
         # 200: record whatever the server offered, so the NEXT sync can ask

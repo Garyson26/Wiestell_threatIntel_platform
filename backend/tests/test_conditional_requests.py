@@ -110,14 +110,35 @@ class TestValidatorsAreSentWhenHeld:
 
 
 class TestA304ShortCircuits:
-    async def test_it_sets_not_modified_and_carries_validators_forward(self):
+    async def test_a_304_RAISES_rather_than_returning(self):
+        """CHANGED 2026-08-20 after a production failure, and this is the whole fix.
+
+        The first version returned the 304 response and set a flag for `run()` to check
+        after `fetch()` returned. That is only safe for a connector whose `fetch()` hands
+        the body straight back. `cisa_kev.fetch()` calls `response.json()` INSIDE fetch to
+        choose between its canonical and mirror sources — and a 304 body is empty, so it
+        raised JSONDecodeError, the fallback loop read that as "source failed", tried the
+        other source, got another 304, and recorded the feed as FAILED.
+
+        Observed: cisa-kev reached consecutive_failures = 6 with a stored message naming
+        no status code, because there was no HTTP error to name. Raising makes the empty
+        body unreachable rather than merely discouraged.
+        """
+        from app.feeds.base import FeedNotModified
+
         f = _feed(_Resp(status=304), etag='"same"', last_modified="Y")
-        await f.fetch()
+        with pytest.raises(FeedNotModified):
+            await f.fetch()
         assert f.not_modified is True
         # A 304 body carries no ETag to replace them with, so the old ones still
         # describe the current file and must survive.
         assert f.next_http_etag == '"same"'
         assert f.next_http_last_modified == "Y"
+
+    async def test_run_still_returns_empty_and_does_not_propagate(self):
+        """`run()` catches it; the scheduler must see a normal empty result."""
+        f = _feed(_Resp(status=304), etag='"same"')
+        assert await f.run() == []
 
     async def test_run_does_not_parse_a_304(self):
         """THE short-circuit.
@@ -258,3 +279,127 @@ class TestALong304StreakDoesNotManufactureAGap:
         source = inspect.getsource(feed_scheduler._run_feed_sync_inner)
         block = source[source.index("# ── 304 Not Modified"):source.index("# Ingest")]
         assert "feed.last_ingest_watermark =" not in block
+
+
+class TestValidatorsAreScopedToThePrimaryUrl:
+    """One `http_etag` column, but a connector may fetch more than one origin.
+
+    `cisa_kev` tries CISA and falls back to a GitHub mirror. An ETag is origin-specific
+    and opaque, so replaying CISA's validator against GitHub asks a question about a
+    resource that server has never heard of — best case a pointless 200, worst case a 304
+    on a validator that means nothing there.
+    """
+
+    async def test_validators_are_sent_for_the_primary_url(self):
+        f = _feed(_Resp(), etag='"primary"')
+        await f._fetch_url(f.url)
+        assert f._client.sent_headers.get("If-None-Match") == '"primary"'
+
+    async def test_validators_are_NOT_sent_for_a_fallback_url(self):
+        f = _feed(_Resp(), etag='"primary"', last_modified="Z")
+        await f._fetch_url("https://other.invalid/fallback")
+        sent = f._client.sent_headers or {}
+        assert "If-None-Match" not in sent and "If-Modified-Since" not in sent, (
+            "a stored validator was replayed against a DIFFERENT origin. ETags are "
+            "origin-specific, so the answer is meaningless at best."
+        )
+
+
+class TestTheFailureMessageCarriesTheDiagnosis:
+    """`last_sync_error` is the primary diagnostic for every feed and is served to the
+    admin UI. "It failed" forces a live probe every single time."""
+
+    def _describe(self, exc):
+        from app.feeds.cisa_kev import _describe_failure
+
+        return _describe_failure("canonical", "https://example.invalid/kev.json", exc)
+
+    def test_an_http_error_names_the_status_code(self):
+        import httpx
+
+        resp = httpx.Response(429, request=httpx.Request("GET", "https://x/kev.json"))
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            msg = self._describe(exc)
+        assert "429" in msg, f"no status code in {msg!r}"
+        assert "canonical" in msg and "example.invalid" in msg, (
+            "the message does not say which source or URL failed, and this connector has "
+            f"two that fail independently: {msg!r}"
+        )
+
+    def test_a_transport_error_names_the_exception_class(self):
+        """These stringify to the EMPTY STRING, so the class is the only diagnosis.
+
+        Measured: str(httpx.ConnectTimeout("")) == "" — likewise ReadTimeout,
+        ConnectError and RemoteProtocolError. A message built from str(exc) alone is
+        blank for exactly the failures hardest to guess at.
+        """
+        import httpx
+
+        for cls in (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.ConnectError):
+            msg = self._describe(cls(""))
+            assert cls.__name__ in msg, f"{cls.__name__} missing from {msg!r}"
+            assert msg.strip().endswith(cls.__name__), (
+                f"expected the class to be the whole diagnosis, got {msg!r}"
+            )
+
+    def test_a_json_error_is_still_described(self):
+        """The one that actually happened, before the 304 fix removed its cause."""
+        import json
+
+        msg = self._describe(json.JSONDecodeError("Expecting value", "", 0))
+        assert "JSONDecodeError" in msg and "example.invalid" in msg
+
+    def test_the_message_never_says_only_that_it_failed(self):
+        import httpx
+
+        for exc in (httpx.ConnectTimeout(""), RuntimeError("boom")):
+            msg = self._describe(exc)
+            assert msg.count("->") == 1, f"unexpected shape: {msg!r}"
+            _, diagnosis = msg.split("->", 1)
+            assert diagnosis.strip(), f"no diagnosis after the arrow: {msg!r}"
+
+
+class TestCISAKEVPropagatesNotModified:
+    """The regression itself, pinned at the connector that caused it."""
+
+    async def test_a_304_is_not_treated_as_a_source_failure(self):
+        """Swallowing it tried the mirror, got another 304, and recorded FAILED."""
+        import app.feeds.cisa_kev as mod
+        from app.feeds.base import FeedNotModified
+
+        feed = mod.CISAKEVFeed(api_key=None)
+        feed.http_etag = '"stored"'
+        feed._client = _Client(_Resp(status=304))
+        with pytest.raises(FeedNotModified):
+            await feed.fetch()
+
+    async def test_run_reports_it_as_unchanged_not_failed(self):
+        import app.feeds.cisa_kev as mod
+
+        feed = mod.CISAKEVFeed(api_key=None)
+        feed.http_etag = '"stored"'
+        feed._client = _Client(_Resp(status=304))
+        assert await feed.run() == [], (
+            "a 304 must produce an empty result that the scheduler records as "
+            "no_change, not an exception it records as failed"
+        )
+
+    def test_the_except_clause_reraises_rather_than_appending(self):
+        """Source-level, because the ordering of two except clauses is the whole fix."""
+        import inspect
+
+        source = inspect.getsource(mod_fetch())
+        not_modified_at = source.index("except FeedNotModified")
+        broad_at = source.index("except Exception")
+        assert not_modified_at < broad_at, (
+            "the broad `except Exception` precedes `except FeedNotModified`, so the 304 "
+            "is caught as a generic failure again"
+        )
+
+
+def mod_fetch():
+    import app.feeds.cisa_kev as mod
+
+    return mod.CISAKEVFeed.fetch
