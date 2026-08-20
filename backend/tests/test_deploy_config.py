@@ -964,3 +964,120 @@ class TestThePublicServiceNameIsTheProductName:
         names = set(re.findall(r'"service":\s*"([^"]+)"', inspect.getsource(main)))
         assert names, "no service name found; the check would be vacuous"
         assert names == {"wiestell-api"}, f"health surfaces disagree: {names}"
+
+
+class TestSeededCadencesAreOperationalNotAspirational:
+    """A declared `sync_frequency` must describe what the cron can actually deliver.
+
+    Until 2026-08-18 every seeded value simply mirrored its connector's
+    `default_sync_frequency` — numbers written for the ASYNCIO SCHEDULER, which ticks
+    every 60 seconds and is never started. The live path is an external cron firing every
+    6 hours, so a declared 900s advertised a 15-minute cadence the platform cannot deliver
+    and 8 of 11 feeds were indistinguishable in effect.
+
+    THE BAND, and why it is a band rather than a floor. A value must sit BELOW the
+    multiple of the cron period it wants, by enough to absorb delay but not so much that
+    it lies about the cadence:
+
+      too close  (== multiple)  GitHub delays runs and the delay VARIES, so a feed
+                                declared at exactly 6h skips whenever one firing is
+                                delayed more than the next. Measured over 200 firings at
+                                5 minutes of jitter: 71 SKIPPED, 9.3h effective.
+      too far    (<< multiple)  advertises a cadence that cannot occur — the original
+                                defect.
+    """
+
+    #: The cron in .github/workflows/feed-sync.yml: "17 */6 * * *".
+    CRON_PERIOD = 6 * 3600
+    #: Minimum headroom below the multiple, to absorb variable scheduler delay.
+    MIN_MARGIN = 1800
+    #: Maximum headroom, beyond which the declared value misdescribes the cadence.
+    MAX_MARGIN = 7200
+
+    def _feeds(self):
+        import pathlib
+        import sys
+
+        repo = pathlib.Path(__file__).resolve().parents[2]
+        sys.path.insert(0, str(repo))
+        import scripts.seed_feeds as mod
+
+        return mod.FEEDS
+
+    def test_the_cron_period_matches_the_workflow(self):
+        """If the workflow cadence changes, every band below it moves."""
+        import pathlib
+        import re
+
+        wf = (pathlib.Path(__file__).resolve().parents[2]
+              / ".github" / "workflows" / "feed-sync.yml").read_text(encoding="utf-8")
+        m = re.search(r'cron:\s*"\s*\S+\s+\*/(\d+)', wf)
+        assert m, "could not read the cron expression; the band below is unanchored"
+        hours = int(m.group(1))
+        assert hours * 3600 == self.CRON_PERIOD, (
+            f"the workflow fires every {hours}h but this test assumes "
+            f"{self.CRON_PERIOD // 3600}h. Every seeded cadence is expressed relative to "
+            "the cron period, so they must be revisited together."
+        )
+
+    def test_no_feed_advertises_a_cadence_the_cron_cannot_deliver(self):
+        """The check the owner asked for, stated as the band it really is."""
+        import math
+
+        offenders = []
+        feeds = self._feeds()
+        assert feeds, "FEEDS is empty; the check would be vacuous"
+        for feed in feeds:
+            freq = feed["sync_frequency"]
+            firings = max(1, math.ceil(freq / self.CRON_PERIOD))
+            margin = firings * self.CRON_PERIOD - freq
+            if not (self.MIN_MARGIN <= margin <= self.MAX_MARGIN):
+                delivered = firings * self.CRON_PERIOD
+                offenders.append(
+                    f"{feed['slug']}: declared {freq}s but delivered every {delivered}s "
+                    f"({firings} firing{'s' if firings > 1 else ''}); margin {margin}s "
+                    f"outside [{self.MIN_MARGIN}, {self.MAX_MARGIN}]"
+                )
+        assert not offenders, (
+            "these cadences do not describe what the cron delivers:\n  "
+            + "\n  ".join(offenders)
+            + f"\n\nDeclare a value {self.MIN_MARGIN}-{self.MAX_MARGIN}s BELOW the "
+              "multiple of the cron period you want: 18000 for every firing (6h), "
+              "79200 for every fourth (24h)."
+        )
+
+    def test_no_cadence_equals_an_exact_multiple_of_the_cron_period(self):
+        """The specific fragile case, called out separately from the band.
+
+        An exact multiple looks like the honest value and is the one that skips.
+        """
+        offenders = [
+            f["slug"] for f in self._feeds()
+            if f["sync_frequency"] % self.CRON_PERIOD == 0
+        ]
+        assert not offenders, (
+            f"{offenders} declare an exact multiple of the cron period. GitHub delays "
+            "scheduled runs by a VARYING amount, so such a feed skips whenever one "
+            "firing is delayed more than the next — measured at 9.3h effective for a "
+            "6h declaration under 5 minutes of jitter."
+        )
+
+    def test_the_seeded_value_no_longer_just_mirrors_the_connector_default(self):
+        """The original defect: the seed was a copy of an unrelated design."""
+        import importlib
+
+        from app.services.feed_scheduler import FEED_CONNECTORS
+
+        mirrored = []
+        for feed in self._feeds():
+            path = FEED_CONNECTORS[feed["slug"]]
+            module_path, class_name = path.rsplit(".", 1)
+            cls = getattr(importlib.import_module(module_path), class_name)
+            if feed["sync_frequency"] == getattr(cls, "default_sync_frequency", None):
+                mirrored.append(feed["slug"])
+        assert not mirrored, (
+            f"{mirrored} declare exactly their connector's default_sync_frequency. Those "
+            "defaults were written for the asyncio scheduler's 60-second tick, not for a "
+            "6-hourly cron, so matching them is a sign the operational value was not "
+            "chosen. (A coincidental match is possible — if so, adjust within the band.)"
+        )

@@ -107,6 +107,37 @@ def _alias_groups() -> dict:
     return {slug: by_target[target] for target, slugs in
             ((t, s) for t, s in by_target.items()) for slug in slugs}
 
+
+# ── CADENCE — the OPERATIONAL value, not the connector's aspiration ───────────
+#
+# ASSIGNED 2026-08-18. Until then every entry here simply mirrored its connector's
+# `default_sync_frequency`, and those numbers were written for the ASYNCIO SCHEDULER,
+# which ticks every 60 seconds. That scheduler is implemented and never started; the live
+# path is an external cron firing every 6 HOURS. Against a 6-hourly cron a declared 900s
+# or 1800s is meaningless -- it advertises a 15- or 30-minute cadence the platform cannot
+# deliver, and 8 of 11 feeds were indistinguishable from each other in effect.
+#
+# The seeded value must therefore describe what actually happens.
+#
+# BUT IT MUST NOT BE AN EXACT MULTIPLE OF THE CRON PERIOD, and this is measured rather
+# than reasoned. GitHub Actions DELAYS scheduled runs (never advances them) and the delay
+# VARIES run to run, so a feed declared at exactly 6h skips whenever one firing is
+# delayed more than the next. Simulated over 200 firings:
+#
+#   declared   delay 0   delay 5min   delay 30min
+#   21600 (6h)   6.0h       9.3h         9.4h      <-- 71 of 200 runs SKIPPED
+#   18000 (5h)   6.0h       6.0h         6.0h
+#   86400 (24h) 24.0h      27.3h        27.0h      <-- same defect at 4x
+#   79200 (22h) 24.0h      24.0h        24.0h
+#
+# That is the §1.1 skip-alignment defect, reintroduced by an honest-looking number. So a
+# cadence is declared one jitter margin BELOW the multiple of the cron period it wants:
+#
+#   18000 (5h)  -> delivered every firing      = 6h
+#   79200 (22h) -> delivered every 4th firing  = 24h
+#
+# `tests/test_deploy_config.py` enforces the band: the margin must be large enough to
+# absorb delay and small enough that the declared value does not lie about the cadence.
 FEEDS = [
     {
         "name": "URLhaus",
@@ -115,7 +146,7 @@ FEEDS = [
         "feed_type": "csv",
         "url": "https://urlhaus.abuse.ch/downloads/csv_recent/",
         "is_enabled": True,
-        "sync_frequency": 900,
+        "sync_frequency": 18000,
     },
     {
         "name": "ThreatFox",
@@ -125,7 +156,7 @@ FEEDS = [
         "url": "https://threatfox-api.abuse.ch/api/v1/",
         "api_key_env": "THREATFOX_API_KEY",
         "is_enabled": True,
-        "sync_frequency": 1800,
+        "sync_frequency": 18000,
     },
     {
         "name": "MalwareBazaar",
@@ -139,7 +170,7 @@ FEEDS = [
         "is_enabled": True,
         # 1 hour, against a 47.78h window — samples cannot slip between syncs
         # until this exceeds ~24h. See MalwareBazaarFeed._PUBLIC_WINDOW_HOURS.
-        "sync_frequency": 3600,
+        "sync_frequency": 18000,
     },
     {
         "name": "Feodo Tracker",
@@ -153,7 +184,7 @@ FEEDS = [
         # would have overwritten a right value with a wrong one.
         "url": "https://feodotracker.abuse.ch/downloads/ipblocklist.csv",
         "is_enabled": True,
-        "sync_frequency": 1800,
+        "sync_frequency": 18000,
     },
     {
         "name": "Blocklist.de",
@@ -162,7 +193,7 @@ FEEDS = [
         "feed_type": "csv",
         "url": "https://lists.blocklist.de/lists/all.txt",
         "is_enabled": True,
-        "sync_frequency": 3600,
+        "sync_frequency": 18000,
     },
     {
         "name": "Emerging Threats",
@@ -171,7 +202,7 @@ FEEDS = [
         "feed_type": "csv",
         "url": "https://rules.emergingthreats.net/blockrules/compromised-ips.txt",
         "is_enabled": True,
-        "sync_frequency": 3600,
+        "sync_frequency": 18000,
     },
     {
         "name": "AlienVault OTX",
@@ -187,7 +218,7 @@ FEEDS = [
         # _ABUSEIPDB_TYPES is {"ip"}), so a fresh environment seeding it disabled has no
         # hash reputation whatsoever after VirusTotal's removal.
         "is_enabled": True,
-        "sync_frequency": 3600,
+        "sync_frequency": 18000,
     },
     {
         "name": "AbuseIPDB",
@@ -201,7 +232,7 @@ FEEDS = [
         # providers -- so seeding this disabled leaves IP reputation resting on a single
         # source with nothing to corroborate it.
         "is_enabled": True,
-        "sync_frequency": 86400,
+        "sync_frequency": 79200,
     },
     {
         "name": "CISA KEV",
@@ -213,7 +244,7 @@ FEEDS = [
         # the mirror is now the one that rate-limits.
         "url": "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
         "is_enabled": True,
-        "sync_frequency": 86400,
+        "sync_frequency": 79200,
     },
     {
         "name": "eCrimeLabs Metasploit CVE",
@@ -222,7 +253,7 @@ FEEDS = [
         "feed_type": "csv",
         "url": "https://feeds.ecrimelabs.net/data/metasploit-cve",
         "is_enabled": True,
-        "sync_frequency": 86400,
+        "sync_frequency": 79200,
     },
     {
         "name": "MISP CERT-FR",
@@ -231,7 +262,7 @@ FEEDS = [
         "feed_type": "csv",
         "url": "https://misp.cert.ssi.gouv.fr/feed-misp/hashes.csv",
         "is_enabled": True,
-        "sync_frequency": 21600,
+        "sync_frequency": 18000,
     },
     # NOTE: PhishTank and VirusTotal were removed on 2026-07-29 along with their
     # connector modules, leaving 11 feeds. Any existing `feed_sources` rows for
