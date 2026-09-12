@@ -543,3 +543,67 @@ alembic upgrade head        # d4e5f6a70001_harden_otp_table
 (No `&&`: it is a parse error in Windows PowerShell 5.1, which is the owner's shell.)
 
 `docker-compose.yml` and `render.yaml` no longer contain credentials; both read from the environment. See [.env.example](.env.example) for the full list.
+
+---
+
+## 10. Agent-discovery metadata — what was done, and what was deliberately not
+
+**Date of triage:** 2026-09-12. **Trigger:** a scan from `isitagentready.com`
+reporting twelve missing agent-discovery mechanisms.
+
+A scanner reporting twelve failures looks like twelve defects. It is not. It is a
+checklist of *emerging conventions*, most of them unratified: the scan cited two
+IETF Internet-Drafts, an unmerged pull request against the MCP specification, a
+single-vendor policy at v0.2.0, and a Chrome-experimental browser API. Scoring
+poorly against it costs nothing today.
+
+The governing rule for all of it: **do not publish metadata describing
+capabilities the platform does not have.** A discovery document pointing at a 404,
+or an OIDC configuration for a service that is not an OIDC provider, is worse than
+absence — it wastes an agent's request and misrepresents the system.
+
+This section exists so the next person who runs that scan does not redo the
+triage.
+
+### 10.1 Implemented
+
+| Item | Status |
+|---|---|
+| **Content Signals in `robots.txt`** | **Done.** `Content-Signal: search=yes, ai-train=no, ai-input=yes`, emitted into the `User-agent: *` group. Owner decision, 2026-09-12 — `ai-train=no` is conservative on purpose and can be loosened later; the reverse is harder. Implemented in `frontend/next-sitemap.config.js` via `transformRobotsTxt`, **not** by editing `frontend/public/robots.txt`, which is generated at postbuild and would be overwritten. It could not be a `policies` entry: next-sitemap's `IRobotPolicy` understands only `userAgent`/`allow`/`disallow`/`crawlDelay` and drops any other key silently. The transform throws if the `User-agent: *` anchor is ever missing, so a next-sitemap upgrade that changes the output shape fails the build rather than quietly dropping the directive. Not load-bearing: `draft-romm-aipref-contentsignals` **expired in April 2026** without working-group adoption, and Google has stated publicly that the directive has no effect on any of its crawlers. |
+
+### 10.2 Designed, gated, not shipped
+
+| Item | Status |
+|---|---|
+| **API catalog (RFC 9727) and `Link` headers (RFC 8288)** | Designed in [docs/superpowers/specs/2026-09-12-api-catalog-and-link-headers-design.md](docs/superpowers/specs/2026-09-12-api-catalog-and-link-headers-design.md). Both are real, published Standards-Track RFCs — the two items on the scan worth doing properly. Blocked on a conflict rather than on the specs: production sets `ENABLE_API_DOCS=false`, so `/openapi.json` 404s and there is nothing for `service-desc` to point at. The resolution is a hand-curated, public-only OpenAPI document kept honest by CI drift tests — real work that belongs with the public API. **Gate: ships when the public lookup API ships, not before.** Do **not** set `ENABLE_API_DOCS=true` in production to satisfy this. |
+| **MCP server card** (`/.well-known/mcp/server-card.json`) | **Blocked on the MCP endpoint**, which is on the roadmap and does not exist. There is no server to describe. Separately, the card schema is an **unmerged pull request** against the MCP specification, so anything written against it now gets rewritten when it lands. When the MCP endpoint ships, re-check the schema at that point rather than taking the version quoted in the scan output. |
+
+### 10.3 Deliberate omissions
+
+Not oversights. Do not implement any of these without the owner reopening them.
+
+| Item | Why not |
+|---|---|
+| OAuth/OIDC discovery metadata | Not an OAuth or OIDC provider. Auth is a self-issued HS256 JWT against a local user table. Publishing `openid-configuration` would advertise endpoints that do not exist. |
+| OAuth Protected Resource Metadata | Same reason. There is no authorization server to name in `authorization_servers`. |
+| `auth.md` | Vendor proposal, very new, and it presupposes an agent-registration flow the platform does not offer. |
+| DNS-AID (`draft-mozleywilliams-dnsop-dnsaid`) | IETF **draft**, and it requires DNSSEC on the zone. DNS configuration lives outside this repository, and DNSSEC is not an operational commitment worth making for a draft. |
+| Markdown for Agents | A Cloudflare platform feature. The frontend is on Vercel, so adopting it means hand-rolling `Accept: text/markdown` negotiation in Next.js — real work for a convention with one implementer. |
+| Agent Skills index | There are no skills to publish. |
+| WebMCP | Chrome-experimental `navigator.modelContext`. Not a standard, and it would put an agent-facing tool surface in the browser — a security decision, not a metadata one. |
+| ARD manifest | Draft spec. Revisit alongside the API catalog (§10.2) if it has gained traction by then. |
+
+### 10.4 Standing constraints
+
+- Do not set `ENABLE_API_DOCS=true` in production to satisfy a discovery item.
+- Do not publish any `/.well-known/` document describing an endpoint that does
+  not exist.
+- Do not edit `frontend/public/robots.txt` directly — it is generated at
+  postbuild by `next-sitemap` and a direct edit is reverted on the next build.
+  The sitemap and robots policies are maintained from one shared
+  `AUTHENTICATED_ROUTES` constant, so a change to either can disturb the other;
+  after any edit, confirm the generated `robots.txt` still carries all 21
+  authenticated-route `Disallow` entries plus `/api/`.
+- This is discoverability polish on a platform that is not yet fully
+  operational. It does not take priority over feed sync throughput or the corpus
+  rescore.
