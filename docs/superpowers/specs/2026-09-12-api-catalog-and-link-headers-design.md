@@ -2,7 +2,8 @@
 
 **Date:** 2026-09-12
 **Status:** **DESIGN ONLY — NOT IMPLEMENTED.** Nothing in this note is built.
-**Gate:** ships with the public lookup API, not before. See §1.
+**Gates:** two, and both must be open — the public lookup API existing, and
+`TRUSTED_PROXY_HOPS` measured and set. See §6.
 **Verdict:** viable, and the standards are real — RFC 9727 (Standards Track,
 June 2025) and RFC 8288 are both published, unlike most of the scan that
 prompted this. The blocker is not the spec, it is that there is no public API
@@ -110,6 +111,58 @@ inspect the **resolved** dependency tree: auth is applied at the router level in
 `api/__init__.py`, not on individual route decorators, so a test that only reads
 route decorators would pass happily on an authenticated endpoint.
 
+### 2.3.1 Proving the auth check — mutation tests
+
+The one failure mode that matters is a check that *looks* thorough and still
+passes on an authenticated endpoint. Writing it is not enough; it has to be
+mutation-proved, and the obvious mutation is not sufficient on its own.
+
+**What the walk must cover.** FastAPI nests sub-dependencies and `Security`
+scopes several levels deep, so the check reads `route.dependant` — the
+*resolved* object — and recurses:
+
+- `Dependant.dependencies`, recursively. Router-level `dependencies=[...]` are
+  merged into the route's `dependant` and do **not** appear on the decorator, so
+  reading `route.dependencies` alone misses the only auth this app actually
+  applies.
+- `Dependant.security_requirements`, which is where `Security(...)` lands. It is
+  a separate list from `.dependencies`; walking only the latter misses it.
+- A `visited` set keyed on the sub-dependant's `call`. Shared dependencies form
+  a diamond, not a tree, and an unguarded walk re-traverses them.
+
+**Compare resolved callables by identity, not by name.** `dep.call is
+get_current_user`, or membership in a set of callables — never a substring or
+`__name__` match. This project has tripped on substring-matching guards
+repeatedly (`_running` matching inside `_sweep_running`; `sentinel-api` matching
+inside the comment explaining the rename). A rename would silently disarm a
+name-matching check here, and the thing it guards is the public/authenticated
+boundary.
+
+**Prefer an allowlist over a denylist.** Asserting "none of these known auth
+dependencies appears" fails open the day somebody adds `get_current_api_key`.
+Assert instead that the transitive dependency closure of every public path is a
+**subset of an explicitly permitted set** (`get_db`, the rate limiter, and
+whatever else is genuinely harmless). A new dependency of any kind then fails
+the test until someone classifies it. That is the same safe-by-default posture
+`api/__init__.py` already takes at the router level, applied one layer out.
+
+**Mutations, and what each one actually proves:**
+
+| # | Mutation | Must | Proves |
+|---|---|---|---|
+| 1 | Add an authenticated path (e.g. `/api/v1/iocs/lookup`) to `PUBLIC_PATHS` | fail | The check binds at all. **Necessary but not sufficient** — see below. |
+| 2 | Wrap `get_current_user` in a pass-through dependency one level down, and allowlist the wrapper | fail | The walk **recurses**. This is the mutation that matters. |
+| 3 | Express the auth as `Security(get_current_user, scopes=[...])` instead of `Depends(...)` | fail | `security_requirements` is walked, not just `.dependencies`. |
+| 4 | Truncate the walk to depth 1 | fail (at least #2) | The recursion is exercised, not merely written. |
+| 5 | Swap identity comparison for a name match, then rename the dependency | fail | The check survives a rename. |
+
+**Why mutation 1 alone would mislead.** The auth dependency this app applies
+sits at the router level, so in the resolved `dependant` it lands at **depth 1**.
+A shallow, non-recursive check catches it and passes mutation 1 — looking
+correct while being unable to see auth nested any deeper. Mutation 2 is what
+separates a real tree walk from a one-level lookup, and it is the one to write
+first if only one gets written.
+
 ### 2.4 Scope of the first version
 
 Only what exists and is public at the time it ships: the free lookup endpoint,
@@ -211,18 +264,62 @@ that does not need duplicating.
 
 ---
 
-## 6. Gate and open questions
+## 6. Gates and open questions
 
-**Gate:** implement when the public lookup API ships. Not before — a catalog
-that anchors only health checks advertises nothing.
+There are **two** gates, not one. Both must be open.
 
-Open at that point:
+### Gate 1 — the public lookup API exists
+
+A catalog that anchors only health checks advertises nothing. Today the only
+genuinely unauthenticated surfaces are `/health` and `/api/v1/health`;
+`/api/v1/iocs/lookup` is behind `_authenticated` at the router level (§1). That
+is the whole reason to wait — not a schedule.
+
+### Gate 2 — `TRUSTED_PROXY_HOPS` is measured and set
+
+**This dependency is named nowhere else, and is not obvious from either side.**
+
+A public lookup API means *unauthenticated* endpoints, which need rate limiting
+that can tell callers apart. Today it cannot:
+
+- `TRUSTED_PROXY_HOPS` defaults to `0` (`config.py:134`), and at `0`
+  `deps.py::_client_ip` ignores `X-Forwarded-For` entirely and falls back to the
+  socket peer — deliberately fail-closed, pending measurement.
+- On Render the socket peer is the edge address, so **every caller presents as
+  the same IP**. SECURITY_REVIEW.md says so plainly in its "Missing entirely"
+  list, item 2 — the per-IP rate limits "do not currently bind at all on
+  Render, where every caller presents as the edge address" — and §R-06 records
+  the same thing as a deploy-time availability consequence.
+- `DEPLOY_CHECKLIST.md` §4 carries the measurement step and the value (`1` on
+  Render), with the warning that too *high* is worse than too low — a
+  client-supplied header value gets trusted and an attacker rotates their own
+  bucket at will.
+
+So a per-IP limiter in front of a public endpoint is currently **one global
+bucket**, and that leaves no good setting. Low enough to be a real limit and a
+single aggressive agent locks out every other caller — a trivial denial of
+service. High enough to avoid that and it is not a limit. The existing
+`ioc-lookup` 60/60s limiter does not rescue this: it is applied to
+authenticated callers, where the bucket key is not the problem.
+
+Publishing an api-catalog makes this worse rather than merely leaving it
+unfixed. The entire purpose of the catalog is to attract automated clients to
+the endpoint, which is precisely the traffic shape a single shared bucket
+cannot survive. **Advertising the endpoint is what promotes `TRUSTED_PROXY_HOPS`
+from deferred hardening to a prerequisite.** From the catalog side this looks
+like a pure metadata task; from the rate-limiting side the hop count looks like
+a hardening item with no consumer. It is written down here because neither view
+shows the coupling.
+
+### Open at that point
 
 1. Does `/docs/api` exist? If not, drop `service-doc` (§3).
-2. Rate limiting on the public lookup endpoint. `ioc-lookup` already carries a
-   60/60s limiter, but that currently applies to authenticated callers; an
-   unauthenticated public endpoint needs its own budget decided before it is
-   advertised to agents. Out of scope here, but it blocks the same gate.
+2. The rate-limit *budget* for unauthenticated callers — a separate decision
+   from Gate 2, which only makes the bucket *key* correct. Note that a correct
+   key is necessary but not sufficient: SECURITY_REVIEW.md's same list observes
+   that an attacker rotating source IPs defeats a per-IP bucket even with a
+   perfectly measured hop count. Decide the budget, and whether per-IP is the
+   right dimension at all, before advertising the endpoint rather than after.
 3. Re-check the ARD manifest draft (PROJECT_SUMMARY.md §10). It was a draft at
    triage time and was deferred to this same gate; if it has gained real
    adopters by then it is cheap to add next to the catalog. If it has not, leave
