@@ -14,7 +14,7 @@ aiomysql==0.3.2           # 0.2.0 allowed arbitrary client file read via a malic
                           # database.py monkeypatches Connection.ensure_closed -- see
                           # the comment there; re-verify against any future bump.
 pymysql==1.1.1            # fixes SQL injection via crafted dates (CVE-2024-36039)
-cryptography==50.0.0      # the reachable advisory is the vulnerable OpenSSL bundled in
+cryptography==50.0.1      # the reachable advisory is the vulnerable OpenSSL bundled in
                           # the wheels (affects TLS). PKCS#7 enveloped-data decryption
                           # and SECT-curve validation are not used anywhere here.
 alembic==1.14.0
