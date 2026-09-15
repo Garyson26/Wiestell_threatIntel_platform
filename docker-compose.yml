@@ -139,7 +139,7 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     # Bound to loopback only: an unauthenticated Redis reachable from the LAN
     # is a full read/write of the cache and Celery queue.
     ports:
