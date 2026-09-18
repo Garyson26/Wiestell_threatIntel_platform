@@ -20,7 +20,7 @@ cryptography==50.0.0      # the reachable advisory is the vulnerable OpenSSL bun
 alembic==1.14.0
 
 # Redis
-redis==5.2.1
+redis==8.1.0
 # aioredis removed — merged into redis-py 4.2+ and unmaintained since 2022
 
 # celery removed 2026-08-17 with app/tasks/ — see docker-compose.yml. The beat schedule
