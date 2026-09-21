@@ -17,7 +17,7 @@ pymysql==1.1.1            # fixes SQL injection via crafted dates (CVE-2024-3603
 cryptography==50.0.1      # the reachable advisory is the vulnerable OpenSSL bundled in
                           # the wheels (affects TLS). PKCS#7 enveloped-data decryption
                           # and SECT-curve validation are not used anywhere here.
-alembic==1.14.0
+alembic==1.20.0
 
 # Redis
 redis==8.1.0
