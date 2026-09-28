@@ -57,7 +57,7 @@ pyjwt==2.13.0             # replaces python-jose (unmaintained; CVE-2024-33663/3
                           # asymmetric algorithm in the same list plus a raw-JSON JWK
                           # as key=. The key here is a SECRET_KEY string.
 passlib[bcrypt]==1.7.4
-bcrypt==4.2.1
+bcrypt==5.0.0
 
 # STIX
 stix2==3.0.1
