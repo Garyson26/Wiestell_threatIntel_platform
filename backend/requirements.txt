@@ -49,7 +49,7 @@ geoip2==4.8.0
 # shodan==1.31.0  # Optional - not compatible with Vercel serverless (no binary wheels)
 
 # Security
-pyjwt==2.13.0             # replaces python-jose (unmaintained; CVE-2024-33663/33664).
+pyjwt==2.15.0             # replaces python-jose (unmaintained; CVE-2024-33663/33664).
                           # 2.13.0 closes CVE-2026-48526 (algorithm confusion) and the
                           # unknown-`crit`-header issue. Neither was exploitable here:
                           # the sole jwt.decode site passes algorithms=[JWT_ALGORITHM],
