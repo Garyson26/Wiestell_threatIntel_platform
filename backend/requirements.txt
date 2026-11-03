@@ -1,7 +1,7 @@
 # FastAPI & ASGI
 fastapi==0.162.0          # >=0.115.3 fixes starlette multipart DoS (CVE-2024-47874)
 uvicorn[standard]==0.54.0
-python-multipart==0.0.32  # form parser. NOTE: no endpoint accepts multipart/form-data
+python-multipart==0.0.33  # form parser. NOTE: no endpoint accepts multipart/form-data
                           # or file uploads (verified 2026-08-03), so its advisories
                           # -- arbitrary file write, unbounded-header DoS, quadratic
                           # querystring -- are unreachable in this application.
