@@ -16,5 +16,5 @@
 # Note these pins had already drifted BEHIND the installed environment (pytest 9.0.2,
 # pytest-asyncio 1.3.0), so the suite has been running on 9.x for some time -- this
 # aligns the pins with what has actually been verified rather than moving the suite.
-pytest==9.1.1
-pytest-asyncio==1.4.0
+pytest==9.2.0
+pytest-asyncio==1.4.1
