@@ -1,7 +1,8 @@
 """Abstract base class for all feed connectors."""
 
 import abc
-from typing import Any, Dict, List, Optional, Tuple
+import heapq
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
 from datetime import datetime, timezone
 
 import httpx
@@ -59,6 +60,90 @@ FULL_LIST_CURRENT_STATE = SHAPE_CURRENT_STATE_LIST
 # A list that only grows: presence says nothing about today.
 FULL_LIST_CUMULATIVE = SHAPE_CUMULATIVE_CATALOGUE
 FULL_LIST_KINDS = frozenset({FULL_LIST_CURRENT_STATE, FULL_LIST_CUMULATIVE})
+
+
+class FeedConfigurationError(Exception):
+    """The feed cannot run as configured -- typically a required credential is absent.
+
+    Raised from ``fetch()`` so it propagates through ``run()`` to ``run_feed_sync``,
+    which records ``last_sync_status='failed'`` with this message. The message must
+    name the missing setting: it is what an operator reads in the admin panel, and
+    "failed" with no cause forces a live probe to find out why.
+    """
+
+
+def error_text(exc: BaseException) -> str:
+    """``str(exc)``, or the exception's class name when that is empty.
+
+    httpx transport errors stringify to ``''`` (``str(httpx.ReadTimeout(""))``), so a
+    failure recorded as ``str(exc)`` alone is blank for exactly the cases hardest to
+    diagnose. The caller is still responsible for redaction.
+    """
+    text = str(exc).strip()
+    return text if text else type(exc).__name__
+
+
+def parse_id_cursor(value: Optional[str]) -> Optional[int]:
+    """The stored ``sync_cursor`` as a record id, or None if absent or unreadable.
+
+    Unreadable is treated as absent rather than raising: the consequence is a
+    bounded cold-start read (see ``take_after_cursor``), which is safe, whereas a
+    feed that cannot sync until someone edits a database column is not.
+    """
+    if value is None:
+        return None
+    try:
+        return int(str(value).strip())
+    except ValueError:
+        return None
+
+
+def take_after_cursor(candidates: Iterable[Tuple[int, Any]], max_rows: int):
+    """Oldest-first ``max_rows`` of ``(record_id, row)`` pairs from an iterable.
+
+    Returns ``(rows, last_id, total)``. ``last_id`` is the highest id taken -- the
+    next cursor -- or None when nothing was taken; ``total`` is how many candidates
+    there were, so a caller can report a capped backlog.
+
+    OLDEST first, not newest, so that a backlog larger than the cap drains over
+    successive syncs without loss: each sync takes the next ``max_rows`` above the
+    cursor and advances it to the last one taken. Taking the newest would skip the
+    middle of a backlog permanently.
+
+    BOUNDED MEMORY, which is the point of the cap. ``heapq.nsmallest`` holds at most
+    ``max_rows`` pairs however many candidates stream past. Collecting candidates
+    into a list first and slicing afterwards was measured at a 234 MB peak when a
+    stale cursor made all 114k URLhaus rows eligible -- the cap applied too late to
+    guard anything.
+    """
+    total = 0
+
+    def counted():
+        nonlocal total
+        for pair in candidates:
+            total += 1
+            yield pair
+
+    ordered = heapq.nsmallest(max_rows, counted(), key=lambda pair: pair[0])
+    if not ordered:
+        return [], None, total
+    return [row for _, row in ordered], ordered[-1][0], total
+
+
+def iter_lines(text: str) -> Iterator[str]:
+    """Lines of ``text``, lazily, without copying it.
+
+    ``io.StringIO(text)`` copies the whole string into a 4-byte-per-character
+    buffer -- ~120 MB for URLhaus's 30 MB export -- and ``splitlines()`` builds a
+    list of every line. This yields one line at a time from the original string.
+    """
+    start, n = 0, len(text)
+    while start < n:
+        end = text.find("\n", start)
+        if end == -1:
+            end = n
+        yield text[start:end].rstrip("\r")
+        start = end + 1
 
 
 class FeedNotModified(Exception):

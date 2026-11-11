@@ -21,6 +21,7 @@ from app.database import AsyncSessionLocal
 from app.models.feed import FeedSource
 from app.services.feed_ingestion import ingest_iocs
 from app.config import ALLOWED_FEED_API_KEY_ENVS, settings
+from app.feeds.base import error_text
 from app.utils.sanitize import redact_secrets
 
 logger = structlog.get_logger()
@@ -209,7 +210,9 @@ async def _run_feed_sync_inner(feed_id: str, feed_slug: str, connector_path: str
                 feed.consecutive_failures = (feed.consecutive_failures or 0) + 1
                 # Driver/HTTP errors can embed credentials — store a scrubbed
                 # copy since this column is served to API clients.
-                feed.last_sync_error = redact_secrets(exc)[:2000]
+                # error_text() falls back to the class name: httpx transport errors
+                # stringify to '' and would otherwise record a blank failure.
+                feed.last_sync_error = redact_secrets(error_text(exc))[:2000]
                 await session.commit()
         return
 
