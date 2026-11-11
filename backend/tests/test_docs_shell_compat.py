@@ -52,7 +52,9 @@ PAIR_WINDOW_LINES = 25
 
 def _markdown_files():
     for path in sorted(REPO.rglob("*.md")):
-        if "node_modules" in path.parts or ".git" in path.parts:
+        # .pytest_cache holds pytest's own README.md, which made a working tree look
+        # one file richer than a fresh clone (#136).
+        if {"node_modules", ".git", ".pytest_cache"} & set(path.parts):
             continue
         yield path
 
@@ -87,8 +89,11 @@ class TestTheScannerWorks:
     """Non-emptiness first — otherwise everything below passes for the wrong reason."""
 
     def test_it_finds_markdown_files(self):
-        files = list(_markdown_files())
-        assert len(files) >= 5, f"only {len(files)} markdown files found; scanner is broken"
+        # Named rather than counted: a count floor passed on a working tree and
+        # failed on every fresh clone once internal docs were removed (#136).
+        found = {path.relative_to(REPO).as_posix() for path in _markdown_files()}
+        expected = {"CLAUDE.md", "README.md", "CONTRIBUTING.md"}
+        assert expected <= found, f"scanner is broken: missing {sorted(expected - found)}"
 
     def test_it_finds_shell_blocks(self):
         blocks = [b for b in _all_blocks() if b[1] in SHELL_LANGS]
@@ -101,7 +106,7 @@ class TestTheScannerWorks:
         """The 'both forms' rule is in use, so its blocks must be detectable."""
         ps = [b for b in _all_blocks() if b[1] == "powershell"]
         assert len(ps) >= 2, (
-            f"found {len(ps)} powershell blocks; CLAUDE.md and DEPLOY_CHECKLIST.md both "
+            f"found {len(ps)} powershell blocks; CLAUDE.md and README.md both "
             "document one, so the parser is not seeing them"
         )
 
