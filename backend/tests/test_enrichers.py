@@ -59,8 +59,23 @@ def no_geoip_db(monkeypatch):
     reset_registry()
 
 
+@pytest.fixture
+def shodan_importable(monkeypatch):
+    """Shodan's library present: true on a developer machine, false from the pins.
+
+    `shodan` is commented out of requirements.txt, so Shodan registers only where
+    the package happens to be installed. Tests whose expected table includes it
+    must say so, or they pass locally and fail in a clean install (#136).
+    test_enrichment_selection.py covers the absent branch.
+    """
+    from app import enrichers
+
+    monkeypatch.setattr(enrichers, "_shodan_library_available", lambda: True)
+    reset_registry()
+
+
 class TestRegistryGating:
-    def test_credential_free_enrichers_are_always_registered(self, no_keys):
+    def test_credential_free_enrichers_are_always_registered(self, no_keys, shodan_importable):
         """These degrade gracefully rather than disappearing.
 
         `malwarebazaar` was in this set until 2026-07-30. abuse.ch now returns
@@ -92,7 +107,9 @@ class TestRegistryGating:
         assert "geoip" in get_registry()
         assert "geoip" in applicable_sources("ip")
 
-    def test_gating_geoip_does_not_disturb_the_remaining_ip_order(self, no_geoip_db):
+    def test_gating_geoip_does_not_disturb_the_remaining_ip_order(
+        self, no_geoip_db, shodan_importable
+    ):
         """Registration order is the attempt order, so the gate must only remove.
 
         Dropping geoip must leave the rest of the IP chain in the same sequence — the
@@ -204,13 +221,13 @@ class TestEngineDispatch:
     }
 
     @pytest.mark.parametrize("ioc_type", sorted(EXPECTED))
-    def test_core_sources_per_type(self, no_keys, ioc_type):
+    def test_core_sources_per_type(self, no_keys, shodan_importable, ioc_type):
         sources = _get_applicable_sources(ioc_type)
         assert set(self.EXPECTED[ioc_type]) <= set(sources), (
             f"{ioc_type}: expected {self.EXPECTED[ioc_type]}, got {sources}"
         )
 
-    def test_ip_source_order_is_preserved(self, no_keys):
+    def test_ip_source_order_is_preserved(self, no_keys, shodan_importable):
         """Registry insertion order determines attempt order."""
         assert _get_applicable_sources("ip") == [
             "geoip", "whois", "dns", "reputation", "shodan"

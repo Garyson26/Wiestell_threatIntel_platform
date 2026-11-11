@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Wiestell (internally "SENTINEL") is a Threat Intelligence Platform: a FastAPI backend that ingests IOCs from 10+ open-source threat feeds, enriches them (WHOIS/DNS/GeoIP/reputation/Shodan/MalwareBazaar), scores them 0–100, correlates them and maps them to MITRE ATT&CK — plus a Next.js SOC dashboard.
 
-Deeper docs written for this repo: [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) (architecture + known issues) and [SECURITY_REVIEW.md](SECURITY_REVIEW.md) (threat model, findings, residual risk). Read the residual-risk section before touching auth.
+The project summary and security review this file used to point to were removed in `1acf081` and are no longer in the repository. Read [Authorization model](#authorization-model) below before touching auth.
 
 ## Commands
 
@@ -45,6 +45,12 @@ python -m pytest tests/test_enrichers.py          # one file
 python -m pytest -k "cvss or kev"                 # by name
 python -m pytest tests/test_access_control.py -v  # verbose
 ```
+
+**CI runs the default tier from the pins.** `.github/workflows/tests.yml` installs
+`requirements-dev.txt` and nothing else into a clean Python 3.11.9 (render.yaml's
+version) on every PR. A local run is only as good as your last install from the pins:
+a drifted environment passed the suite while the pinned set could not start the async
+engine (#136). The MySQL tier is not in CI yet.
 
 **Two tiers.** `pytest.ini` sets `-m "not mysql"`, so the default run needs no
 database and stays around five seconds. The MySQL tier is opt-in:
@@ -208,7 +214,6 @@ snippet, because the failure surfaces mid-task rather than while writing it.
   boundary is now merely redundant rather than wrong. Two routes are still unprotected:
   computing boundaries **in SQL** via `sa.text()`, and `func.date()`/`DATE_FORMAT`
   grouping, which operates on the stored naive value and so groups by UTC day.
-  Design note: [docs/superpowers/specs/2026-07-30-naive-utc-typedecorator-design.md](docs/superpowers/specs/2026-07-30-naive-utc-typedecorator-design.md).
 
   **Audited 2026-07-31 — the current endpoints are self-consistent, so this is a
   constraint on the rewrite rather than a live bug.** `get_stats` groups with
@@ -301,7 +306,7 @@ Other invariants to preserve:
   through a PR. Rewriting or force-pushing `Master` stays prohibited — a history purge
   cannot retract what public forks already hold, so it buys nothing and breaks every
   clone. Commit per section on the branch. Before every commit, scan the staged diff for secrets and binaries and confirm `.gitignore` covers `.env`, `*.mmdb`, `*.pdf`. **Amend for wrong content; layer a follow-up commit for process disclosures** — amending a message that asserted something unverified would erase the record of having done so, which is the part worth keeping.
-- **Six subsystems assume one process per instance, so the uvicorn worker count is part of the security model, not a throughput dial.** `--workers 1` is declared in `render.yaml` and `backend/start.sh`, refused at startup by `main.py::_assert_single_worker` (overridable with `ALLOW_MULTIPLE_WORKERS=true`), and pinned by `tests/test_process_model.py`. At N workers: the in-memory rate limiter becomes N independent budgets, so the effective limit is N × `AUTH_RATE_LIMIT_MAX` — this is what makes the residual-risk #5 narrowing valid; the database pool is per process, so 2 + 3 becomes 5N connections against a **shared** MySQL account allowance; `enrichment_engine`'s module-level semaphore becomes 5N third-party calls in flight; and any in-process cache becomes N inconsistent caches. **And `REDIS_URL` is deliberately unset** (the Render blueprint provisions no Redis), which is only correct because the limiter's fallback is process-local — at N workers a shared store stops being optional. **And `utils/email_service` tracks Resend quota exhaustion in module state**, so a cap hit by one worker is invisible to the others and to `/cron-status`. Each degrades silently. The check is at runtime as well as in a test because Render's dashboard can override the start command without touching a file. Raising the count means revisiting all six together — provision Redis for the limiter, any cache and item 5, a smaller `pool_size`, and a shared bound for enrichment. The start commands also pass `--no-proxy-headers`: uvicorn's own proxy middleware is a second algorithm on `X-Forwarded-For` and would fight `deps.py::_client_ip` (finding R-05).
+- **Six subsystems assume one process per instance, so the uvicorn worker count is part of the security model, not a throughput dial.** `--workers 1` is declared in `render.yaml` and `backend/start.sh`, refused at startup by `main.py::_assert_single_worker` (overridable with `ALLOW_MULTIPLE_WORKERS=true`), and pinned by `tests/test_process_model.py`. At N workers: the in-memory rate limiter becomes N independent budgets, so the effective limit is N × `AUTH_RATE_LIMIT_MAX` — a single process is what lets the in-memory limiter stand in for Redis; the database pool is per process, so 2 + 3 becomes 5N connections against a **shared** MySQL account allowance; `enrichment_engine`'s module-level semaphore becomes 5N third-party calls in flight; and any in-process cache becomes N inconsistent caches. **And `REDIS_URL` is deliberately unset** (the Render blueprint provisions no Redis), which is only correct because the limiter's fallback is process-local — at N workers a shared store stops being optional. **And `utils/email_service` tracks Resend quota exhaustion in module state**, so a cap hit by one worker is invisible to the others and to `/cron-status`. Each degrades silently. The check is at runtime as well as in a test because Render's dashboard can override the start command without touching a file. Raising the count means revisiting all six together — provision Redis for the limiter, any cache and item 5, a smaller `pool_size`, and a shared bound for enrichment. The start commands also pass `--no-proxy-headers`: uvicorn's own proxy middleware is a second algorithm on `X-Forwarded-For` and would fight `deps.py::_client_ip`.
 - **A test that asserts on TIME needs a measurable interval, or it asserts nothing.** A
   narrower cousin of the extraction rule below, and it has now bitten twice. Section B's
   first read-chunk test measured a *first* sync, where two of the three reads short-circuit
@@ -323,7 +328,8 @@ Other invariants to preserve:
   guarded or allowlisted" assertion passed over those 4. It surfaced only because an
   unrelated test named `/users/login` explicitly. A floor — at least the count
   measured today, or a set of named routes that must appear — turns the next change
-  of that kind into a failure instead of a pass.
+  of that kind into a failure instead of a pass. The audit now walks included routers
+  and asserts both: at least 64 routes, and every operation in the OpenAPI schema.
 
 ## Architecture notes worth knowing before editing
 
@@ -395,4 +401,4 @@ Response bodies and search parameters must not be logged client-side — they ca
 
 ## Known rough edges (documented, not yet fixed)
 
-`api/enrichment.py` keeps backfill progress in module-level globals, so its stats and its "one job at a time" guarantee are per-process. `api/attack.py` issues one `COUNT` per technique and `dashboard.py::get_trends` two queries per day requested — both should become single `GROUP BY` queries. IOC-detail assembly is duplicated across `lookup_ioc`, `get_ioc` and `search_iocs`. Full list in [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) §8.
+`api/enrichment.py` keeps backfill progress in module-level globals, so its stats and its "one job at a time" guarantee are per-process. `api/attack.py` issues one `COUNT` per technique and `dashboard.py::get_trends` two queries per day requested — both should become single `GROUP BY` queries. IOC-detail assembly is duplicated across `lookup_ioc`, `get_ioc` and `search_iocs`.
