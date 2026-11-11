@@ -1,264 +1,176 @@
+<p align="center">
+  <img src=".github/assets/banner.svg" alt="Wiestell — open-source threat intelligence platform" width="100%">
+</p>
 
-**Wiestell Opensource free threat intelligence platform that aggregates, enriches, and scores IOCs from multiple feeds.**
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
+  <img src="https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI">
+  <img src="https://img.shields.io/badge/Next.js-16-black?logo=next.js" alt="Next.js 16">
+  <img src="https://img.shields.io/badge/MySQL%20%2F%20MariaDB-4479A1?logo=mariadb&logoColor=white" alt="MySQL / MariaDB">
+  <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs welcome"></a>
+</p>
 
-![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi)
-![MySQL](https://img.shields.io/badge/MySQL-8-4479A1?logo=mysql&logoColor=white)
-![Redis](https://img.shields.io/badge/Redis-7_(optional)-DC382D?logo=redis)
-![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)
-![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python)
-![License](https://img.shields.io/badge/License-MIT-green)
-
-
-Wiestell is a production-grade, full-stack Threat Intelligence Platform (TIP) designed for SOC analysts, threat hunters, and cybersecurity professionals. It aggregates indicators of compromise (IOCs) from 11 open-source threat feeds, enriches them with WHOIS/DNS/GeoIP/Shodan data, calculates composite threat scores using a weighted algorithm, maps indicators to the MITRE ATT&CK framework, and presents everything through a tactical dark-themed SOC dashboard built with Next.js and TypeScript.
-
-> **Project docs:** [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) — architecture and codebase analysis ·
-> [SECURITY_REVIEW.md](SECURITY_REVIEW.md) — security review findings and remediation.
+**Wiestell** is a free, open-source Threat Intelligence Platform (TIP) for SOC analysts and threat hunters. It collects indicators of compromise (IOCs) from open threat feeds, enriches them, scores them from 0 to 100, maps them to MITRE ATT&CK, and shows the results in a SOC dashboard.
 
 ## Features
 
-| Feature | Status |
-|---------|--------|
-| Multi-feed IOC ingestion (13 connectors) | Implemented |
-| IOC search with advanced filtering | Implemented |
-| Composite threat scoring (0-100) | Implemented |
-| IOC enrichment (WHOIS, DNS, GeoIP) | Implemented |
-| MITRE ATT&CK heatmap matrix | Implemented |
-| Real-time dashboard with stats | Implemented |
-| Feed health monitoring | Implemented |
-| IOC relationship correlation | Implemented |
-| Threat hunting workspace | Implemented |
-| Report generation (daily brief + custom) | Implemented |
-| STIX 2.1 / CSV / JSON export | Implemented |
-| ~~Celery background task processing~~ | **Removed 2026-08-17** — the beat schedule was disabled and the one live caller dispatched into a broker that does not exist |
-| Docker single-command deployment | Implemented |
-| Geographic threat distribution | Implemented |
+- **Feed ingestion.** 11 open-source threat feeds, 9 of which need no API key.
+- **Enrichment.** WHOIS, DNS, GeoIP, reputation (AbuseIPDB / OTX), MalwareBazaar, YARAify, NVD and more.
+- **Threat scoring.** A weighted 0–100 score per IOC, bucketed into Critical, High, Medium and Low.
+- **MITRE ATT&CK.** Technique mapping with a matrix and heatmap view.
+- **Correlation and hunting.** Related-IOC correlation and a threat-hunting workspace.
+- **Reports and export.** A daily brief, custom reports, and STIX 2.1 / CSV / JSON export.
+- **Role-based access.** Admin, analyst and viewer roles, with email OTP sign-in.
 
 ## Architecture
 
 ```
-                        FRONTEND (Next.js 16)
-  Dashboard | IOC Search | Feed Manager | Reports | ATT&CK Map
-                           |
-                        REST API
-                           |
-                     BACKEND (FastAPI)
-  Feed Ingestion | Enrichment Engine | Scoring | Correlation
-        |              |            |            |
-     MySQL        Redis (opt.)              External
-   + indexes      cache/limits   Workers    Threat Feeds
+                 Frontend — Next.js + TypeScript
+     Dashboard · IOC search · Feeds · Reports · ATT&CK map
+                              │  REST
+                 Backend — FastAPI (async Python)
+     Feed ingestion · Enrichment · Scoring · Correlation
+           │                   │                  │
+    MySQL / MariaDB      Redis (optional)   External threat feeds
 ```
-
-## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | Next.js 16 (App Router), React 19, TypeScript 5, Tailwind CSS 4, Recharts, D3.js |
-| Backend | FastAPI 0.115, Python 3.11, SQLAlchemy 2 (async), Pydantic v2 |
-| Database | **MySQL** via `aiomysql` (async) + `pymysql` (Alembic, scripts). JSON columns are queried with `json_contains`; the PostgreSQL `ARRAY` operators do **not** work here |
-| Cache / rate limits / queue | Redis 7 — optional; the code degrades to in-process fallbacks |
-| Task Queue | None. Background work is driven by external cron against `POST /api/v1/feeds/sync-all`; enrichment runs in-request. Celery was deleted on 2026-08-17 |
-| Containerization | Docker + Docker Compose (local); Render + Vercel in production |
+| Frontend | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS, Recharts, D3.js |
+| Backend | FastAPI, SQLAlchemy 2 (async), Pydantic v2, Alembic |
+| Database | MySQL 8 or MariaDB 11 |
+| Optional | Redis for distributed rate limiting |
 
-## Quick Start
+## Quick start
 
-**`docker-compose.yml` does not start a database.** The Postgres service is commented out and the platform expects an external MySQL instance — production runs Hostinger MySQL with the API on Render and the frontend on Vercel. Provision MySQL first, then point `DATABASE_URL` at it.
+You need Docker with Compose, and Python 3.11+ on the host to run the seed scripts.
 
 ```bash
-# Clone the repository
 git clone https://github.com/Garyson26/Wiestell_threatIntel_platform.git
 cd Wiestell_threatIntel_platform
-
-# Copy the environment file and fill it in.
-# DATABASE_URL and SECRET_KEY are REQUIRED — there are no defaults, and the
-# backend refuses to start in production without a strong SECRET_KEY.
 cp .env.example .env
-python -c "import secrets; print('SECRET_KEY=' + secrets.token_urlsafe(48))"
-
-# Start frontend, backend, Redis and nginx (MySQL is external)
-docker-compose up -d
-
-# Apply migrations, then seed
-docker-compose exec backend alembic upgrade head
-docker-compose exec backend python /app/../scripts/seed_feeds.py   # feed registry
-docker-compose exec backend python /app/../scripts/seed_mitre.py   # ATT&CK catalogue
-
-# Generate sample data (optional, for demo)
-docker-compose exec backend python /app/../scripts/generate_sample_data.py
 ```
 
-Access the application:
-- **Dashboard**: http://localhost:3000
-- **API docs**: not served by default. Set `ENABLE_API_DOCS=true` (development only) to expose `/docs`, `/redoc` and `/openapi.json`; nginx returns 404 for those paths regardless.
+Edit `.env` and set at least these values:
 
-### Running the tests
+```ini
+# Points the backend container at the bundled database service
+DATABASE_URL=mysql+pymysql://sentinel:sentinel@db:3306/sentinel_test
+# Generate with: python -c "import secrets; print(secrets.token_urlsafe(48))"
+SECRET_KEY=<at least 32 random characters>
+CORS_ORIGINS=http://localhost:3000
+# Required for OTP sign-in emails
+RESEND_API_KEY=<your Resend API key>
+```
+
+Start the stack and apply the database migrations:
 
 ```bash
-cd backend
-pip install -r requirements.txt -r requirements-dev.txt
-python -m pytest            # no database required
+docker compose up -d
+docker compose exec backend alembic upgrade head
 ```
 
-## Environment Variables
+Seed the feed registry and the ATT&CK catalogue from the host. The bundled database listens on `127.0.0.1:3307`.
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `DATABASE_URL` | MySQL connection string (`mysql+pymysql://…`) | Yes — no fallback; startup fails without it |
-| `DATABASE_ASYNC_URL` | Async MySQL DSN (`mysql+aiomysql://…`); derived from `DATABASE_URL` if unset | No |
-| `SECRET_KEY` | JWT signing key. Min 32 random chars; **production refuses to start without it**. Generate: `python -c "import secrets; print(secrets.token_urlsafe(48))"` | Yes |
-| `CORS_ORIGINS` | Comma-separated allowed browser origins. `*` is rejected (credentialed API) | Yes |
-| `CRON_SECRET` | Shared secret for scheduler calls to `/feeds/sync-all` and `/enrichment/backfill/start`, sent as `X-Cron-Secret` | Recommended |
-| `ENABLE_API_DOCS` | Serve `/docs`, `/redoc`, `/openapi.json`. Default `false` | No |
-| `REDIS_URL` | Redis connection string (cache, distributed rate limits). Deliberately unset on Render — see the single-process invariant in CLAUDE.md | No |
-| `RESEND_API_KEY` | Resend API key (sending access) — **required for OTP login to work** | Yes |
-| `EMAIL_FROM` | Sender, e.g. `Wiestell <noreply@wiestell.com>` | No (has a default) |
-| `OTX_API_KEY` | AlienVault OTX API key | No |
-| `ABUSEIPDB_API_KEY` | AbuseIPDB API key | No |
-| `SHODAN_API_KEY` | Shodan API key | No |
-| `NVD_API_KEY` | NIST NVD key — raises the rate limit from 5 to 50 req/30s | No |
-| `YARAIFY_API_KEY` | abuse.ch Auth-Key for YARAify; falls back to `MALWAREBAZAAR_API_KEY` | No |
-| `CVEDETAILS_ACCESS_TOKEN` | CVE Details subscription token; the enricher is skipped without it | No |
-| `GEOIP_DB_PATH` | Path to MaxMind GeoLite2 DB | No |
-
-Most feed and enrichment API keys are optional. **Nine feeds need no key at all.**
-URLhaus, ThreatFox and MalwareBazaar all read keyless CSV exports; an abuse.ch
-Auth-Key is additive, widening which IOC types they contribute (see the feed table).
-The platform works with 9 fully keyless feeds
-(URLhaus, ThreatFox, MalwareBazaar, Feodo Tracker, Blocklist.de, Emerging Threats,
-CISA KEV, eCrimeLabs Metasploit, MISP CERT-FR) plus keyless GeoIP/WHOIS/DNS/NVD
-enrichment.
-
-## API Documentation
-
-FastAPI auto-generates interactive API documentation:
-
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-
-### Key Endpoints
-
-```
-GET    /api/v1/iocs                    # List IOCs (paginated)
-GET    /api/v1/iocs/:id                # IOC detail with enrichment
-POST   /api/v1/iocs/search             # Advanced search
-POST   /api/v1/iocs/bulk               # Bulk IOC lookup
-POST   /api/v1/iocs/export             # Export (STIX/CSV/JSON)
-GET    /api/v1/feeds                   # List feeds
-POST   /api/v1/feeds/:id/sync          # Trigger feed sync
-GET    /api/v1/dashboard/stats         # Dashboard statistics
-GET    /api/v1/attack/matrix           # ATT&CK matrix
-GET    /api/v1/attack/heatmap          # ATT&CK heatmap
-POST   /api/v1/reports/generate        # Generate report
-GET    /api/v1/reports/daily-brief     # Daily threat brief
+```bash
+# bash / zsh
+pip install -r backend/requirements.txt
+export DATABASE_URL="mysql+pymysql://sentinel:sentinel@127.0.0.1:3307/sentinel_test"
+export SECRET_KEY="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')"
+python scripts/seed_feeds.py
+python scripts/seed_mitre.py
 ```
 
-## Threat Feeds
-
-| Feed | Type | Free | IOC Types |
-|------|------|------|-----------|
-| URLhaus | CSV | Partial — keyless CSV works; Auth-Key adds hash + domain exports | URL (keyless), + Hash, Domain (keyed) |
-| ThreatFox | API + CSV | Partial — keyless CSV exports work; the JSON query API is 401 without a key | IP, Domain, URL, Hash |
-| MalwareBazaar | CSV | Yes (no key) — keyless `bazaar.abuse.ch` export; Auth-Key adds the query API + certificate blocklist | Hash |
-| Feodo Tracker | CSV | Yes (no key) | IP |
-| Blocklist.de | CSV | Yes (no key) | IP |
-| Emerging Threats | CSV | Yes (no key) | IP |
-| CISA KEV | API | Yes (no key) | CVE |
-| eCrimeLabs Metasploit | CSV | Yes (no key) | CVE |
-| MISP CERT-FR | CSV | Yes (no key) | Hash (MD5) |
-| AlienVault OTX | API | Yes (API key) | IP, Domain, Hash, URL |
-| AbuseIPDB | API | Yes (API key) | IP |
-
-**abuse.ch auth, verified live 2026-07-30.** abuse.ch requires an Auth-Key on its JSON
-query APIs, but its CSV/download exports remain open. Tested per endpoint rather than
-taken from the docs page:
-
-| Endpoint | Used by | Unauthenticated result |
-|---|---|---|
-| `urlhaus.abuse.ch/downloads/csv_recent/` | URLhaus | **200**, 3.0 MB |
-| `urlhaus.abuse.ch/downloads/csv_online/` | URLhaus | **200**, 3.9 MB |
-| `urlhaus-api.abuse.ch/v2/files/exports/{KEY}/…` | URLhaus (keyed only) | 404 without the key segment |
-| `threatfox.abuse.ch/export/csv/recent/` | ThreatFox | **200**, 1.4 MB |
-| `threatfox.abuse.ch/export/csv/{sha256,md5,urls,ip-port}/recent/` | ThreatFox | **200** |
-| `threatfox.abuse.ch/downloads/hostfile/` | ThreatFox | **200**, 1.7 MB |
-| `threatfox-api.abuse.ch/api/v1/` (POST `get_iocs`) | ThreatFox | **401** `{"error":"Unauthorized"}` |
-| `mb-api.abuse.ch/api/v1/` (POST `get_info`/`get_recent`) | MalwareBazaar feed + enricher | **401** `{"error":"Unauthorized"}` |
-| `mb-api.abuse.ch/v2/files/exports/{KEY}/…` | MalwareBazaar (keyed only) | 404 without the key segment |
-
-So all three **feeds** degrade rather than fail without a key. MalwareBazaar was the
-exception until 2026-07-30, when its connector was switched to the keyless export at
-`bazaar.abuse.ch/export/csv/recent/` — measured at 881 samples across a 47.78-hour
-window, which is why its sync frequency is 1 hour (samples cannot slip between syncs
-until the interval exceeds ~24 hours, half the window).
-
-The MalwareBazaar **enricher** remains credential-gated, and that asymmetry is
-deliberate: a bulk export cannot answer "tell me about this specific hash", and no
-keyless endpoint serves arbitrary hash lookups. Without an abuse.ch key, hash
-enrichment loses MalwareBazaar and YARAify.
-
-**One key covers all three services.** An abuse.ch account Auth-Key from
-<https://auth.abuse.ch/> works for URLhaus, ThreatFox, MalwareBazaar and YARAify. The code
-reads *separate* config names (`URLHAUS_API_KEY`, `THREATFOX_API_KEY`,
-`MALWAREBAZAAR_API_KEY`), so the same value goes in each; `YARAIFY_API_KEY` is the one that
-falls back to `MALWAREBAZAAR_API_KEY` automatically.
-
-**ThreatFox expires IOCs older than six months** (policy change 2025-05-01). Expired
-indicators are absent from both the API and the CSV export, so a re-sync stops observing
-them — `sighting_count` plateaus and `last_seen` stops advancing rather than the IOC being
-deleted. Relevant to any sync-cadence design.
-
-**Licensing.** The abuse.ch community API is free under fair-use principles; commercial or
-for-profit use may require a paid subscription. This sits alongside the Vercel Hobby
-non-commercial restriction — both bear on the same future commercialisation decision.
-
-Feed slugs are registered in
-`backend/app/services/feed_scheduler.py::FEED_CONNECTORS` and seeded by
-`scripts/seed_feeds.py` — a feed row whose slug is absent from that map cannot sync.
-
-## Enrichment Sources
-
-| Source | Applies to | Key required |
-|--------|-----------|--------------|
-| GeoIP (MaxMind GeoLite2) | IP | No (local DB) |
-| WHOIS | IP, Domain, URL, Email | No |
-| DNS (forward + reverse) | IP, Domain, URL | No |
-| Reputation (AbuseIPDB / OTX) | IP, Domain, URL, Hash | Per provider |
-| Shodan | IP | Yes |
-| MalwareBazaar | Hash | **Yes (abuse.ch)** — API is 401 without it, so the enricher is gated |
-| NVD (CVSS, CWE, CPE, KEV flag) | CVE | Optional (raises rate limit) |
-| CVE Details (multi-source CVSS, exploits) | CVE | Yes (paid) |
-| YARAify (YARA/ClamAV, imphash, families) | Hash (SHA256 only) | Yes (abuse.ch) |
-
-The last three are class-based enrichers registered in `backend/app/enrichers/__init__.py`;
-an enricher whose credentials are missing is simply not registered.
-
-## Scoring Algorithm
-
-Wiestell calculates a composite threat score (0-100) using weighted factors:
-
-```
-Score = Base Reputation (30%) + Source Diversity (20%) + Recency (15%)
-      + Sighting Frequency (15%) + Enrichment Risk (10%) + Context (10%)
+```powershell
+# PowerShell
+pip install -r backend/requirements.txt
+$env:DATABASE_URL = "mysql+pymysql://sentinel:sentinel@127.0.0.1:3307/sentinel_test"
+$env:SECRET_KEY = python -c "import secrets; print(secrets.token_urlsafe(48))"
+python scripts/seed_feeds.py
+python scripts/seed_mitre.py
 ```
 
-| Score Range | Category | Color |
-|-------------|----------|-------|
-| 76-100 | Critical | Red |
-| 51-75 | High | Orange |
-| 26-50 | Medium | Yellow |
-| 0-25 | Low | Green |
+Open the dashboard at **http://localhost:3000**.
+
+Interactive API docs are off by default. Set `ENABLE_API_DOCS=true` in development to serve `/docs` and `/redoc`.
+
+## Configuration
+
+Every variable is documented in [`.env.example`](.env.example). These are the main ones:
+
+| Variable | Purpose | Required |
+|----------|---------|----------|
+| `DATABASE_URL` | MySQL/MariaDB connection string (`mysql+pymysql://…`) | Yes |
+| `SECRET_KEY` | JWT signing key, at least 32 random characters | Yes |
+| `CORS_ORIGINS` | Comma-separated list of allowed browser origins (`*` is rejected) | Yes |
+| `RESEND_API_KEY` | Sends the OTP sign-in emails | Yes, for sign-in |
+| `CRON_SECRET` | Shared secret for scheduled feed syncs (`X-Cron-Secret` header) | Recommended |
+| `OTX_API_KEY`, `ABUSEIPDB_API_KEY` | Turn on the OTX and AbuseIPDB feeds and their reputation lookups | No |
+| `URLHAUS_API_KEY`, `THREATFOX_API_KEY`, `MALWAREBAZAAR_API_KEY` | abuse.ch Auth-Key. One key covers all three; enter the same value in each | No |
+| `NVD_API_KEY`, `SHODAN_API_KEY`, `CVEDETAILS_ACCESS_TOKEN` | Extra enrichment sources | No |
+
+## Threat feeds
+
+| Feed | IOC types | API key |
+|------|-----------|---------|
+| URLhaus | URL (plus hash and domain with a key) | Optional |
+| ThreatFox | IP, domain, URL, hash | Optional |
+| MalwareBazaar | Hash | Optional |
+| Feodo Tracker | IP | None |
+| Blocklist.de | IP | None |
+| Emerging Threats | IP | None |
+| CISA KEV | CVE | None |
+| eCrimeLabs Metasploit | CVE | None |
+| MISP CERT-FR | Hash | None |
+| AlienVault OTX | IP, domain, URL, hash | Required |
+| AbuseIPDB | IP | Required |
+
+Feeds are synced by calling `POST /api/v1/feeds/sync-all` on a schedule, either with an admin token or the `X-Cron-Secret` header. See [`.github/workflows/feed-sync.yml`](.github/workflows/feed-sync.yml) for an example.
+
+> The free abuse.ch community API is offered under fair-use terms. Commercial use may need a paid subscription, so check each feed's terms before using it commercially.
+
+## Threat scoring
+
+Each IOC gets a composite score from 0 to 100:
+
+```
+Score = Reputation (30%) + Source diversity (20%) + Recency (15%)
+      + Sighting frequency (15%) + Enrichment risk (10%) + Context (10%)
+```
+
+CVEs use their own weighting that favours enrichment and context. The score maps to a severity bucket:
+
+| Score | Severity |
+|-------|----------|
+| 76–100 | Critical |
+| 51–75 | High |
+| 26–50 | Medium |
+| 0–25 | Low |
 
 ## Development
 
 ```bash
-# Backend development
-cd backend
-pip install -r requirements.txt
+# Backend (from backend/)
+pip install -r requirements-dev.txt
+alembic upgrade head
 uvicorn app.main:app --reload --port 8000
+python -m pytest                 # fast test suite, no database needed
 
-# Frontend development
-cd frontend
-npm install
+# Frontend (from frontend/)
+npm ci
 npm run dev
+npm run lint
 ```
 
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the full workflow, including the database-backed test tier.
+
+## Contributing
+
+Bug reports, feature ideas and pull requests are all welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before you start.
+
+**Security issues:** please do not open a public issue. Report them privately through GitHub's [**Report a vulnerability**](https://github.com/Garyson26/Wiestell_threatIntel_platform/security/advisories/new) form.
+
+## License
+
+Wiestell is released under the [Apache License 2.0](LICENSE).
