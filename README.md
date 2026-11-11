@@ -15,7 +15,7 @@
 
 ## Features
 
-- **Feed ingestion.** 11 open-source threat feeds, 9 of which need no API key.
+- **Feed ingestion.** 11 open-source threat feeds, 6 of which need no API key.
 - **Enrichment.** WHOIS, DNS, GeoIP, reputation (AbuseIPDB / OTX), MalwareBazaar, YARAify, NVD and more.
 - **Threat scoring.** A weighted 0–100 score per IOC, bucketed into Critical, High, Medium and Low.
 - **MITRE ATT&CK.** Technique mapping with a matrix and heatmap view.
@@ -107,16 +107,16 @@ Every variable is documented in [`.env.example`](.env.example). These are the ma
 | `RESEND_API_KEY` | Sends the OTP sign-in emails | Yes, for sign-in |
 | `CRON_SECRET` | Shared secret for scheduled feed syncs (`X-Cron-Secret` header) | Recommended |
 | `OTX_API_KEY`, `ABUSEIPDB_API_KEY` | Turn on the OTX and AbuseIPDB feeds and their reputation lookups | No |
-| `URLHAUS_API_KEY`, `THREATFOX_API_KEY`, `MALWAREBAZAAR_API_KEY` | abuse.ch Auth-Key. One key covers all three; enter the same value in each | No |
+| `URLHAUS_API_KEY`, `THREATFOX_API_KEY`, `MALWAREBAZAAR_API_KEY` | abuse.ch Auth-Key (free account at auth.abuse.ch). One key covers all three; enter the same value in each | Yes, for the URLhaus, ThreatFox and MalwareBazaar feeds |
 | `NVD_API_KEY`, `SHODAN_API_KEY`, `CVEDETAILS_ACCESS_TOKEN` | Extra enrichment sources | No |
 
 ## Threat feeds
 
 | Feed | IOC types | API key |
 |------|-----------|---------|
-| URLhaus | URL (plus hash and domain with a key) | Optional |
-| ThreatFox | IP, domain, URL, hash | Optional |
-| MalwareBazaar | Hash | Optional |
+| URLhaus | URL | Required (abuse.ch) |
+| ThreatFox | IP, domain, URL, hash | Required (abuse.ch) |
+| MalwareBazaar | Hash | Required (abuse.ch) |
 | Feodo Tracker | IP | None |
 | Blocklist.de | IP | None |
 | Emerging Threats | IP | None |
