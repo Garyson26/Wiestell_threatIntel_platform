@@ -272,23 +272,24 @@ class TestSchedulerAllowlistEnforcement:
         assert captured["api_key"] is None, "SECRET_KEY must never reach a connector"
 
 
-# Two rows copied verbatim from https://bazaar.abuse.ch/export/csv/recent/ on
-# 2026-07-30, hashes truncated-then-padded so they are structurally valid without
-# reproducing real sample digests. Note the shape being pinned:
-#   - the column header is INSIDE a "#" comment, so DictReader cannot find it;
-#   - rows carry 14 fields, while the comment header names only 12;
+# The layout of the keyed export mb-api.abuse.ch/v2/files/exports/{KEY}/recent.csv as
+# served on 2026-11-11. The retired keyless export had the same layout; these two rows
+# were first copied from it on 2026-07-30, with synthetic hashes so no real sample
+# digest is reproduced. The shape being pinned:
+#   - the column header is INSIDE a "#" comment, so DictReader cannot find it. The
+#     keyed file was read by a header-sniffing parser until 2026-11-11 and produced
+#     0 IOCs from 1,474 rows;
+#   - 14 fields per row;
 #   - "n/a" is the empty marker, not "".
-_MB_PUBLIC_CSV = (
-    "# ###############################################################\n"
-    "#  MalwareBazaar recent malware samples (CSV)                   #\n"
-    "#  Last updated: 2026-07-30 11:07:12 UTC                        #\n"
-    "# ###############################################################\n"
-    "# \n"
-    '#  "first_seen_utc","sha256_hash","md5_hash","sha1_hash","reporter",'
+_MB_RECENT_CSV = (
+    "################################################################\n"
+    "# MalwareBazaar recent malware samples (CSV)                   #\n"
+    "# Last updated: 2026-07-30 11:07:12 UTC                        #\n"
+    "################################################################\n"
+    "#\n"
+    '# "first_seen_utc","sha256_hash","md5_hash","sha1_hash","reporter",'
     '"file_name","file_type_guess","mime_type","signature","clamav","vtpercent",'
-    '"imphash"\n'
-    "#  Number of entries: 2\n"
-    "# \n"
+    '"imphash","ssdeep","tlsh"\n'
     '"2026-07-30 11:07:12","' + "a" * 64 + '","' + "b" * 32 + '","' + "c" * 40 + '",'
     '"Bitsight","file","exe","application/x-dosexec","n/a","n/a","n/a",'
     '"' + "d" * 32 + '","196608:f15g1dVcBpV4rUcug","T1E5D6236771551A59D2"\n'
@@ -298,19 +299,20 @@ _MB_PUBLIC_CSV = (
 )
 
 
-class TestMalwareBazaarPublicExport:
-    """The keyless CSV export is what lets this feed ingest without a credential.
+class TestMalwareBazaarRecentExport:
+    """The keyed recent.csv export, the connector's only ingest source since 2026-11.
 
-    abuse.ch's JSON APIs return 401 unauthenticated (verified 2026-07-30), but
-    bazaar.abuse.ch/export/csv/recent/ returns 200. The connector reads the public
-    export unconditionally and treats an Auth-Key as additive.
+    Until then this class covered the keyless bazaar.abuse.ch/export/csv/recent/,
+    which now answers 410 Gone. The keyed file has the same layout, so the parser
+    and these assertions carried over; what changed is that the keyed file is now
+    actually parsed with them.
     """
 
     def _parse(self):
         from app.feeds.malwarebazaar import MalwareBazaarFeed
 
-        return MalwareBazaarFeed(api_key=None)._parse_public_recent_csv(
-            _MB_PUBLIC_CSV, set()
+        return MalwareBazaarFeed(api_key=None)._parse_recent_csv(
+            _MB_RECENT_CSV, set()
         )
 
     def test_commented_header_does_not_eat_the_first_data_row(self):
@@ -348,8 +350,8 @@ class TestMalwareBazaarPublicExport:
         assert "wannacry" in tags
         assert "win.trojan.agent" in tags, tags
 
-    def test_field_alignment_survives_the_two_undocumented_columns(self):
-        """14 fields per row against 12 documented names.
+    def test_field_alignment_covers_all_fourteen_columns(self):
+        """14 fields per row; the keyless export documented only 12 of them.
 
         If the extra ssdeep/tlsh columns were not named, DictReader would fold them
         into a `None` key and — worse for a positional reader — any future edit that
@@ -357,7 +359,7 @@ class TestMalwareBazaarPublicExport:
         """
         from app.feeds.malwarebazaar import MalwareBazaarFeed
 
-        assert len(MalwareBazaarFeed._PUBLIC_CSV_FIELDNAMES) == 14
+        assert len(MalwareBazaarFeed._RECENT_CSV_FIELDNAMES) == 14
         iocs = self._parse()
         first = next(i for i in iocs if i["value"] == "a" * 64)
         assert first["metadata"]["mime_type"] == "application/x-dosexec"
@@ -379,16 +381,16 @@ class TestMalwareBazaarPublicExport:
         from app.feeds.malwarebazaar import MalwareBazaarFeed
 
         feed = MalwareBazaarFeed(api_key=None)
-        assert feed._parse_public_recent_csv("", set()) == []
-        assert feed._parse_public_recent_csv("# only a comment\n", set()) == []
+        assert feed._parse_recent_csv("", set()) == []
+        assert feed._parse_recent_csv("# only a comment\n", set()) == []
 
     def test_dedup_set_is_honoured_across_sources(self):
-        """The keyed export must not re-emit what the public one already produced."""
+        """A hash already emitted by another source in this sync is not re-emitted."""
         seen = {"a" * 64}
         from app.feeds.malwarebazaar import MalwareBazaarFeed
 
-        iocs = MalwareBazaarFeed(api_key=None)._parse_public_recent_csv(
-            _MB_PUBLIC_CSV, seen
+        iocs = MalwareBazaarFeed(api_key=None)._parse_recent_csv(
+            _MB_RECENT_CSV, seen
         )
         assert "a" * 64 not in {i["value"] for i in iocs}
         assert len(iocs) == 5
@@ -407,11 +409,11 @@ class TestMalwareBazaarPublicExport:
         """
         from app.feeds.malwarebazaar import MalwareBazaarFeed
 
-        window_seconds = MalwareBazaarFeed._PUBLIC_WINDOW_HOURS * 3600
+        window_seconds = MalwareBazaarFeed._WINDOW_HOURS * 3600
         governing = MalwareBazaarFeed._GOVERNING_SYNC_INTERVAL_SECONDS
         assert governing <= window_seconds / 2, (
             f"governing interval {governing}s exceeds half the measured "
-            f"{MalwareBazaarFeed._PUBLIC_WINDOW_HOURS}h window"
+            f"{MalwareBazaarFeed._WINDOW_HOURS}h window"
         )
         margin = window_seconds / governing
         assert margin >= 4, f"margin is only {margin:.1f}x"
@@ -451,7 +453,7 @@ class TestMalwareBazaarPublicExport:
 
         feed = MalwareBazaarFeed(api_key=None)
         assert feed.observed_window is None
-        feed._parse_public_recent_csv(_MB_PUBLIC_CSV, set())
+        feed._parse_recent_csv(_MB_RECENT_CSV, set())
 
         assert feed.observed_window is not None
         lo, hi = feed.observed_window
@@ -462,7 +464,7 @@ class TestMalwareBazaarPublicExport:
         from app.feeds.malwarebazaar import MalwareBazaarFeed
 
         feed = MalwareBazaarFeed(api_key=None)
-        feed._parse_public_recent_csv("# nothing but a comment\n", set())
+        feed._parse_recent_csv("# nothing but a comment\n", set())
         assert feed.observed_window is None
 
 
@@ -661,17 +663,26 @@ class TestRollingWindowContinuity:
         assert _check_window_continuity(feed, conn) is None
         assert feed.last_ingest_gap is None, "a stale gap must not persist"
 
-    def test_the_feed_no_longer_requires_a_key(self):
+    def test_the_feed_requires_a_key_again(self):
+        """Reversed 2026-11-11 (issue #104), deliberately.
+
+        This asserted the opposite from 2026-07-30, when the keyless export answered
+        200 and the key was additive. That export now answers 410 Gone, so the
+        keyed export is the only source and the key is required.
+        """
         from app.feeds.malwarebazaar import MalwareBazaarFeed
 
-        assert MalwareBazaarFeed.requires_api_key is False
-        assert MalwareBazaarFeed.url == "https://bazaar.abuse.ch/export/csv/recent/"
+        assert MalwareBazaarFeed.requires_api_key is True
+        assert MalwareBazaarFeed.url == (
+            "https://mb-api.abuse.ch/v2/files/exports/{KEY}/recent.csv"
+        )
 
     def test_the_enricher_is_still_gated_the_split_is_deliberate(self):
         """A bulk export cannot answer a single-hash lookup.
 
-        Feed ingestion is keyless; hash *enrichment* is not, because no keyless
-        endpoint serves arbitrary hash lookups. If this ever fails, check that the
+        Both now need the key, but they stay separate paths: the feed reads its key
+        through the feed row's api_key_env, the enricher reads
+        settings.MALWAREBAZAAR_API_KEY directly. If this ever fails, check that the
         two were not collapsed together.
         """
         from app.config import settings
@@ -730,7 +741,7 @@ class TestRollingWindowCoverage:
             MalwareBazaarFeed._GOVERNING_SYNC_INTERVAL_SECONDS / 3600
         )
         measured = {
-            "malwarebazaar": MalwareBazaarFeed._PUBLIC_WINDOW_HOURS,
+            "malwarebazaar": MalwareBazaarFeed._WINDOW_HOURS,
             "urlhaus": URLhausFeed._MEASURED_WINDOW_HOURS,
             "threatfox": ThreatFoxFeed._MEASURED_WINDOW_HOURS,
         }
@@ -743,70 +754,78 @@ class TestRollingWindowCoverage:
     def test_malwarebazaar_is_the_tightest_margin(self):
         """Documents where the risk actually sits, so it is not re-derived.
 
-        MalwareBazaar 8x, URLhaus ~122x, ThreatFox ~706x. If a future change makes
-        another feed the tightest, that is worth noticing deliberately.
+        MalwareBazaar 8.0x (47.96 h), ThreatFox 8.0x (48.2 h), URLhaus ~121x. Until
+        2026-11-11 ThreatFox was listed at ~706x, from a 4237 h figure that measured
+        the re-sighting tail rather than how far back the export covers additions.
+        The two 48 h feeds are now within 15 minutes of each other; if a future
+        change makes another feed the tightest, that is worth noticing deliberately.
         """
         from app.feeds.malwarebazaar import MalwareBazaarFeed
         from app.feeds.threatfox import ThreatFoxFeed
         from app.feeds.urlhaus import URLhausFeed
 
-        assert MalwareBazaarFeed._PUBLIC_WINDOW_HOURS < URLhausFeed._MEASURED_WINDOW_HOURS
-        assert URLhausFeed._MEASURED_WINDOW_HOURS < ThreatFoxFeed._MEASURED_WINDOW_HOURS
+        assert MalwareBazaarFeed._WINDOW_HOURS < ThreatFoxFeed._MEASURED_WINDOW_HOURS
+        assert ThreatFoxFeed._MEASURED_WINDOW_HOURS < URLhausFeed._MEASURED_WINDOW_HOURS
 
-    def test_urlhaus_records_the_window_only_from_csv_recent(self):
-        """online_csv is a status selection, not a time window.
+    def test_urlhaus_records_the_window_of_the_whole_file_not_the_rows_taken(self):
+        """The continuity check asks a question about the SOURCE.
 
-        A URL that has been online for a year would drag the minimum back a year and
-        mask every real gap. Verified live: parsing online_csv alone leaves
-        observed_window as None.
+        With an id cursor a sync ingests only the rows above it, but whether the file
+        still reaches back to where the previous file ended is a property of the file.
+        A window taken from the ingested rows alone would start after the previous
+        watermark on every incremental sync and report a gap each time.
         """
         import asyncio
+        from datetime import datetime, timezone
 
         from app.feeds.urlhaus import URLhausFeed
 
         assert URLhausFeed._WINDOW_SOURCE == "recent_csv"
 
-        row = (
-            '"1","2026-07-30 12:00:00","http://evil.example/a","online",'
-            '"2026-07-30 12:00:00","malware_download","None",'
-            '"https://urlhaus.abuse.ch/url/1/","reporter"\n'
-        )
-        feed = URLhausFeed(api_key=None)
-        asyncio.run(feed.parse({"recent_csv": "", "online_csv": row}))
-        assert feed.observed_window is None, "online_csv must not set the window"
+        def row(i, ts):
+            return (f'"{i}","{ts}","http://evil.example/{i}","online","{ts}",'
+                    f'"malware_download","None","https://urlhaus.abuse.ch/url/{i}/","r"\n')
 
-        feed2 = URLhausFeed(api_key=None)
-        asyncio.run(feed2.parse({"recent_csv": row, "online_csv": ""}))
-        assert feed2.observed_window is not None, "recent_csv must set the window"
+        text = (row(3, "2026-07-30 12:00:00") + row(2, "2026-07-20 12:00:00")
+                + row(1, "2026-07-01 00:00:00"))
+        feed = URLhausFeed(api_key=None)
+        feed.sync_cursor = "2"           # only id 3 is new
+        iocs = asyncio.run(feed.parse({"recent_csv": text}))
+        assert [i["value"] for i in iocs] == ["http://evil.example/3"]
+        assert feed.observed_window == (
+            datetime(2026, 7, 1, tzinfo=timezone.utc),
+            datetime(2026, 7, 30, 12, tzinfo=timezone.utc),
+        )
 
     def test_threatfox_excludes_expired_records_from_the_window(self):
         """A record dropped for age was not lost to a sync gap.
 
         Counting expired rows would push the observed minimum back to the 180-day
-        cutoff and mask genuine discontinuities behind it.
+        cutoff and mask genuine discontinuities behind it. Driven through parse(),
+        which is where the window is recorded since the move to the keyed export.
         """
+        import asyncio
         from datetime import datetime, timedelta, timezone
 
         from app.feeds.threatfox import ThreatFoxFeed
 
-        fresh = datetime.now(timezone.utc) - timedelta(days=1)
-        expired = datetime.now(timezone.utc) - timedelta(days=400)
         fmt = "%Y-%m-%d %H:%M:%S"
-        csv_text = (
-            f'"{expired.strftime(fmt)}","1","aaaa.example","domain","malware_download",'
-            f'"Emotet","","","","","reporter",""\n'
-            f'"{fresh.strftime(fmt)}","2","bbbb.example","domain","malware_download",'
-            f'"Emotet","","","","","reporter",""\n'
-        )
-        feed = ThreatFoxFeed(api_key=None)
-        stamps = []
-        feed._parse_export_csv(csv_text, set(), window_timestamps=stamps)
+        fresh = (datetime.now(timezone.utc) - timedelta(days=1)).strftime(fmt)
+        expired = (datetime.now(timezone.utc) - timedelta(days=400)).strftime(fmt)
 
-        assert stamps, "no timestamps recorded"
-        assert all(
-            (datetime.now(timezone.utc) - s).days < 180 for s in stamps
-        ), "an expired record leaked into the observed window"
+        def row(i, ts):
+            return (f'"{ts}", "{i}", "c2-{i}.example", "domain", "botnet_cc", "x", '
+                    f'"None", "X", "", "75", "False", "None", "None", "0", "r"\n')
 
+        feed = ThreatFoxFeed(api_key="k")
+        feed.sync_cursor = "0"
+        iocs = asyncio.run(feed.parse({"recent_csv": row(2, fresh) + row(1, expired)}))
+
+        assert [i["value"] for i in iocs] == ["c2-2.example"]
+        assert feed.observed_window is not None, "no window recorded"
+        lo, _ = feed.observed_window
+        assert (datetime.now(timezone.utc) - lo).days < 180, (
+            "an expired record leaked into the observed window")
 
 class TestDeclarationTaxonomy:
     """Every connector declares exactly ONE source shape, and it must be valid.

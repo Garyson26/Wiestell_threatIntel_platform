@@ -76,6 +76,18 @@ rather than timing is deliberate: local latency to a container is ~0.1 ms agains
 50-300 ms from Render to Hostinger, so an N+1 is invisible locally and fatal in
 production.
 
+**A statement count is not a round-trip count.** aiomysql's `executemany` batches only
+`INSERT`/`REPLACE ... VALUES`; any other statement, including the ingestion
+`executemany UPDATE`, goes out **one row per round trip**, and the
+`before_cursor_execute` listener sees it once. Production timings bear this out
+(measured 2026-11-11): ingestion of mostly existing rows runs at 151-159 ms per row,
+mostly new rows at 39-52 ms per row.
+
+**`tracemalloc` reports about half of what Render counts.** For the URLhaus path on
+Linux / Python 3.11.9, process RSS grew 175 MB where `tracemalloc` peaked at 88 MB; the
+gap is the allocator, not the code. Size anything against Render's 512 MB on **RSS**
+(`VmHWM` in `/proc/self/status`), never on a `tracemalloc` figure.
+
 Three ceilings were `xfail(strict=True)` while the N+1s were live, and **all three were
 retired on 2026-07-31** when Phase 5 landed the rewrites — the markers reported XPASS,
 failed the run, and that was the prompt to delete them. Measured before → after:
@@ -281,7 +293,14 @@ Other invariants to preserve:
 - Anything that persists or returns an exception string must pass through `utils/sanitize.redact_secrets()` — driver errors embed the connection URI. `redact_headers()` for header dumps. `feed_sources.last_sync_error` is served to clients, so it is redacted on write *and* in the `FeedResponse` serializer.
 - JWTs use PyJWT with an explicit `algorithms=[...]` allowlist and `type: "access"`; `python-jose` was removed and should not come back.
 - `feed.api_key_env` is restricted to `config.ALLOWED_FEED_API_KEY_ENVS`, enforced in the schema *and* at read time in `feed_scheduler` — the value is forwarded to third-party APIs, so an unrestricted name is a secret-exfiltration primitive.
-- **Commit locally per section; never `git push`.** The repository has live credentials in its history and has not been purged or rotated, so pushing is the owner's action and gated on both. Before every commit, scan the staged diff for secrets and binaries and confirm `.gitignore` covers `.env`, `*.mmdb`, `*.pdf`. **Amend for wrong content; layer a follow-up commit for process disclosures** — amending a message that asserted something unverified would erase the record of having done so, which is the part worth keeping.
+- **Push feature branches for PRs; never push to or force-push `Master`.** The old rule
+  was "never `git push`", because the history held credentials that had not been rotated
+  and the repository was assumed private. Neither is true any more: the credentials have
+  been rotated, and the repository is public (it already has forks), so pushing a branch
+  exposes nothing that is not already exposed. Work goes up as a feature branch and lands
+  through a PR. Rewriting or force-pushing `Master` stays prohibited — a history purge
+  cannot retract what public forks already hold, so it buys nothing and breaks every
+  clone. Commit per section on the branch. Before every commit, scan the staged diff for secrets and binaries and confirm `.gitignore` covers `.env`, `*.mmdb`, `*.pdf`. **Amend for wrong content; layer a follow-up commit for process disclosures** — amending a message that asserted something unverified would erase the record of having done so, which is the part worth keeping.
 - **Six subsystems assume one process per instance, so the uvicorn worker count is part of the security model, not a throughput dial.** `--workers 1` is declared in `render.yaml` and `backend/start.sh`, refused at startup by `main.py::_assert_single_worker` (overridable with `ALLOW_MULTIPLE_WORKERS=true`), and pinned by `tests/test_process_model.py`. At N workers: the in-memory rate limiter becomes N independent budgets, so the effective limit is N × `AUTH_RATE_LIMIT_MAX` — this is what makes the residual-risk #5 narrowing valid; the database pool is per process, so 2 + 3 becomes 5N connections against a **shared** MySQL account allowance; `enrichment_engine`'s module-level semaphore becomes 5N third-party calls in flight; and any in-process cache becomes N inconsistent caches. **And `REDIS_URL` is deliberately unset** (the Render blueprint provisions no Redis), which is only correct because the limiter's fallback is process-local — at N workers a shared store stops being optional. **And `utils/email_service` tracks Resend quota exhaustion in module state**, so a cap hit by one worker is invisible to the others and to `/cron-status`. Each degrades silently. The check is at runtime as well as in a test because Render's dashboard can override the start command without touching a file. Raising the count means revisiting all six together — provision Redis for the limiter, any cache and item 5, a smaller `pool_size`, and a shared bound for enrichment. The start commands also pass `--no-proxy-headers`: uvicorn's own proxy middleware is a second algorithm on `X-Forwarded-For` and would fight `deps.py::_client_ip` (finding R-05).
 - **A test that asserts on TIME needs a measurable interval, or it asserts nothing.** A
   narrower cousin of the extraction rule below, and it has now bitten twice. Section B's
@@ -295,6 +314,16 @@ Other invariants to preserve:
   branches actually diverge, and assert against **measured elapsed time** rather than a
   fixed epsilon — an epsilon large enough to be safe is usually large enough to be vacuous.
 - **A guard whose failure mode is silence needs its *extraction* verified, not just its assertion.** Several checks here do not compare two values directly — they first gather something (AST nodes, log records, registry contents, declared signal names) and then assert over what they gathered. If the gathering step silently returns nothing, the assertion passes vacuously and the guard is decorative. This has bitten four times: the `SCORING_MODEL_FINGERPRINT` hash omitted `WEIGHT_PROFILES` because it is an `ast.AnnAssign` and the walker only handled `ast.Assign`; the `assessed` name-match extractor missed four dict-construction styles, then over-matched a ternary condition; and the GeoIP missing-database test asserted over `caplog.records`, which is always empty because structlog renders straight to stdout. So: **mutate the thing being guarded and confirm the test fails.** Delete the log line, rename the signal, neuter the constant — if the suite stays green, the guard never worked. Assert non-emptiness of whatever was extracted, and prefer `capsys` over `caplog` for structlog output.
+
+  **Non-empty is not enough: any guard whose subject is *collected* rather than *named*
+  must assert a non-trivial count of what it collected.** The fifth case is the
+  route-guard audit (#138). Under the pinned fastapi 0.162.0, included routers
+  appear in `app.routes` as one `_IncludedRouter` each, so `_classify_routes()`
+  collected **4 of 64** routes. The collection was not empty, and the "every route is
+  guarded or allowlisted" assertion passed over those 4. It surfaced only because an
+  unrelated test named `/users/login` explicitly. A floor — at least the count
+  measured today, or a set of named routes that must appear — turns the next change
+  of that kind into a failure instead of a pass.
 
 ## Architecture notes worth knowing before editing
 

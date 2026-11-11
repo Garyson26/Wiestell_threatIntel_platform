@@ -144,7 +144,13 @@ FEEDS = [
         "slug": "urlhaus",
         "description": "URLhaus collects and shares malicious URLs used for malware distribution",
         "feed_type": "csv",
-        "url": "https://urlhaus.abuse.ch/downloads/csv_recent/",
+        # `{KEY}` is a literal placeholder -- this column is served to clients.
+        "url": "https://urlhaus-api.abuse.ch/v2/files/exports/{KEY}/recent.csv",
+        # Declared here so the configuration is reproducible from the repo. Until
+        # 2026-11-11 this row had no api_key_env, so the connector never received a
+        # key even where URLHAUS_API_KEY was set -- it fetched only the keyless CSVs,
+        # and when those began answering 410 Gone it ingested nothing at all.
+        "api_key_env": "URLHAUS_API_KEY",
         "is_enabled": True,
         "sync_frequency": 18000,
     },
@@ -152,8 +158,10 @@ FEEDS = [
         "name": "ThreatFox",
         "slug": "threatfox",
         "description": "ThreatFox shares IOCs associated with malware",
-        "feed_type": "api",
-        "url": "https://threatfox-api.abuse.ch/api/v1/",
+        "feed_type": "csv",
+        # The keyed export, read by id cursor. Until 2026-11-11 the connector read the
+        # JSON API (days=1) plus keyless CSV exports that now answer 410 Gone.
+        "url": "https://threatfox-api.abuse.ch/v2/files/exports/{KEY}/recent.csv",
         "api_key_env": "THREATFOX_API_KEY",
         "is_enabled": True,
         "sync_frequency": 18000,
@@ -161,15 +169,19 @@ FEEDS = [
     {
         "name": "MalwareBazaar",
         "slug": "malwarebazaar",
-        "description": "MalwareBazaar malware sample hashes (keyless CSV export)",
+        "description": "MalwareBazaar malware sample hashes from the keyed abuse.ch export",
         "feed_type": "csv",
-        # The keyless export. Verified 2026-07-30: HTTP 200, 881 samples over a
-        # measured 47.78-hour window. No api_key_env: an abuse.ch key is additive
-        # (query API + certificate blocklist) and set via MALWAREBAZAAR_API_KEY.
-        "url": "https://bazaar.abuse.ch/export/csv/recent/",
+        # The keyed export. The keyless one this replaced (verified 2026-07-30:
+        # HTTP 200, 881 samples, 47.78 h) now answers 410 Gone.
+        "url": "https://mb-api.abuse.ch/v2/files/exports/{KEY}/recent.csv",
+        # Declared here for the first time. Production's row already named this
+        # variable -- set by hand through the admin feed API, recorded in no file
+        # and no migration -- which is why MalwareBazaar kept partially ingesting
+        # while URLhaus, with no such hand edit, ingested nothing.
+        "api_key_env": "MALWAREBAZAAR_API_KEY",
         "is_enabled": True,
-        # 1 hour, against a 47.78h window — samples cannot slip between syncs
-        # until this exceeds ~24h. See MalwareBazaarFeed._PUBLIC_WINDOW_HOURS.
+        # 5h declared, delivered every 6h cron firing, against a measured 47.96 h
+        # window. See MalwareBazaarFeed._WINDOW_HOURS.
         "sync_frequency": 18000,
     },
     {
