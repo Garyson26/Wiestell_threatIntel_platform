@@ -7,7 +7,8 @@ python-multipart==0.0.32  # form parser. NOTE: no endpoint accepts multipart/for
                           # querystring -- are unreachable in this application.
 
 # Database
-sqlalchemy==2.1.6
+sqlalchemy[asyncio]==2.1.6  # the extra installs greenlet, which the async engine needs;
+                            # SQLAlchemy 2.1 stopped installing it by default (#136)
 aiomysql==0.3.2           # 0.2.0 allowed arbitrary client file read via a malicious
                           # MySQL server (LOAD DATA LOCAL INFILE class). Low probability
                           # but the host is a SHARED Hostinger account.
