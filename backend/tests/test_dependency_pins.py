@@ -45,8 +45,10 @@ def _render_python_version():
 
 def test_ci_runs_the_production_python():
     text = WORKFLOW.read_text(encoding="utf-8")
-    versions = re.findall(r"python-version:\s*['\"]?([\d.]+)", text)
-    assert versions, "no python-version found in the tests workflow"
+    versions = re.findall(
+        r"(?:python-version:\s*['\"]?|container:\s*(?:image:\s*)?['\"]?python:)([\d.]+)", text
+    )
+    assert versions, "no Python version found in the tests workflow"
     assert set(versions) == {_render_python_version()}, (
         f"tests.yml runs Python {versions}, render.yaml deploys "
         f"{_render_python_version()}"
