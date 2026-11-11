@@ -1,13 +1,20 @@
-"""ThreatFox (abuse.ch) feed connector — API + free bulk exports."""
+"""ThreatFox (abuse.ch) feed connector — the keyed recent.csv export, read by id cursor."""
 
 import csv
-import io
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import structlog
 
-from app.feeds.base import BaseFeed, SHAPE_SLIDING_WINDOW
+from app.feeds.base import (
+    BaseFeed,
+    FeedConfigurationError,
+    SHAPE_SLIDING_WINDOW,
+    error_text,
+    iter_lines,
+    parse_id_cursor,
+    take_after_cursor,
+)
 from app.utils.sanitize import redact_secrets
 
 logger = structlog.get_logger()
@@ -17,260 +24,211 @@ logger = structlog.get_logger()
 # expiring IOCs that are older than 6 months."
 _MAX_IOC_AGE_DAYS = 180
 
-# ThreatFox export CSV column order — header line is commented out in the file,
-# so we define fieldnames manually to avoid parsing the `# "first_seen_utc"` line.
+# Column order of the export. The header line is commented out in the file, so the
+# names are defined here rather than read. 15 fields on every one of 8,064 rows,
+# measured 2026-11-11.
 _CSV_FIELDNAMES = [
     "first_seen_utc", "ioc_id", "ioc_value", "ioc_type", "threat_type",
     "fk_malware", "malware_alias", "malware_printable", "last_seen_utc",
     "confidence_level", "is_compromised", "reference", "tags", "anonymous",
     "reporter",
 ]
+_ID, _FIRST_SEEN, _LAST_SEEN = 1, 0, 8
+
+_TS_FMT = "%Y-%m-%d %H:%M:%S"
 
 
 class ThreatFoxFeed(BaseFeed):
     name = "ThreatFox"
     slug = "threatfox"
-    feed_type = "api"
-    url = "https://threatfox-api.abuse.ch/api/v1/"
+    feed_type = "csv"
+    # The advertised source, shown by GET /api/v1/feeds. `{KEY}` is a literal
+    # placeholder: this attribute is served to clients and must never hold the key.
+    url = "https://threatfox-api.abuse.ch/v2/files/exports/{KEY}/recent.csv"
     description = "ThreatFox shares IOCs associated with malware families"
-    requires_api_key = False  # Optional - works without key but limited features
+    # REQUIRED. Until 2026-11 this was False and the connector fetched four keyless
+    # CSV exports and a hostfile from threatfox.abuse.ch, all wrapped in
+    # try/except-return-empty, plus the JSON API (days=1) with the key optional. The
+    # keyless files now answer 410 Gone, so only the API was still producing anything.
+    requires_api_key = True
     api_key_env = "THREATFOX_API_KEY"
     source_shape = SHAPE_SLIDING_WINDOW
-
-    # MEASURED 2026-07-30 across all four CSV exports: 2,486 IOCs spanning
-    #   2026-02-04 00:02:27Z .. 2026-07-30 13:05:05Z  =  176d 13h  (4237.04 hours)
-    #
-    # Two things that measurement corrected. First, the endpoints are named
-    # ".../recent/" but return essentially the whole non-expired catalogue, not a
-    # short window. Second, 176.5 days is just under the 180-day expiry
-    # (_MAX_IOC_AGE_DAYS) — so the lower bound is set by ThreatFox's *expiry
-    # policy*, not by a "recent" cutoff.
-    #
-    # Consequence, stated plainly: with a ~706x margin against a 6-hour interval,
-    # the continuity check will effectively never fire for this feed. It is retained
-    # because it is cheap, cannot raise, and would catch abuse.ch narrowing the
-    # export — not because this feed is at risk today.
-    _MEASURED_WINDOW_HOURS = 4237.04
     default_sync_frequency = 1800
 
-    # ── Free export endpoints — no auth, validated live April 2026 ──────────
-    _EXPORT_SHA256  = "https://threatfox.abuse.ch/export/csv/sha256/recent/"
-    _EXPORT_MD5     = "https://threatfox.abuse.ch/export/csv/md5/recent/"
-    _EXPORT_URLS    = "https://threatfox.abuse.ch/export/csv/urls/recent/"
-    _EXPORT_IP_PORT = "https://threatfox.abuse.ch/export/csv/ip-port/recent/"   # ← was missing
-    _HOSTFILE       = "https://threatfox.abuse.ch/downloads/hostfile/"
-    # Note: https://threatfox.abuse.ch/export/csv/recent/ returns ALL types
-    # in one feed — useful if you want to simplify to a single endpoint later.
+    _EXPORT_BASE = "https://threatfox-api.abuse.ch/v2/files/exports"
+
+    # ── What the file is ─────────────────────────────────────────────────────
+    # MEASURED 2026-11-11 from two snapshots six hours apart (09:10 and 15:10 UTC):
+    # 7,933 and 8,064 rows, 1.87 MB. The file is the union of two sets:
+    #   - every IOC ADDED in the last ~48 hours. In both snapshots the oldest row
+    #     with an empty last_seen_utc was 48.2 h old, and every row older than 48 h
+    #     had last_seen_utc set;
+    #   - older IOCs RE-SIGHTED recently, back to first_seen 2021-09-18. They enter
+    #     the file when their last_seen_utc moves (52 such rows arrived in the six
+    #     hours, first_seen June to 8 November) and leave when it goes stale.
+    #
+    # _MEASURED_WINDOW_HOURS is the ADDITIONS window, 48.2 h. It replaces 4237.04 h,
+    # measured 2026-07-30 as the first_seen span of the keyless exports -- which is
+    # the re-sighting tail reaching back to the 180-day expiry, not how far back the
+    # file covers new IOCs. That figure gave this feed a "~706x" margin; the real
+    # margin against the 6-hour governing interval is ~8x, the same as MalwareBazaar.
+    _MEASURED_WINDOW_HOURS = 48.2
+
+    # ── Why an id cursor, and what it does not see ───────────────────────────
+    # Each sync takes only rows whose ioc_id is above the stored cursor. Measured
+    # across the two snapshots, every row added between them had an id above the
+    # first file's maximum; the API ids missing from a same-time file were all above
+    # that file's maximum (the file regenerates every few minutes) and present in the
+    # next one. No row was published late beneath the cursor.
+    #
+    # The alternatives, re-read share measured at the six-hour gap:
+    #   JSON API, days=1 (what was live) .... 1,141 of 1,430 rows already seen (79.8%)
+    #   whole recent.csv every sync ......... 7,732 of 8,063 rows already seen (95.9%)
+    #   recent.csv above an id cursor ....... 0
+    # Every re-read is an UPDATE sent one row per round trip (151-159 ms each in
+    # production) and a sighting_count increment (#105). The whole file would cost
+    # ~20 minutes of UPDATEs per sync to learn about a few dozen re-sightings.
+    #
+    # THE TRADE: re-sightings carry an old id, so the cursor does not see them, and
+    # last_seen does not advance when ThreatFox re-sights an IOC already stored. The
+    # JSON API this replaces did not return them either (0 of the 52), so this is not
+    # a regression. The cursor also widens the loss-free gap between syncs from the
+    # API's 24 h to the file's 48 h.
+    #
+    # ioc_id is NOT monotonic in first_seen_utc (178 inversions on the 2026-11-11
+    # file), which is why the cursor is the id and not a timestamp. Ids are also not
+    # dense (31-37 gaps in the top 3,000), so a jump between the cursor and the file's
+    # lowest id does not mean rows were lost; the time-based continuity check below
+    # is what reports a gap.
+    #
+    # _MAX_ROWS_PER_SYNC: the memory guard, shared reasoning with URLhaus (see
+    # urlhaus.py, where the 20,000 figure is derived). This file is ~8k rows today,
+    # so the cap does not bind; it is there so that abuse.ch growing the file, as it
+    # did URLhaus's seven-fold, cannot turn one sync into an unbounded read.
+    _MAX_ROWS_PER_SYNC = 20_000
+
+    # With no cursor -- the first sync after this change deploys, a fresh install, a
+    # re-created feed row -- take rows first seen within this span of the newest one.
+    # Matches the additions window, so a cold start takes what the file carries as
+    # additions and leaves the re-sighting tail alone, as steady state does.
+    _COLD_START_LOOKBACK = timedelta(hours=48)
 
     # ── fetch ────────────────────────────────────────────────────────────────
 
     async def fetch(self) -> Dict[str, Any]:
-        if self.api_key:
-            masked = self.api_key[:4] + "****" if len(self.api_key) > 4 else "****"
-            logger.info("threatfox_fetch_start", api_key=masked)
-        else:
-            logger.info("threatfox_fetch_start", api_key="none", note="Using free endpoints only")
-
-        results: Dict[str, Any] = {}
-
-        # 1. Query API — Auth-Key in request HEADER (not URL) - optional
-        if self.api_key:
-            try:
-                resp = await self.client.post(
-                    self.url,
-                    headers={"Auth-Key": self.api_key},
-                    json={"query": "get_iocs", "days": 1},
-                )
-                resp.raise_for_status()
-                results["api"] = resp.json()
-                logger.info("threatfox_api_fetched")
-            except Exception as exc:
-                logger.warning("threatfox_api_failed", error=redact_secrets(exc))
-                results["api"] = {}
-        else:
-            # API works without auth for basic queries
-            try:
-                resp = await self.client.post(
-                    self.url,
-                    json={"query": "get_iocs", "days": 1},
-                )
-                resp.raise_for_status()
-                results["api"] = resp.json()
-                logger.info("threatfox_api_fetched", auth="none")
-            except Exception as exc:
-                logger.warning("threatfox_api_failed_no_auth", error=redact_secrets(exc))
-                results["api"] = {}
-
-        # 2–5. Free CSV exports — no auth required
-        for key, endpoint in (
-            ("sha256_csv",  self._EXPORT_SHA256),
-            ("md5_csv",     self._EXPORT_MD5),
-            ("url_csv",     self._EXPORT_URLS),
-            ("ip_port_csv", self._EXPORT_IP_PORT),   # ← was missing
-        ):
-            try:
-                resp = await self.client.get(endpoint)
-                resp.raise_for_status()
-                results[key] = resp.text
-                logger.info("threatfox_export_fetched", source=key)
-            except Exception as exc:
-                logger.warning("threatfox_export_failed", source=key, error=redact_secrets(exc))
-                results[key] = ""
-
-        # 6. Hostfile — DNS domains, no auth required
+        """The keyed recent.csv. Raises on a missing key or a failed download."""
+        if not self.api_key:
+            raise FeedConfigurationError(
+                "THREATFOX_API_KEY is not set. abuse.ch withdrew the keyless ThreatFox "
+                "exports (threatfox.abuse.ch/export/csv/.../recent/ answers 410 Gone); "
+                "an abuse.ch Auth-Key is required, and the feed row's api_key_env must "
+                "name THREATFOX_API_KEY."
+            )
+        logger.info("threatfox_fetch_start", cursor=self.sync_cursor)
         try:
-            resp = await self.client.get(self._HOSTFILE)
-            resp.raise_for_status()
-            results["hostfile"] = resp.text
-            logger.info("threatfox_hostfile_fetched")
+            # The URL carries the key in its path, and httpx puts the URL in its
+            # exception text -- redact before it can reach a log or the feed row.
+            resp = await self._fetch_url(f"{self._EXPORT_BASE}/{self.api_key}/recent.csv")
         except Exception as exc:
-            logger.warning("threatfox_hostfile_failed", error=redact_secrets(exc))
-            results["hostfile"] = ""
-
-        return results
+            raise RuntimeError(
+                "ThreatFox recent.csv fetch failed: " + redact_secrets(error_text(exc))
+            ) from None
+        logger.info("threatfox_recent_csv_fetched", bytes=len(resp.text))
+        return {"recent_csv": resp.text}
 
     # ── parse ────────────────────────────────────────────────────────────────
 
     async def parse(self, raw_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        iocs: List[Dict[str, Any]] = []
-        seen: set = set()   # deduplicates across all six sources
-
-        iocs.extend(self._parse_api(raw_data.get("api", {}), seen))
-
-        # Every export is a slice of the same rolling window, so accumulate
-        # timestamps across all of them and record the union once.
-        window_timestamps: List[Optional[datetime]] = []
-        for key in ("sha256_csv", "md5_csv", "url_csv", "ip_port_csv"):   # ← added ip_port_csv
-            csv_text = raw_data.get(key, "")
-            if csv_text:
-                iocs.extend(self._parse_export_csv(
-                    csv_text, seen, window_timestamps=window_timestamps
-                ))
-        self.record_observed_window(window_timestamps)
-
-        hostfile_text = raw_data.get("hostfile", "")
-        if hostfile_text:
-            iocs.extend(self._parse_hostfile(hostfile_text, seen))
-
-        logger.info("threatfox_parse_complete", total_iocs=len(iocs))
-        return iocs
-
-    # ── source-specific parsers ──────────────────────────────────────────────
-
-    def _parse_api(
-        self, raw: Dict[str, Any], seen: set
-    ) -> List[Dict[str, Any]]:
-        """Parse the JSON response from the API query endpoint."""
-        iocs = []
-        for entry in raw.get("data") or []:
-            try:
-                ioc_value = (entry.get("ioc") or "").strip()
-                ioc_type_raw = entry.get("ioc_type", "")
-                if not ioc_value:
-                    continue
-
-                ioc_type = self._map_type(ioc_type_raw)
-                if not ioc_type:
-                    continue
-
-                # Strip port, preserve it in metadata
-                ioc_value, port = self._split_ip_port(ioc_type, ioc_value)
-
-                # API JSON uses "first_seen", CSV exports use "first_seen_utc" — try both
-                first_seen = _parse_datetime(
-                    entry.get("first_seen_utc") or entry.get("first_seen")
-                )
-                if _is_expired(first_seen):
-                    continue
-
-                dedup_key = f"{ioc_type}:{ioc_value}"
-                if dedup_key in seen:
-                    continue
-                seen.add(dedup_key)
-
-                malware    = entry.get("malware_printable", "") or ""
-                threat_type = entry.get("threat_type", "") or ""
-                tags_raw   = entry.get("tags") or []
-                confidence = min(int(entry.get("confidence_level") or 50), 100)
-
-                metadata: Dict[str, Any] = {
-                    "malware":     malware,
-                    "threat_type": threat_type,
-                    "reporter":    entry.get("reporter"),
-                    "source":      "threatfox_api",
-                }
-                if port is not None:
-                    metadata["port"] = port
-                if entry.get("malware_malpedia"):
-                    metadata["malpedia_url"] = entry["malware_malpedia"]
-                if entry.get("reference") and entry["reference"] != "None":
-                    metadata["reference"] = entry["reference"]
-
-                iocs.append(self._make_ioc(
-                    ioc_type=ioc_type,
-                    value=ioc_value,
-                    tags=_build_tags(malware, threat_type, tags_raw),
-                    threat_score=None,
-                    confidence=confidence,
-                    metadata=metadata,
-                    mitre_techniques=[],
-                    first_seen=first_seen,
-                ))
-            except Exception:
-                continue
-        return iocs
-
-    def _parse_export_csv(
-        self,
-        raw_text: str,
-        seen: set,
-        window_timestamps: Optional[List[Optional[datetime]]] = None,
-    ) -> List[Dict[str, Any]]:
-        """
-        Parse ThreatFox bulk export CSV files (sha256, md5, url exports).
-
-        The export format has:
-          - A block of `#` comment lines at the top (including the header as a comment).
-          - Data rows that are NOT prefixed with `#`.
-          - Column order matches _CSV_FIELDNAMES exactly.
-        """
-        data_lines = [
-            line for line in raw_text.splitlines()
-            if line.strip() and not line.startswith("#")
-        ]
-        if not data_lines:
+        text = raw_data.get("recent_csv", "")
+        if not text:
             return []
+        rows, next_id = self._select_rows(text)
+        if next_id is not None:
+            self.next_cursor = str(next_id)
+        iocs = self._rows_to_iocs(rows)
+        logger.info(
+            "threatfox_parse_complete",
+            total_iocs=len(iocs),
+            cursor_in=self.sync_cursor,
+            cursor_out=self.next_cursor,
+        )
+        return iocs
 
-        iocs = []
-        reader = csv.DictReader(
-            io.StringIO("\n".join(data_lines)),
-            fieldnames=_CSV_FIELDNAMES,
-            quotechar='"',
-            skipinitialspace=True,
+    def _select_rows(self, text: str) -> Tuple[List[List[str]], Optional[int]]:
+        """Pick the rows this sync ingests, and record the file's additions window."""
+        cursor = parse_id_cursor(self.sync_cursor)
+        if self.sync_cursor is not None and cursor is None:
+            logger.warning("threatfox_cursor_unreadable", cursor=self.sync_cursor)
+
+        # Pass 1: the window. Timestamps are fixed-width "YYYY-MM-DD HH:MM:SS" and
+        # compared as strings. The window's START is the oldest row never re-sighted
+        # (empty last_seen_utc): that is how far back the file covers additions. A
+        # re-sighted row's first_seen says nothing about coverage -- it reaches back to
+        # 2021 -- and using it would make the continuity check unable to fire.
+        expiry = (datetime.now(timezone.utc)
+                  - timedelta(days=_MAX_IOC_AGE_DAYS)).strftime(_TS_FMT)
+        lo: Optional[str] = None
+        hi: Optional[str] = None
+        for row in _data_rows(text):
+            first = _field(row, _FIRST_SEEN)
+            if len(first) != 19:
+                continue
+            hi = first if hi is None or first > hi else hi
+            if not _field(row, _LAST_SEEN) and first >= expiry:
+                lo = first if lo is None or first < lo else lo
+        if lo is not None:
+            self.record_observed_window([_parse_datetime(lo), _parse_datetime(hi)])
+
+        newest = _parse_datetime(hi)
+        cold_start_from = (
+            (newest - self._COLD_START_LOOKBACK).strftime(_TS_FMT)
+            if (cursor is None and newest is not None) else None
         )
 
-        for row in reader:
-            try:
-                ioc_value = (row.get("ioc_value") or "").strip()
-                ioc_type_raw = (row.get("ioc_type") or "").strip()
-                if not ioc_value:
+        def candidates():
+            for row in _data_rows(text):
+                try:
+                    rid = int(_field(row, _ID))
+                except ValueError:
                     continue
+                if cursor is not None:
+                    if rid <= cursor:
+                        continue
+                elif cold_start_from is None or _field(row, _FIRST_SEEN) < cold_start_from:
+                    continue
+                yield rid, row
 
-                ioc_type = self._map_type(ioc_type_raw)
-                if not ioc_type:
+        taken, last_id, eligible = take_after_cursor(candidates(), self._MAX_ROWS_PER_SYNC)
+
+        if cursor is None:
+            logger.warning(
+                "threatfox_cold_start",
+                lookback_hours=int(self._COLD_START_LOOKBACK.total_seconds() // 3600),
+                rows_taken=len(taken),
+            )
+        if eligible > len(taken):
+            logger.warning(
+                "threatfox_backlog_capped",
+                eligible=eligible, taken=len(taken), remaining=eligible - len(taken),
+            )
+        return taken, last_id
+
+    def _rows_to_iocs(self, rows: List[List[str]]) -> List[Dict[str, Any]]:
+        iocs: List[Dict[str, Any]] = []
+        seen: set = set()
+        for raw in rows:
+            try:
+                row = dict(zip(_CSV_FIELDNAMES, raw))
+                ioc_value = (row.get("ioc_value") or "").strip()
+                ioc_type = self._map_type((row.get("ioc_type") or "").strip())
+                if not ioc_value or not ioc_type:
                     continue
 
                 ioc_value, port = self._split_ip_port(ioc_type, ioc_value)
 
                 first_seen = _parse_datetime(row.get("first_seen_utc"))
                 if _is_expired(first_seen):
-                    # Recorded *after* the expiry filter on purpose: a record we
-                    # deliberately excluded for age was not lost to a sync gap, so
-                    # counting it would mask real discontinuities behind the
-                    # 180-day cutoff.
                     continue
-                if window_timestamps is not None:
-                    window_timestamps.append(first_seen)
 
                 dedup_key = f"{ioc_type}:{ioc_value}"
                 if dedup_key in seen:
@@ -285,7 +243,7 @@ class ThreatFoxFeed(BaseFeed):
                 tags_raw_str = (row.get("tags") or "").strip()
                 tags_raw = (
                     [t.strip() for t in tags_raw_str.split(",") if t.strip()]
-                    if tags_raw_str else []
+                    if tags_raw_str and tags_raw_str != "None" else []
                 )
 
                 metadata: Dict[str, Any] = {
@@ -296,7 +254,7 @@ class ThreatFoxFeed(BaseFeed):
                 }
                 if port is not None:
                     metadata["port"] = port
-                ref = row.get("reference", "").strip()
+                ref = (row.get("reference") or "").strip()
                 if ref and ref != "None":
                     metadata["reference"] = ref
 
@@ -312,47 +270,6 @@ class ThreatFoxFeed(BaseFeed):
                 ))
             except Exception:
                 continue
-        return iocs
-
-    def _parse_hostfile(
-        self, raw_text: str, seen: set
-    ) -> List[Dict[str, Any]]:
-        """
-        Parse ThreatFox hostfile format:
-            127.0.0.1 malicious-domain.com   # optional inline comment
-        Every non-comment line has IP in col[0] and domain in col[1].
-        """
-        iocs = []
-        for line in raw_text.splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-
-            # Strip any inline comment
-            line = line.split("#")[0].strip()
-            parts = line.split()
-            if len(parts) < 2:
-                continue
-
-            domain = parts[1].strip().lower()
-            if not domain or domain == "localhost":
-                continue
-
-            dedup_key = f"domain:{domain}"
-            if dedup_key in seen:
-                continue
-            seen.add(dedup_key)
-
-            iocs.append(self._make_ioc(
-                ioc_type="domain",
-                value=domain,
-                tags=["threatfox", "c2", "hostfile"],
-                threat_score=None,
-                confidence=75,
-                metadata={"source": "threatfox_hostfile"},
-                mitre_techniques=[],
-                first_seen=None,
-            ))
         return iocs
 
     # ── static helpers ───────────────────────────────────────────────────────
@@ -389,6 +306,18 @@ class ThreatFoxFeed(BaseFeed):
 
 # ── module-level helpers (pure functions, no self needed) ────────────────────
 
+def _data_rows(text: str):
+    """Yield parsed CSV rows, skipping the # comment block. Lazy: no line list."""
+    for row in csv.reader(iter_lines(text), skipinitialspace=True):
+        if not row or row[0].startswith("#"):
+            continue
+        yield row
+
+
+def _field(row: List[str], index: int) -> str:
+    return row[index].strip() if len(row) > index else ""
+
+
 def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
     """
     Parse ThreatFox timestamps.
@@ -400,9 +329,7 @@ def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
         return None
     clean = value.strip().replace(" UTC", "")
     try:
-        return datetime.strptime(clean, "%Y-%m-%d %H:%M:%S").replace(
-            tzinfo=timezone.utc
-        )
+        return datetime.strptime(clean, _TS_FMT).replace(tzinfo=timezone.utc)
     except (ValueError, AttributeError):
         return None
 

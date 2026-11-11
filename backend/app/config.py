@@ -43,9 +43,9 @@ INSECURE_SECRET_KEYS = {
 ALLOWED_FEED_API_KEY_ENVS = frozenset({
     "OTX_API_KEY",            # otx_alienvault — required
     "ABUSEIPDB_API_KEY",      # abuseipdb — required
-    "THREATFOX_API_KEY",      # threatfox — optional Auth-Key
-    "MALWAREBAZAAR_API_KEY",  # malwarebazaar — optional Auth-Key + export path
-    "URLHAUS_API_KEY",        # urlhaus — optional export path
+    "THREATFOX_API_KEY",      # threatfox — required, keyed export path (#104)
+    "MALWAREBAZAAR_API_KEY",  # malwarebazaar — required, keyed export path (#104)
+    "URLHAUS_API_KEY",        # urlhaus — required, keyed export path (#104)
 })
 
 
