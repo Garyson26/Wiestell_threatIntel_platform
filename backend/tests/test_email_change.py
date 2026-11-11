@@ -36,6 +36,7 @@ def _user(user_id, email, role="viewer", username=None):
         role=role,
         is_active=True,
         created_at=datetime(2026, 1, 1),
+        failed_login_attempts=0,  # NOT NULL server default in the real table
     )
 
 

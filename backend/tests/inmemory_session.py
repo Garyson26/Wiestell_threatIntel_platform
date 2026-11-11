@@ -144,14 +144,13 @@ class InMemorySession:
         return _Result(rows)
 
     def _update(self, stmt):
-        model = stmt.table.entity_namespace if hasattr(stmt.table, "entity_namespace") else None
+        # An ORM update(Model) carries an AnnotatedTable proxy, so compare by name.
         targets = [o for o in self.objects
-                   if o.__table__ is stmt.table and _matches(stmt.whereclause, o)]
+                   if o.__table__.name == stmt.table.name and _matches(stmt.whereclause, o)]
         for obj in targets:
             for column, value in stmt._values.items():
                 key = column if isinstance(column, str) else column.key
                 setattr(obj, key, _value(value))
-        del model
         return _Result(targets)
 
     async def delete(self, obj):

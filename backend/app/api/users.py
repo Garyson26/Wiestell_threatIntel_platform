@@ -23,6 +23,7 @@ from app.config import settings
 from app.database import get_db
 from app.models.otp import OTP
 from app.models.user import User
+from app.services.password_throttle import verify_password_throttled
 from app.schemas.user import (
     UserRegister, UserUpdate, AdminUserUpdate, UserLogin, UserResponse,
     TokenResponse, UserListResponse, OTPVerify, OTPResponse,
@@ -234,9 +235,12 @@ async def login_user(data: UserLogin, db: AsyncSession = Depends(get_db)):
         logger.info("login_failed", reason="unknown_email")
         raise _INVALID_CREDENTIALS
 
-    if not pwd_context.verify(data.password, user.hashed_password) or not user.is_active:
-        # A disabled account returns the same error as a bad password so the
-        # endpoint does not confirm which accounts exist.
+    # Unknown emails are rejected above with no counter and no delay (#127): delaying
+    # only real accounts would rebuild the account-existence oracle from timing.
+    if not await verify_password_throttled(db, user, data.password, pwd_context) \
+            or not user.is_active:
+        # A disabled account, a throttled account and a bad password all return the
+        # same error, so the endpoint confirms neither existence nor lock state.
         logger.info("login_failed", reason="bad_password_or_disabled", user_id=str(user.id))
         raise _INVALID_CREDENTIALS
 
@@ -464,7 +468,7 @@ async def request_email_change(
     db: AsyncSession = Depends(get_db),
 ):
     """Step 1 of an email change: re-check the password, mail a code to the new address."""
-    if not pwd_context.verify(data.current_password, user.hashed_password):
+    if not await verify_password_throttled(db, user, data.current_password, pwd_context):
         logger.info("email_change_rejected", reason="bad_password", user_id=str(user.id))
         raise HTTPException(status_code=400, detail="Current password is incorrect")
     if data.new_email == user.email:
@@ -519,7 +523,7 @@ async def change_password(
     db: AsyncSession = Depends(get_db),
 ):
     """Change the authenticated user's password."""
-    if not pwd_context.verify(data.current_password, user.hashed_password):
+    if not await verify_password_throttled(db, user, data.current_password, pwd_context):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
 
     user.hashed_password = pwd_context.hash(data.new_password)
@@ -606,8 +610,10 @@ async def update_user(
                 status_code=400,
                 detail="Change your own email from your profile, which verifies the new address.",
             )
-        if not data.current_password or not pwd_context.verify(
-            data.current_password, actor.hashed_password
+        # Counts against the ADMIN's own back-off, so a stolen admin token cannot use
+        # this route to brute-force the admin's password either.
+        if not data.current_password or not await verify_password_throttled(
+            db, actor, data.current_password, pwd_context
         ):
             logger.info("admin_email_change_rejected", actor_id=str(actor.id))
             raise HTTPException(

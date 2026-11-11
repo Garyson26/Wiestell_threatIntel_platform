@@ -101,6 +101,14 @@ class Settings(BaseSettings):
     OTP_TTL_MINUTES: int = 5
     OTP_RESET_TTL_MINUTES: int = 10
     OTP_MAX_ATTEMPTS: int = 5
+    # Per-ACCOUNT password back-off (services/password_throttle.py, issue #127). The
+    # first LOGIN_FREE_ATTEMPTS - 1 wrong passwords cost nothing; from then on each
+    # attempt locks the account for BASE * 2^k seconds, capped at MAX. Escalating and
+    # capped rather than a hard lock, which on a known admin email is a DoS primitive.
+    # At the cap that is ~96 guesses/day per account, from any number of addresses.
+    LOGIN_FREE_ATTEMPTS: int = 5
+    LOGIN_BACKOFF_BASE_SECONDS: int = 30
+    LOGIN_BACKOFF_MAX_SECONDS: int = 900
     # Per-IP limits for unauthenticated auth endpoints
     AUTH_RATE_LIMIT_MAX: int = 10
     AUTH_RATE_LIMIT_WINDOW: int = 300      # seconds

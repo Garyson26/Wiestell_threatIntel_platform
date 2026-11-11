@@ -33,6 +33,8 @@ class FakeResult:
 
     def __init__(self, obj=None):
         self._obj = obj
+        # For UPDATE statements (the password-throttle reservation): "one row matched".
+        self.rowcount = 1 if obj is not None else 0
 
     def scalar_one_or_none(self):
         return self._obj
@@ -99,6 +101,7 @@ def make_user(role: str = "viewer", is_active: bool = True, user_id: str = "user
         role=role,
         is_active=is_active,
         created_at=datetime(2026, 1, 1),
+        failed_login_attempts=0,  # NOT NULL server default in the real table
     )
 
 
