@@ -8,7 +8,9 @@ assumption in the application, where a mismatch fails silently in production:
     window check under-reports gaps and indicators are lost with no warning;
   * the GeoLite2 build step against the credentials it needs, since the step fails open;
   * the `--workers 1` start command, covered in depth by tests/test_process_model.py and
-    re-asserted here only as part of the deploy surface.
+    re-asserted here only as part of the deploy surface;
+  * the deploy-drift job (#139), which fails the workflow when the build Render serves
+    is behind Master's backend/ - a failed deploy otherwise leaves everything green.
 
 Written without pyyaml, which is not a project dependency - the cron line is parsed with a
 regex over the workflow text. That is adequate because the assertion is about one scalar,
@@ -335,6 +337,194 @@ class TestTheWorkflowDistinguishesEndpointFromFeedFailure:
             f"timeout-minutes is {match.group(1)}; the sync window is ~15 minutes, so "
             "anything much above that is waiting on a hang rather than on work"
         )
+
+
+class TestTheWorkflowDetectsAStaleDeploy:
+    """#139: a failed Render deploy leaves the old build serving and everything green.
+
+    Production ran the 2026-11-01 build for eight days that way. The `deploy-drift` job
+    compares the commit Render reports as live against Master. The comparison is
+    extracted from the workflow and executed against a real throwaway git repository,
+    for the same reason the classifier above is: a copy would drift.
+
+    The cases that matter most are the false alarms. Render deploys a push's HEAD
+    even when that commit touches nothing in backend/ (e9f0f97), and builds nothing for
+    a frontend-only push. A naive "live == Master" check would be red after every
+    frontend merge, and a red badge nobody believes is worse than none.
+    """
+
+    @staticmethod
+    def _source():
+        text = WORKFLOW.read_text(encoding="utf-8")
+        match = re.search(r"python3 - <<'DRIFT'\n(.*?)\n          DRIFT", text, re.S)
+        assert match, (
+            "the deploy-drift heredoc was not found in the workflow. If the step was "
+            "restructured, update this extraction -- otherwise nothing below tests it."
+        )
+        source = "\n".join(
+            line[10:] if line.startswith(" " * 10) else line
+            for line in match.group(1).splitlines()
+        )
+        # Extraction guard (CLAUDE.md): a truncated extraction must not pass vacuously.
+        assert "GRACE_SECONDS" in source and "sys.exit(1)" in source
+        return source
+
+    @staticmethod
+    def _git(repo, *args, when=None):
+        import os
+        import subprocess
+
+        env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.invalid",
+                   GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.invalid")
+        if when is not None:
+            env["GIT_AUTHOR_DATE"] = env["GIT_COMMITTER_DATE"] = f"@{int(when)} +0000"
+        out = subprocess.run(["git", *args], cwd=repo, env=env,
+                             capture_output=True, text=True, check=True)
+        return out.stdout.strip()
+
+    def _commit(self, repo, path, content, when):
+        target = repo / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+        self._git(repo, "add", "-A")
+        self._git(repo, "commit", "-q", "-m", f"change {path}", when=when)
+        return self._git(repo, "rev-parse", "HEAD")
+
+    @pytest.fixture
+    def repo(self, tmp_path):
+        import time
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        self._git(repo, "init", "-q")
+        now = time.time()
+        return repo, now
+
+    def _run(self, repo, deploys):
+        import json
+        import subprocess
+        import sys
+
+        (repo.parent / "drift.py").write_text(self._source(), encoding="utf-8")
+        target = repo / "deploys.json"
+        if deploys is None:
+            target.unlink(missing_ok=True)  # curl wrote nothing
+        else:
+            text = deploys if isinstance(deploys, str) else json.dumps(deploys)
+            target.write_text(text, encoding="utf-8")
+        return subprocess.run([sys.executable, str(repo.parent / "drift.py")], cwd=repo,
+                              capture_output=True, text=True)
+
+    @staticmethod
+    def _deploys(*pairs, wrapped=True):
+        """pairs: (commit, status), newest first, as Render lists them."""
+        items = [{"id": f"dep-{i}", "status": s, "commit": {"id": c}}
+                 for i, (c, s) in enumerate(pairs)]
+        return [{"deploy": d, "cursor": "x"} for d in items] if wrapped else items
+
+    def test_live_equal_to_master_passes(self, repo):
+        repo, now = repo
+        head = self._commit(repo, "backend/app.py", "v1", now - 7200)
+        result = self._run(repo, self._deploys((head, "live")))
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "current" in result.stdout
+
+    def test_a_frontend_commit_after_the_live_one_is_not_drift(self, repo):
+        """Render builds nothing for a frontend-only push. Not a failure."""
+        repo, now = repo
+        live = self._commit(repo, "backend/app.py", "v1", now - 7 * 86400)
+        self._commit(repo, "frontend/page.tsx", "x", now - 5 * 86400)
+        result = self._run(repo, self._deploys((live, "live")))
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    def test_a_live_head_that_touches_no_backend_file_is_current(self, repo):
+        """The e9f0f97 shape: the deployed HEAD itself changed only the README."""
+        repo, now = repo
+        self._commit(repo, "backend/app.py", "v2", now - 7200)
+        live = self._commit(repo, "README.md", "relicense", now - 7100)
+        result = self._run(repo, self._deploys((live, "live")))
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    def test_the_eight_day_freeze_fails(self, repo):
+        """The real incident: two backend merges never went live, newest deploy failed."""
+        repo, now = repo
+        live = self._commit(repo, "backend/app.py", "v1", now - 10 * 86400)
+        failed = self._commit(repo, "backend/requirements.txt", "bump", now - 8 * 86400)
+        self._commit(repo, "backend/auth.py", "fix", now - 3600 * 5)
+        result = self._run(repo, self._deploys((failed, "update_failed"), (live, "live")))
+        assert result.returncode == 1, "a production build days behind Master stayed green"
+        assert "::error::production is behind Master" in result.stdout
+        assert "2 backend commit(s)" in result.stdout
+        assert "update_failed" in result.stdout, "the failed deploy's status is the clue"
+
+    def test_a_merge_inside_the_grace_period_is_only_a_notice(self, repo):
+        """A build that is still running must not turn the run red."""
+        repo, now = repo
+        live = self._commit(repo, "backend/app.py", "v1", now - 86400)
+        self._commit(repo, "backend/app.py", "v2", now - 600)
+        result = self._run(repo, self._deploys((live, "live")))
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "::notice::" in result.stdout
+
+    def test_the_grace_period_is_measured_from_the_OLDEST_missing_change(self, repo):
+        """A fresh merge on top must not reset the clock on a stale one."""
+        repo, now = repo
+        live = self._commit(repo, "backend/app.py", "v1", now - 86400)
+        self._commit(repo, "backend/app.py", "v2", now - 3 * 3600)
+        self._commit(repo, "backend/app.py", "v3", now - 60)
+        assert self._run(repo, self._deploys((live, "live"))).returncode == 1
+
+    def test_the_bare_deploy_shape_is_understood(self, repo):
+        repo, now = repo
+        live = self._commit(repo, "backend/app.py", "v1", now - 86400)
+        self._commit(repo, "backend/app.py", "v2", now - 3 * 3600)
+        assert self._run(repo, self._deploys((live, "live"), wrapped=False)).returncode == 1
+
+    def test_no_live_deploy_fails(self, repo):
+        repo, now = repo
+        head = self._commit(repo, "backend/app.py", "v1", now - 7200)
+        result = self._run(repo, self._deploys((head, "update_failed")))
+        assert result.returncode == 1
+        assert "no live deploy" in result.stdout
+
+    def test_a_live_commit_unknown_to_the_repository_fails(self, repo):
+        repo, now = repo
+        self._commit(repo, "backend/app.py", "v1", now - 7200)
+        result = self._run(repo, self._deploys(("f" * 40, "live")))
+        assert result.returncode == 1
+        assert "not in this repository" in result.stdout
+
+    def test_a_live_build_ahead_of_master_fails(self, repo):
+        """Serving backend code Master does not contain is wrong too, just differently."""
+        repo, now = repo
+        self._commit(repo, "backend/app.py", "v1", now - 86400)
+        self._git(repo, "checkout", "-q", "-b", "side")
+        side = self._commit(repo, "backend/app.py", "side", now - 7200)
+        self._git(repo, "checkout", "-q", "-")
+        result = self._run(repo, self._deploys((side, "live")))
+        assert result.returncode == 1
+        assert "not behind it" in result.stdout
+
+    def test_a_malformed_or_missing_deploy_list_fails(self, repo):
+        repo, now = repo
+        self._commit(repo, "backend/app.py", "v1", now - 7200)
+        assert self._run(repo, "not json").returncode == 1
+        assert self._run(repo, None).returncode == 1
+
+    def test_missing_configuration_fails_rather_than_skipping(self):
+        """A drift check that quietly does not run is the failure it exists to remove."""
+        text = WORKFLOW.read_text(encoding="utf-8")
+        job = text[text.index("  deploy-drift:"):]
+        assert "secrets.RENDER_API_KEY" in job and "vars.RENDER_SERVICE_ID" in job
+        guard = job[job.index('if [ -z "${RENDER_API_KEY:-}" ]'):]
+        assert "exit 1" in guard[:400], "missing Render configuration must fail the job"
+
+    def test_the_drift_job_is_independent_of_the_sync(self):
+        """A sync failure must not skip the drift check, nor the reverse."""
+        text = WORKFLOW.read_text(encoding="utf-8")
+        job = text[text.index("  deploy-drift:"):]
+        assert "needs:" not in job
+        assert re.search(r"timeout-minutes:\s*\d+", job), "the drift job needs its own timeout"
 
 
 class TestTheCronParserAcceptsEverythingCorrect:
