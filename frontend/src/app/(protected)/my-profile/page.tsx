@@ -2,9 +2,165 @@
 
 import { useState, useEffect } from 'react';
 import { User, Mail, Lock, Save, AlertCircle, CheckCircle2, Eye, EyeOff, Shield } from 'lucide-react';
-import { getMe, updateMe, changePassword } from '@/lib/api';
+import { getMe, updateMe, changePassword, requestEmailChange, verifyEmailChange } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { UserProfile } from '@/lib/types';
+import OTPInput from '@/components/OTPInput';
+
+const inputClass =
+  'w-full pl-10 pr-3 py-2 text-sm font-mono bg-sentinel-bg-primary border border-sentinel-border rounded text-sentinel-text-primary placeholder:text-sentinel-text-muted focus:outline-none focus:border-sentinel-accent/40 transition-colors';
+const buttonClass =
+  'w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-mono font-medium rounded bg-sentinel-accent text-white hover:bg-sentinel-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+
+/**
+ * Changing the account email needs the current password and a code sent to the new
+ * address (issue #123). A bearer token alone can no longer move the mailbox that
+ * password resets are sent to.
+ */
+function ChangeEmailCard({ currentEmail, onChanged }: { currentEmail: string; onChanged: () => Promise<void> }) {
+  const [step, setStep] = useState<'request' | 'verify'>('request');
+  const [newEmail, setNewEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  async function handleRequest(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    if (newEmail.trim().toLowerCase() === currentEmail.toLowerCase()) {
+      setError('That is already your email address');
+      return;
+    }
+    setBusy(true);
+    try {
+      await requestEmailChange({ new_email: newEmail.trim(), current_password: password });
+      setPassword('');
+      setOtp('');
+      setStep('verify');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send the confirmation code');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleVerify(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    if (otp.length !== 6) {
+      setError('Enter the 6-digit code');
+      return;
+    }
+    setBusy(true);
+    try {
+      await verifyEmailChange({ new_email: newEmail.trim(), otp });
+      setSuccess('Email changed. A notice has been sent to your previous address.');
+      setStep('request');
+      setNewEmail('');
+      setOtp('');
+      await onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to confirm the code');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="sentinel-card border border-sentinel-border p-6 space-y-4">
+      <div className="flex items-center gap-2 pb-4 border-b border-sentinel-border/50">
+        <Mail className="w-5 h-5 text-sentinel-accent" />
+        <div>
+          <h3 className="text-sm font-mono font-semibold text-sentinel-text-primary">Change Email</h3>
+          <p className="text-[11px] font-mono text-sentinel-text-muted">
+            Sign-in codes and password resets go to this address, so changing it needs your
+            password and a code sent to the new address.
+          </p>
+        </div>
+      </div>
+
+      {step === 'request' ? (
+        <form onSubmit={handleRequest} className="space-y-4">
+          <div>
+            <label className="block text-xs font-mono font-medium text-sentinel-text-secondary mb-1.5">
+              New Email Address
+            </label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sentinel-text-muted" />
+              <input
+                type="email"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                className={inputClass}
+                placeholder="new.address@example.com"
+                required
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-mono font-medium text-sentinel-text-secondary mb-1.5">
+              Current Password
+            </label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sentinel-text-muted" />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={inputClass}
+                placeholder="Enter current password"
+                autoComplete="current-password"
+                required
+              />
+            </div>
+          </div>
+          {error && <Message kind="error" text={error} />}
+          {success && <Message kind="success" text={success} />}
+          <button type="submit" disabled={busy} className={buttonClass}>
+            <Mail className="w-4 h-4" />
+            {busy ? 'Sending code...' : 'Send confirmation code'}
+          </button>
+        </form>
+      ) : (
+        <form onSubmit={handleVerify} className="space-y-4">
+          <p className="text-xs font-mono text-sentinel-text-secondary">
+            Enter the code sent to <span className="text-sentinel-text-primary">{newEmail}</span>.
+          </p>
+          <OTPInput value={otp} onChange={setOtp} />
+          {error && <Message kind="error" text={error} />}
+          <button type="submit" disabled={busy} className={buttonClass}>
+            <CheckCircle2 className="w-4 h-4" />
+            {busy ? 'Confirming...' : 'Confirm new email'}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setStep('request'); setError(''); setOtp(''); }}
+            className="w-full text-xs font-mono text-sentinel-text-muted hover:text-sentinel-text-primary"
+          >
+            Cancel
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function Message({ kind, text }: { kind: 'error' | 'success'; text: string }) {
+  return kind === 'error' ? (
+    <div className="flex items-start gap-2 p-3 rounded bg-sentinel-danger/10 border border-sentinel-danger/20">
+      <AlertCircle className="w-4 h-4 text-sentinel-danger flex-shrink-0 mt-0.5" />
+      <p className="text-xs font-mono text-sentinel-danger">{text}</p>
+    </div>
+  ) : (
+    <div className="flex items-start gap-2 p-3 rounded bg-green-500/10 border border-green-500/20">
+      <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
+      <p className="text-xs font-mono text-green-500">{text}</p>
+    </div>
+  );
+}
 
 export default function MyProfilePage() {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -62,17 +218,9 @@ export default function MyProfilePage() {
       return;
     }
 
-    if (!form.email.trim()) {
-      setError('Email is required');
-      return;
-    }
-
     setSaving(true);
     try {
-      await updateMe({
-        full_name: form.full_name,
-        email: form.email,
-      });
+      await updateMe({ full_name: form.full_name });
       setSuccess('Profile updated successfully');
       await loadProfile();
     } catch (err) {
@@ -204,13 +352,14 @@ export default function MyProfilePage() {
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sentinel-text-muted" />
               <input
                 type="email"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className="w-full pl-10 pr-3 py-2 text-sm font-mono bg-sentinel-bg-primary border border-sentinel-border rounded text-sentinel-text-primary placeholder:text-sentinel-text-muted focus:outline-none focus:border-sentinel-accent/40 transition-colors"
-                placeholder="your.email@example.com"
-                required
+                value={user.email}
+                disabled
+                className="w-full pl-10 pr-3 py-2 text-sm font-mono bg-sentinel-bg-tertiary border border-sentinel-border rounded text-sentinel-text-muted cursor-not-allowed"
               />
             </div>
+            <p className="mt-1 text-[10px] font-mono text-sentinel-text-muted">
+              Use Change Email below — it needs your password and a code sent to the new address
+            </p>
           </div>
 
           {/* Username (read-only) */}
@@ -283,6 +432,8 @@ export default function MyProfilePage() {
           </div>
         </div>
       </div>
+
+      <ChangeEmailCard currentEmail={user.email} onChanged={loadProfile} />
 
       {/* Password Change */}
       <div className="sentinel-card border border-sentinel-border p-6 space-y-4">

@@ -162,9 +162,21 @@ export const verifyOtp = (data: { email: string; otp: string }) =>
     body: JSON.stringify(data),
   });
 export const getMe = () => fetchAPI<import('./types').UserProfile>('/api/v1/users/me');
-export const updateMe = (data: { full_name?: string; email?: string }) =>
+// Name only — the backend refuses an email change here (issue #123).
+export const updateMe = (data: { full_name?: string }) =>
   fetchAPI<import('./types').UserProfile>('/api/v1/users/me', {
     method: 'PUT',
+    body: JSON.stringify(data),
+  });
+// Email change: password re-check, then a code sent to the NEW address.
+export const requestEmailChange = (data: { new_email: string; current_password: string }) =>
+  fetchAPI<{ message: string; otp_required: boolean }>('/api/v1/users/me/email', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+export const verifyEmailChange = (data: { new_email: string; otp: string }) =>
+  fetchAPI<import('./types').UserProfile>('/api/v1/users/me/email/verify', {
+    method: 'POST',
     body: JSON.stringify(data),
   });
 export const changePassword = (data: { current_password: string; new_password: string }) =>
@@ -189,7 +201,11 @@ export const adminCreateUser = (data: { username: string; email: string; passwor
     method: 'POST',
     body: JSON.stringify(data),
   });
-export const updateUser = (id: string, data: { full_name?: string; email?: string }) =>
+// `current_password` is the ADMIN's own password, required when `email` changes.
+export const updateUser = (
+  id: string,
+  data: { full_name?: string; email?: string; current_password?: string },
+) =>
   fetchAPI<import('./types').UserProfile>(`/api/v1/users/${id}`, {
     method: 'PUT',
     body: JSON.stringify(data),

@@ -45,7 +45,25 @@ class UserRegister(BaseModel):
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = Field(None, max_length=200)
+    # Accepted on PUT /users/me only when it equals the current address (the profile
+    # form always sends it). A real change goes through EmailChangeRequest.
     email: Optional[EmailStr] = Field(None, max_length=255)
+
+
+class AdminUserUpdate(UserUpdate):
+    # Required when `email` changes: a stolen admin token alone must not be able to
+    # move another account's mailbox and then reset its password.
+    current_password: Optional[str] = Field(None, min_length=1, max_length=MAX_PASSWORD_BYTES)
+
+
+class EmailChangeRequest(BaseModel):
+    new_email: EmailStr = Field(..., max_length=255)
+    current_password: str = Field(..., min_length=1, max_length=MAX_PASSWORD_BYTES)
+
+
+class EmailChangeVerify(BaseModel):
+    new_email: EmailStr = Field(..., max_length=255)
+    otp: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
 
 
 class PasswordChange(BaseModel):

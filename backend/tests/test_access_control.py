@@ -19,6 +19,8 @@ PROTECTED = [
     ("get", "/api/v1/users/me"),
     ("put", "/api/v1/users/me"),
     ("put", "/api/v1/users/me/password"),
+    ("post", "/api/v1/users/me/email"),
+    ("post", "/api/v1/users/me/email/verify"),
     ("get", "/api/v1/iocs"),
     ("get", "/api/v1/iocs/lookup?value=1.2.3.4"),
     ("post", "/api/v1/iocs"),

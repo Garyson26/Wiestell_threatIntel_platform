@@ -312,6 +312,7 @@ async def send_otp_email(
     username: str,
     is_password_reset: bool = False,
     idempotency_key: Optional[str] = None,
+    is_email_change: bool = False,
 ) -> bool:
     """
     Send OTP via email using SMTP.
@@ -335,7 +336,11 @@ async def send_otp_email(
 
     try:
         # Create message
-        if is_password_reset:
+        if is_email_change:
+            subject = "Wiestell - Confirm your new email address"
+            purpose = "confirming this as your new account email"
+            expiry = f"{settings.OTP_RESET_TTL_MINUTES} minutes"
+        elif is_password_reset:
             subject = "Wiestell - Password Reset OTP"
             purpose = "password reset"
             expiry = "10 minutes"

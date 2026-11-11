@@ -24,11 +24,12 @@ from app.database import get_db
 from app.models.otp import OTP
 from app.models.user import User
 from app.schemas.user import (
-    UserRegister, UserUpdate, UserLogin, UserResponse,
+    UserRegister, UserUpdate, AdminUserUpdate, UserLogin, UserResponse,
     TokenResponse, UserListResponse, OTPVerify, OTPResponse,
     PasswordChange, PasswordResetRequest, PasswordReset,
+    EmailChangeRequest, EmailChangeVerify,
 )
-from app.utils.email_service import send_otp_email
+from app.utils.email_service import send_notification_email, send_otp_email
 
 logger = structlog.get_logger()
 
@@ -40,6 +41,9 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 PURPOSE_LOGIN = "login"
 PURPOSE_SIGNUP = "signup"
 PURPOSE_RESET = "password_reset"
+# Sent to the NEW address and bound to the requesting user. Never accepted by
+# /verify-otp, so it cannot mint a session.
+PURPOSE_EMAIL_CHANGE = "email_change"
 
 _GENERIC_OTP_MESSAGE = "If the details are valid, a one-time code has been sent to the email address."
 _INVALID_CREDENTIALS = HTTPException(
@@ -68,9 +72,14 @@ def _naive_utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-async def _clear_pending_otps(db: AsyncSession, email: str, purpose: str) -> None:
+async def _clear_pending_otps(
+    db: AsyncSession, email: str, purpose: str, user_id: str | None = None
+) -> None:
+    # Email-change codes are keyed to the requesting USER, not the address: two
+    # accounts may target the same new address, and one must not cancel the other's.
+    scope = OTP.user_id == user_id if purpose == PURPOSE_EMAIL_CHANGE else OTP.email == email
     existing = (await db.execute(
-        select(OTP).where(OTP.email == email, OTP.purpose == purpose)
+        select(OTP).where(scope, OTP.purpose == purpose)
     )).scalars().all()
     for old in existing:
         await db.delete(old)
@@ -91,7 +100,7 @@ async def _issue_otp(
     The plaintext code is only ever held in memory and sent to the registered
     address — it is never logged and never returned in an API response.
     """
-    await _clear_pending_otps(db, email, purpose)
+    await _clear_pending_otps(db, email, purpose, user_id)
 
     otp_code = generate_otp()
     record = OTP(
@@ -119,6 +128,7 @@ async def _issue_otp(
         otp_code,
         username,
         is_password_reset=(purpose == PURPOSE_RESET),
+        is_email_change=(purpose == PURPOSE_EMAIL_CHANGE),
         idempotency_key=idempotency_key,
     ):
         logger.error("otp_email_delivery_failed", purpose=purpose)
@@ -130,12 +140,19 @@ async def _issue_otp(
     logger.info("otp_issued", purpose=purpose)
 
 
-async def _consume_otp(db: AsyncSession, email: str, otp: str, purpose: str) -> OTP:
-    """Validate an OTP for a purpose and mark it used, or raise 401."""
+async def _consume_otp(
+    db: AsyncSession, email: str, otp: str, purpose: str, user_id: str | None = None
+) -> OTP:
+    """Validate an OTP for a purpose and mark it used, or raise 401.
+
+    ``user_id`` additionally binds the code to one account — required for
+    email-change codes, whose address may be pending for more than one user.
+    """
+    criteria = [OTP.email == email, OTP.purpose == purpose, OTP.verified == "pending"]
+    if user_id is not None:
+        criteria.append(OTP.user_id == user_id)
     result = await db.execute(
-        select(OTP)
-        .where(OTP.email == email, OTP.purpose == purpose, OTP.verified == "pending")
-        .order_by(OTP.created_at.desc())
+        select(OTP).where(*criteria).order_by(OTP.created_at.desc())
     )
     record = result.scalars().first()
     if record is None:
@@ -370,19 +387,128 @@ async def update_me(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update the authenticated user's own profile."""
+    """Update the authenticated user's own profile (name only).
+
+    Issue #123: this used to change ``email`` on the token alone, which turns a stolen
+    JWT into permanent takeover via /forgot-password. ``email`` is still accepted when
+    it equals the current address, because the profile form always sends it; a real
+    change must go through POST /me/email and /me/email/verify.
+    """
+    if data.email is not None and data.email != user.email:
+        raise HTTPException(
+            status_code=400,
+            detail="Changing your email needs your password and a code sent to the new "
+                   "address. Use the Change email form.",
+        )
     if data.full_name is not None:
         user.full_name = data.full_name
-    if data.email is not None and data.email != user.email:
-        clash = await db.execute(
-            select(User).where(User.email == data.email, User.id != user.id)
-        )
-        if clash.scalar_one_or_none():
-            raise HTTPException(status_code=409, detail="Email already in use")
-        user.email = data.email
 
-    await db.commit()
-    await db.refresh(user)
+    await db.flush()
+    return UserResponse.model_validate(user)
+
+
+async def _email_in_use(db: AsyncSession, email: str, exclude_user_id: str) -> bool:
+    clash = await db.execute(
+        select(User).where(User.email == email, User.id != exclude_user_id)
+    )
+    return clash.scalars().first() is not None
+
+
+async def _invalidate_pending_otps(db: AsyncSession, user_id: str, old_email: str) -> None:
+    """Kill every pending code for the account once its address moves.
+
+    A login code already mailed to the OLD address would otherwise stay redeemable at
+    /verify-otp (which resolves the user from ``record.user_id``) for its whole TTL — so
+    whoever holds the old mailbox keeps a way in after the owner has moved away from it.
+    """
+    stale = (await db.execute(
+        select(OTP).where(
+            OTP.verified == "pending",
+            (OTP.user_id == user_id) | (OTP.email == old_email),
+        )
+    )).scalars().all()
+    for record in stale:
+        await db.delete(record)
+
+
+async def _notify_email_changed(old_email: str, username: str, by_admin: bool) -> None:
+    """Tell the OLD address its account moved. Best effort: never fails the request.
+
+    This is the owner's only chance to notice a change they didn't make, so it goes
+    to the address being replaced, and deliberately carries no code and no link.
+    """
+    who = "an administrator" if by_admin else "someone signed in to your account"
+    message = (
+        f"Hello {username},\n\n"
+        f"The email address on your Wiestell account was just changed by {who}. "
+        "Sign-in codes and password resets now go to the new address.\n\n"
+        "If you did not expect this, contact your Wiestell administrator immediately.\n"
+    )
+    try:
+        if not await send_notification_email(
+            old_email, "Wiestell - Your account email was changed", message
+        ):
+            logger.warning("email_change_notice_failed")
+    except Exception as e:  # never let a notice failure undo a verified change
+        logger.warning("email_change_notice_failed", error_type=type(e).__name__)
+
+
+@router.post(
+    "/me/email",
+    response_model=OTPResponse,
+    dependencies=[Depends(rate_limit("email-change", max_requests=5))],
+)
+async def request_email_change(
+    data: EmailChangeRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Step 1 of an email change: re-check the password, mail a code to the new address."""
+    if not pwd_context.verify(data.current_password, user.hashed_password):
+        logger.info("email_change_rejected", reason="bad_password", user_id=str(user.id))
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    if data.new_email == user.email:
+        raise HTTPException(status_code=400, detail="That is already your email address")
+    if await _email_in_use(db, data.new_email, user.id):
+        raise HTTPException(status_code=409, detail="Email already in use")
+
+    await _issue_otp(
+        db,
+        email=data.new_email,
+        username=user.username,
+        purpose=PURPOSE_EMAIL_CHANGE,
+        ttl_minutes=settings.OTP_RESET_TTL_MINUTES,
+        user_id=user.id,
+    )
+    return OTPResponse(
+        message="A confirmation code has been sent to the new address.", otp_required=True
+    )
+
+
+@router.post(
+    "/me/email/verify",
+    response_model=UserResponse,
+    dependencies=[Depends(rate_limit("email-change-verify"))],
+)
+async def verify_email_change(
+    data: EmailChangeVerify,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Step 2: a code proving control of the new address switches the account to it."""
+    await _consume_otp(db, data.new_email, data.otp, PURPOSE_EMAIL_CHANGE, user_id=user.id)
+
+    # Re-checked: the address may have been registered since the code was sent.
+    if await _email_in_use(db, data.new_email, user.id):
+        raise HTTPException(status_code=409, detail="Email already in use")
+
+    old_email = user.email
+    user.email = data.new_email
+    await _invalidate_pending_otps(db, user.id, old_email)
+    await db.flush()
+
+    logger.info("email_changed", user_id=str(user.id), by_admin=False)
+    await _notify_email_changed(old_email, user.username, by_admin=False)
     return UserResponse.model_validate(user)
 
 
@@ -457,27 +583,49 @@ async def get_user(user_id: str, db: AsyncSession = Depends(get_db)):
 @router.put("/{user_id}", response_model=UserResponse)
 async def update_user(
     user_id: str,
-    data: UserUpdate,
+    data: AdminUserUpdate,
     actor: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update another user's profile. Admin only."""
+    """Update another user's profile. Admin only.
+
+    An email change here needs the ADMIN's current password (issue #123): without it,
+    a stolen admin token could move any account's mailbox — another admin's included —
+    and then reset its password, outliving the token. An admin's own address goes
+    through the self-service flow, which also proves control of the new mailbox.
+    """
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    old_email = None
+    if data.email is not None and data.email != user.email:
+        if str(user.id) == str(actor.id):
+            raise HTTPException(
+                status_code=400,
+                detail="Change your own email from your profile, which verifies the new address.",
+            )
+        if not data.current_password or not pwd_context.verify(
+            data.current_password, actor.hashed_password
+        ):
+            logger.info("admin_email_change_rejected", actor_id=str(actor.id))
+            raise HTTPException(
+                status_code=400,
+                detail="Changing a user's email requires your current password.",
+            )
+        if await _email_in_use(db, data.email, user.id):
+            raise HTTPException(status_code=409, detail="Email already in use")
+        old_email = user.email
+        user.email = data.email
+        await _invalidate_pending_otps(db, user.id, old_email)
+
     if data.full_name is not None:
         user.full_name = data.full_name
-    if data.email is not None and data.email != user.email:
-        clash = await db.execute(
-            select(User).where(User.email == data.email, User.id != user.id)
-        )
-        if clash.scalar_one_or_none():
-            raise HTTPException(status_code=409, detail="Email already in use")
-        user.email = data.email
 
-    await db.commit()
-    await db.refresh(user)
-    logger.info("user_updated_by_admin", actor_id=str(actor.id), target_id=str(user.id))
+    await db.flush()
+    logger.info("user_updated_by_admin", actor_id=str(actor.id), target_id=str(user.id),
+                email_changed=old_email is not None)
+    if old_email is not None:
+        await _notify_email_changed(old_email, user.username, by_admin=True)
     return UserResponse.model_validate(user)
