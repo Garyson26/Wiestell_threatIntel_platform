@@ -5,6 +5,7 @@ without credentials, including one that minted admin accounts.
 """
 
 import pytest
+from fastapi.dependencies.utils import get_dependant
 
 from app.api import deps
 from app.config import settings
@@ -103,6 +104,15 @@ PUBLIC_ALLOWLIST = {
     ("GET", "/redoc"),
 }
 
+# The docs routes are plain Starlette routes with no dependency tree, so the audit
+# below never classifies them; they are allowlisted for the HTTP-level tests only.
+DOCS_ROUTES = {
+    ("GET", "/openapi.json"),
+    ("GET", "/docs"),
+    ("GET", "/docs/oauth2-redirect"),
+    ("GET", "/redoc"),
+}
+
 # Names of dependencies that actually authenticate or authorize. Deliberately
 # excludes `_rate_limit_checker`: before those two closures were given distinct
 # names, both were called `_checker` and this audit counted a rate-limited public
@@ -115,26 +125,88 @@ GUARD_DEPENDENCY_NAMES = {
 }
 
 
-def _route_is_guarded(route) -> bool:
-    for dep in route.dependant.dependencies:
-        if getattr(dep.call, "__name__", "") in GUARD_DEPENDENCY_NAMES:
-            return True
-        if any(
-            getattr(sub.call, "__name__", "") in GUARD_DEPENDENCY_NAMES
-            for sub in dep.dependencies
-        ):
+def _is_guard(call) -> bool:
+    return getattr(call, "__name__", "") in GUARD_DEPENDENCY_NAMES
+
+
+def _dependant_is_guarded(dependant) -> bool:
+    for dep in dependant.dependencies:
+        if _is_guard(dep.call) or any(_is_guard(sub.call) for sub in dep.dependencies):
             return True
     return False
 
 
+def _route_is_guarded(route, inherited=()) -> bool:
+    if _dependant_is_guarded(route.dependant):
+        return True
+    # Dependencies passed to include_router(). fastapi 0.115 merges them into each
+    # route's dependant; 0.162 keeps them on the include context, so they arrive here.
+    for depends in inherited:
+        call = depends.dependency
+        if _is_guard(call) or _dependant_is_guarded(get_dependant(path="", call=call)):
+            return True
+    return False
+
+
+def _iter_endpoints(routes, prefix="", inherited=()):
+    """Yield (route, full path, include_router dependencies) for every endpoint.
+
+    fastapi 0.115 flattens each include_router() call into app.routes. 0.162 keeps
+    one _IncludedRouter per call instead, holding the original router plus an
+    include context with the prefix and the router-level dependencies, which is
+    how this project applies authentication. Walking only app.routes under 0.162
+    collected 4 of 64 routes and the audit passed over those 4 (#138). This is
+    duck-typed on the two attributes, not the private class name, and the floor
+    tests below fail if a future version changes the shape again.
+    """
+    for route in routes:
+        router = getattr(route, "original_router", None)
+        context = getattr(route, "include_context", None)
+        if router is not None and context is not None:
+            yield from _iter_endpoints(
+                router.routes,
+                prefix + context.prefix,
+                inherited + tuple(context.dependencies),
+            )
+        elif hasattr(route, "dependant") and getattr(route, "methods", None):
+            yield route, prefix + route.path, inherited
+
+
 def _classify_routes():
     guarded, public = [], []
-    for route in app.routes:
-        if not hasattr(route, "dependant") or not getattr(route, "methods", None):
-            continue
+    for route, path, inherited in _iter_endpoints(app.routes):
         for method in sorted(route.methods - {"HEAD", "OPTIONS"}):
-            (guarded if _route_is_guarded(route) else public).append((method, route.path))
+            bucket = guarded if _route_is_guarded(route, inherited) else public
+            bucket.append((method, path))
     return guarded, public
+
+
+# The audit's subject is collected rather than named, so it must also assert how
+# much it collected, or a collection that comes back nearly empty passes (#138).
+# 64 = 55 guarded + 9 public, measured 2026-11-11 under fastapi 0.115.6 and 0.162.0.
+# Raise it when routes are added; lowering it needs a removed route to justify it.
+MIN_CLASSIFIED_ROUTES = 64
+
+
+def test_the_audit_collects_every_route():
+    guarded, public = _classify_routes()
+    collected = set(guarded) | set(public)
+    assert len(guarded) + len(public) >= MIN_CLASSIFIED_ROUTES, (
+        f"route audit collected {len(guarded) + len(public)} routes, expected at least "
+        f"{MIN_CLASSIFIED_ROUTES}: the route table changed shape and the walker missed it"
+    )
+    # The OpenAPI schema is built by the framework itself, independently of how
+    # app.routes is shaped, so every operation in it must have been collected.
+    schema = app.openapi()["paths"]
+    documented = {
+        (method.upper(), path)
+        for path, operations in schema.items()
+        for method in operations
+        if method.upper() not in ("HEAD", "OPTIONS")
+    }
+    assert documented, "the OpenAPI schema is empty, so this cross-check checks nothing"
+    missing = sorted(f"{m} {p}" for m, p in documented - collected)
+    assert not missing, f"routes in the OpenAPI schema the audit never classified: {missing}"
 
 
 def test_every_route_is_guarded_or_explicitly_public(capsys):
@@ -160,12 +232,16 @@ def test_allowlist_has_no_stale_entries():
     guarded, public = _classify_routes()
     guarded_set, public_set = set(guarded), set(public)
 
-    stale = [
-        f"{m} {p}"
-        for m, p in PUBLIC_ALLOWLIST
-        if (m, p) not in public_set and (m, p) in guarded_set
-    ]
+    stale = [f"{m} {p}" for m, p in PUBLIC_ALLOWLIST if (m, p) in guarded_set]
     assert not stale, f"allowlisted routes that are actually guarded: {stale}"
+    # A route the audit never collected was previously never compared, so an
+    # allowlist entry for it passed whatever happened to the route (#138).
+    gone = [
+        f"{m} {p}"
+        for m, p in PUBLIC_ALLOWLIST - DOCS_ROUTES
+        if (m, p) not in public_set and (m, p) not in guarded_set
+    ]
+    assert not gone, f"allowlisted routes the audit did not find: {gone}"
 
 
 def test_rate_limit_is_not_counted_as_authorization():
