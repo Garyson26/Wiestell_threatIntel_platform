@@ -171,3 +171,132 @@ jobs:
             echo
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # ─────────────────────────────────────────────────────────────────────────────────────
+  # IS PRODUCTION RUNNING WHAT IS ON MASTER?  (#139)
+  #
+  # A failed Render deploy is silent. Render keeps the previous build serving, so the
+  # health checks stay green, the dashboard works, this workflow's sync succeeds and
+  # /cron-status reports no degradation. That is how production ran the 2026-11-01 build
+  # for eight days while two deploys failed (#136). This job turns that state into a red
+  # run.
+  #
+  # Separate job, not a step of `sync`: it must neither delay nor be skipped by a sync
+  # failure, and a drift failure must not be mistaken for a feed failure.
+  #
+  # It asks Render which commit is live instead of asking the application, so it needs no
+  # app change and no RENDER_GIT_COMMIT (#139 step 1, unconfirmed).
+  #
+  # WHAT "CURRENT" MEANS. Render builds this service only when a push changes files under
+  # backend/ (rootDir), and then deploys the push's HEAD -- which may itself touch nothing
+  # in backend/ (e9f0f97 was deployed that way). So "live == Master" and "live == newest
+  # backend commit" both raise false alarms. The check is whether the live commit's
+  # backend/ tree is identical to Master's. If not, the oldest backend change missing from
+  # production must be older than GRACE_SECONDS before the run fails, which leaves time
+  # for a build that is merely in progress.
+  #
+  # NEEDS: secret RENDER_API_KEY and variable RENDER_SERVICE_ID. Render API keys are not
+  # scoped -- this one can do anything the account can -- although this job only reads.
+  # Missing configuration fails the job loudly instead of skipping it: a drift check that
+  # silently does not run is the failure mode it exists to remove.
+  deploy-drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out Master with history
+        uses: actions/checkout@v4
+        with:
+          ref: Master
+          fetch-depth: 0
+
+      - name: Read the live deploy from Render
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RENDER_API_KEY:-}" ] || [ -z "${RENDER_SERVICE_ID:-}" ]; then
+            echo "::error::RENDER_API_KEY (secret) and RENDER_SERVICE_ID (variable) must both be set for the deploy-drift check"
+            exit 1
+          fi
+          curl --silent --show-error --fail-with-body --max-time 60 \
+               --retry 3 --retry-delay 10 \
+               -H "Authorization: Bearer ${RENDER_API_KEY}" -H "Accept: application/json" \
+               --output deploys.json \
+               "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys?limit=20"
+
+      - name: Compare the live commit against Master
+        run: |
+          python3 - <<'DRIFT'
+          import json, subprocess, sys, time
+
+          # Long enough for a build that is still running, short enough that a failed
+          # deploy turns the next 6-hourly run red. A Render build here takes ~1-2 min.
+          GRACE_SECONDS = 3600
+
+          def git(*args):
+              return subprocess.run(["git", *args], capture_output=True, text=True)
+
+          try:
+              with open("deploys.json", encoding="utf-8") as fh:
+                  payload = json.load(fh)
+          except (OSError, ValueError) as exc:
+              print(f"::error::could not read Render's deploy list: {exc}")
+              sys.exit(1)
+
+          # The API wraps each entry as {"deploy": {...}, "cursor": ...}; accept the bare
+          # form too rather than guessing which one a future response uses.
+          deploys = []
+          for item in payload if isinstance(payload, list) else []:
+              if isinstance(item, dict):
+                  inner = item.get("deploy", item)
+                  if isinstance(inner, dict):
+                      deploys.append(inner)
+
+          def commit_of(deploy):
+              return (deploy.get("commit") or {}).get("id") or ""
+
+          live = next((commit_of(d) for d in deploys if d.get("status") == "live"), "")
+          latest = deploys[0] if deploys else {}
+          latest_note = (f"most recent deploy: {commit_of(latest)[:12] or '?'} "
+                         f"status={latest.get('status', '?')}")
+
+          if not live:
+              print(f"::error::Render reports no live deploy among the {len(deploys)} most "
+                    f"recent ({latest_note}). Either nothing is serving or the history is "
+                    "longer than one page; both need a person.")
+              sys.exit(1)
+
+          if git("cat-file", "-e", f"{live}^{{commit}}").returncode != 0:
+              print(f"::error::the live commit {live[:12]} is not in this repository's "
+                    f"history; production is serving something Master never contained "
+                    f"({latest_note}).")
+              sys.exit(1)
+
+          if git("diff", "--quiet", live, "HEAD", "--", "backend").returncode == 0:
+              print(f"production is current: live {live[:12]} has every backend/ change "
+                    "on Master")
+              sys.exit(0)
+
+          pending = [(line.split(" ", 2) + ["", ""])[:3] for line in git(
+              "log", "--reverse", "--format=%H %ct %s", f"{live}..HEAD", "--", "backend"
+          ).stdout.splitlines() if line.strip()]
+
+          if not pending:
+              print(f"::error::live {live[:12]} differs from Master under backend/ but "
+                    "is not behind it -- it carries changes Master does not "
+                    f"({latest_note}).")
+              sys.exit(1)
+
+          oldest_sha, oldest_ts, oldest_subject = pending[0]
+          age = time.time() - int(oldest_ts)
+          summary = (f"{len(pending)} backend commit(s) on Master are not live; the oldest, "
+                     f"{oldest_sha[:12]} \"{oldest_subject}\", is {age / 3600:.1f} h old. "
+                     f"Live: {live[:12]}; {latest_note}.")
+          if age < GRACE_SECONDS:
+              print(f"::notice::within the {GRACE_SECONDS // 60}-minute grace period: "
+                    + summary)
+              sys.exit(0)
+          print("::error::production is behind Master. " + summary)
+          sys.exit(1)
+          DRIFT
