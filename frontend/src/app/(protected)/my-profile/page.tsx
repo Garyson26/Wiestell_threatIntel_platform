@@ -8,9 +8,9 @@ import type { UserProfile } from '@/lib/types';
 import OTPInput from '@/components/OTPInput';
 
 const inputClass =
-  'w-full pl-10 pr-3 py-2 text-sm font-mono bg-sentinel-bg-primary border border-sentinel-border rounded text-sentinel-text-primary placeholder:text-sentinel-text-muted focus:outline-none focus:border-sentinel-accent/40 transition-colors';
+  'w-full pl-10 pr-3 py-2 text-sm font-mono bg-wiestell-bg-primary border border-wiestell-border rounded text-wiestell-text-primary placeholder:text-wiestell-text-muted focus:outline-none focus:border-wiestell-accent/40 transition-colors';
 const buttonClass =
-  'w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-mono font-medium rounded bg-sentinel-accent text-white hover:bg-sentinel-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+  'w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-mono font-medium rounded bg-wiestell-accent text-white hover:bg-wiestell-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
 
 /**
  * Changing the account email needs the current password and a code sent to the new
@@ -70,12 +70,12 @@ function ChangeEmailCard({ currentEmail, onChanged }: { currentEmail: string; on
   }
 
   return (
-    <div className="sentinel-card border border-sentinel-border p-6 space-y-4">
-      <div className="flex items-center gap-2 pb-4 border-b border-sentinel-border/50">
-        <Mail className="w-5 h-5 text-sentinel-accent" />
+    <div className="wiestell-card border border-wiestell-border p-6 space-y-4">
+      <div className="flex items-center gap-2 pb-4 border-b border-wiestell-border/50">
+        <Mail className="w-5 h-5 text-wiestell-accent" />
         <div>
-          <h3 className="text-sm font-mono font-semibold text-sentinel-text-primary">Change Email</h3>
-          <p className="text-[11px] font-mono text-sentinel-text-muted">
+          <h3 className="text-sm font-mono font-semibold text-wiestell-text-primary">Change Email</h3>
+          <p className="text-[11px] font-mono text-wiestell-text-muted">
             Sign-in codes and password resets go to this address, so changing it needs your
             password and a code sent to the new address.
           </p>
@@ -85,11 +85,11 @@ function ChangeEmailCard({ currentEmail, onChanged }: { currentEmail: string; on
       {step === 'request' ? (
         <form onSubmit={handleRequest} className="space-y-4">
           <div>
-            <label className="block text-xs font-mono font-medium text-sentinel-text-secondary mb-1.5">
+            <label className="block text-xs font-mono font-medium text-wiestell-text-secondary mb-1.5">
               New Email Address
             </label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sentinel-text-muted" />
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-wiestell-text-muted" />
               <input
                 type="email"
                 value={newEmail}
@@ -101,11 +101,11 @@ function ChangeEmailCard({ currentEmail, onChanged }: { currentEmail: string; on
             </div>
           </div>
           <div>
-            <label className="block text-xs font-mono font-medium text-sentinel-text-secondary mb-1.5">
+            <label className="block text-xs font-mono font-medium text-wiestell-text-secondary mb-1.5">
               Current Password
             </label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sentinel-text-muted" />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-wiestell-text-muted" />
               <input
                 type="password"
                 value={password}
@@ -126,8 +126,8 @@ function ChangeEmailCard({ currentEmail, onChanged }: { currentEmail: string; on
         </form>
       ) : (
         <form onSubmit={handleVerify} className="space-y-4">
-          <p className="text-xs font-mono text-sentinel-text-secondary">
-            Enter the code sent to <span className="text-sentinel-text-primary">{newEmail}</span>.
+          <p className="text-xs font-mono text-wiestell-text-secondary">
+            Enter the code sent to <span className="text-wiestell-text-primary">{newEmail}</span>.
           </p>
           <OTPInput value={otp} onChange={setOtp} />
           {error && <Message kind="error" text={error} />}
@@ -138,7 +138,7 @@ function ChangeEmailCard({ currentEmail, onChanged }: { currentEmail: string; on
           <button
             type="button"
             onClick={() => { setStep('request'); setError(''); setOtp(''); }}
-            className="w-full text-xs font-mono text-sentinel-text-muted hover:text-sentinel-text-primary"
+            className="w-full text-xs font-mono text-wiestell-text-muted hover:text-wiestell-text-primary"
           >
             Cancel
           </button>
@@ -150,9 +150,9 @@ function ChangeEmailCard({ currentEmail, onChanged }: { currentEmail: string; on
 
 function Message({ kind, text }: { kind: 'error' | 'success'; text: string }) {
   return kind === 'error' ? (
-    <div className="flex items-start gap-2 p-3 rounded bg-sentinel-danger/10 border border-sentinel-danger/20">
-      <AlertCircle className="w-4 h-4 text-sentinel-danger flex-shrink-0 mt-0.5" />
-      <p className="text-xs font-mono text-sentinel-danger">{text}</p>
+    <div className="flex items-start gap-2 p-3 rounded bg-wiestell-danger/10 border border-wiestell-danger/20">
+      <AlertCircle className="w-4 h-4 text-wiestell-danger flex-shrink-0 mt-0.5" />
+      <p className="text-xs font-mono text-wiestell-danger">{text}</p>
     </div>
   ) : (
     <div className="flex items-start gap-2 p-3 rounded bg-green-500/10 border border-green-500/20">
@@ -283,8 +283,8 @@ export default function MyProfilePage() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
-          <div className="inline-block w-8 h-8 border-2 border-sentinel-accent border-t-transparent rounded-full animate-spin" />
-          <p className="mt-2 text-xs font-mono text-sentinel-text-muted">Loading profile...</p>
+          <div className="inline-block w-8 h-8 border-2 border-wiestell-accent border-t-transparent rounded-full animate-spin" />
+          <p className="mt-2 text-xs font-mono text-wiestell-text-muted">Loading profile...</p>
         </div>
       </div>
     );
@@ -293,7 +293,7 @@ export default function MyProfilePage() {
   if (!user) {
     return (
       <div className="flex items-center justify-center h-64">
-        <p className="text-xs font-mono text-sentinel-text-muted">Failed to load profile</p>
+        <p className="text-xs font-mono text-wiestell-text-muted">Failed to load profile</p>
       </div>
     );
   }
@@ -302,24 +302,24 @@ export default function MyProfilePage() {
     <div className="max-w-2xl mx-auto space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-lg font-display font-bold text-sentinel-text-primary">My Profile</h1>
-        <p className="text-xs font-mono text-sentinel-text-muted mt-0.5">
+        <h1 className="text-lg font-display font-bold text-wiestell-text-primary">My Profile</h1>
+        <p className="text-xs font-mono text-wiestell-text-muted mt-0.5">
           Manage your account information
         </p>
       </div>
 
       {/* Profile Card */}
-      <div className="sentinel-card border border-sentinel-border p-6 space-y-6">
+      <div className="wiestell-card border border-wiestell-border p-6 space-y-6">
         {/* User Info Display */}
-        <div className="flex items-center gap-4 pb-6 border-b border-sentinel-border/50">
-          <div className="w-16 h-16 rounded-full bg-sentinel-accent/10 flex items-center justify-center">
-            <User className="w-8 h-8 text-sentinel-accent" />
+        <div className="flex items-center gap-4 pb-6 border-b border-wiestell-border/50">
+          <div className="w-16 h-16 rounded-full bg-wiestell-accent/10 flex items-center justify-center">
+            <User className="w-8 h-8 text-wiestell-accent" />
           </div>
           <div>
-            <h2 className="text-sm font-mono font-semibold text-sentinel-text-primary">
+            <h2 className="text-sm font-mono font-semibold text-wiestell-text-primary">
               {user.full_name || user.username}
             </h2>
-            <p className="text-xs font-mono text-sentinel-text-muted">{user.email}</p>
+            <p className="text-xs font-mono text-wiestell-text-muted">{user.email}</p>
           </div>
         </div>
 
@@ -327,16 +327,16 @@ export default function MyProfilePage() {
         <form onSubmit={handleUpdate} className="space-y-4">
           {/* Full Name */}
           <div>
-            <label className="block text-xs font-mono font-medium text-sentinel-text-secondary mb-1.5">
+            <label className="block text-xs font-mono font-medium text-wiestell-text-secondary mb-1.5">
               Full Name
             </label>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sentinel-text-muted" />
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-wiestell-text-muted" />
               <input
                 type="text"
                 value={form.full_name}
                 onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                className="w-full pl-10 pr-3 py-2 text-sm font-mono bg-sentinel-bg-primary border border-sentinel-border rounded text-sentinel-text-primary placeholder:text-sentinel-text-muted focus:outline-none focus:border-sentinel-accent/40 transition-colors"
+                className="w-full pl-10 pr-3 py-2 text-sm font-mono bg-wiestell-bg-primary border border-wiestell-border rounded text-wiestell-text-primary placeholder:text-wiestell-text-muted focus:outline-none focus:border-wiestell-accent/40 transition-colors"
                 placeholder="Enter your full name"
                 required
               />
@@ -345,47 +345,47 @@ export default function MyProfilePage() {
 
           {/* Email */}
           <div>
-            <label className="block text-xs font-mono font-medium text-sentinel-text-secondary mb-1.5">
+            <label className="block text-xs font-mono font-medium text-wiestell-text-secondary mb-1.5">
               Email Address
             </label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sentinel-text-muted" />
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-wiestell-text-muted" />
               <input
                 type="email"
                 value={user.email}
                 disabled
-                className="w-full pl-10 pr-3 py-2 text-sm font-mono bg-sentinel-bg-tertiary border border-sentinel-border rounded text-sentinel-text-muted cursor-not-allowed"
+                className="w-full pl-10 pr-3 py-2 text-sm font-mono bg-wiestell-bg-tertiary border border-wiestell-border rounded text-wiestell-text-muted cursor-not-allowed"
               />
             </div>
-            <p className="mt-1 text-[10px] font-mono text-sentinel-text-muted">
+            <p className="mt-1 text-[10px] font-mono text-wiestell-text-muted">
               Use Change Email below — it needs your password and a code sent to the new address
             </p>
           </div>
 
           {/* Username (read-only) */}
           <div>
-            <label className="block text-xs font-mono font-medium text-sentinel-text-secondary mb-1.5">
+            <label className="block text-xs font-mono font-medium text-wiestell-text-secondary mb-1.5">
               Username
             </label>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sentinel-text-muted" />
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-wiestell-text-muted" />
               <input
                 type="text"
                 value={user.username}
                 disabled
-                className="w-full pl-10 pr-3 py-2 text-sm font-mono bg-sentinel-bg-tertiary border border-sentinel-border rounded text-sentinel-text-muted cursor-not-allowed"
+                className="w-full pl-10 pr-3 py-2 text-sm font-mono bg-wiestell-bg-tertiary border border-wiestell-border rounded text-wiestell-text-muted cursor-not-allowed"
               />
             </div>
-            <p className="mt-1 text-[10px] font-mono text-sentinel-text-muted">
+            <p className="mt-1 text-[10px] font-mono text-wiestell-text-muted">
               Username cannot be changed
             </p>
           </div>
 
           {/* Error/Success Messages */}
           {error && (
-            <div className="flex items-start gap-2 p-3 rounded bg-sentinel-danger/10 border border-sentinel-danger/20">
-              <AlertCircle className="w-4 h-4 text-sentinel-danger flex-shrink-0 mt-0.5" />
-              <p className="text-xs font-mono text-sentinel-danger">{error}</p>
+            <div className="flex items-start gap-2 p-3 rounded bg-wiestell-danger/10 border border-wiestell-danger/20">
+              <AlertCircle className="w-4 h-4 text-wiestell-danger flex-shrink-0 mt-0.5" />
+              <p className="text-xs font-mono text-wiestell-danger">{error}</p>
             </div>
           )}
 
@@ -400,7 +400,7 @@ export default function MyProfilePage() {
           <button
             type="submit"
             disabled={saving}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-mono font-medium rounded bg-sentinel-accent text-white hover:bg-sentinel-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-mono font-medium rounded bg-wiestell-accent text-white hover:bg-wiestell-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Save className="w-4 h-4" />
             {saving ? 'Saving...' : 'Save Changes'}
@@ -409,24 +409,24 @@ export default function MyProfilePage() {
       </div>
 
       {/* Additional Info */}
-      <div className="sentinel-card border border-sentinel-border p-4">
-        <h3 className="text-xs font-mono font-semibold text-sentinel-text-primary mb-2">
+      <div className="wiestell-card border border-wiestell-border p-4">
+        <h3 className="text-xs font-mono font-semibold text-wiestell-text-primary mb-2">
           Account Information
         </h3>
         <div className="space-y-2 text-[11px] font-mono">
           <div className="flex justify-between">
-            <span className="text-sentinel-text-muted">Account ID:</span>
-            <span className="text-sentinel-text-secondary font-mono">{user.id}</span>
+            <span className="text-wiestell-text-muted">Account ID:</span>
+            <span className="text-wiestell-text-secondary font-mono">{user.id}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-sentinel-text-muted">Status:</span>
-            <span className={`${user.is_active ? 'text-green-500' : 'text-sentinel-danger'}`}>
+            <span className="text-wiestell-text-muted">Status:</span>
+            <span className={`${user.is_active ? 'text-green-500' : 'text-wiestell-danger'}`}>
               {user.is_active ? 'Active' : 'Inactive'}
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-sentinel-text-muted">Member Since:</span>
-            <span className="text-sentinel-text-secondary">
+            <span className="text-wiestell-text-muted">Member Since:</span>
+            <span className="text-wiestell-text-secondary">
               {new Date(user.created_at).toLocaleDateString()}
             </span>
           </div>
@@ -436,14 +436,14 @@ export default function MyProfilePage() {
       <ChangeEmailCard currentEmail={user.email} onChanged={loadProfile} />
 
       {/* Password Change */}
-      <div className="sentinel-card border border-sentinel-border p-6 space-y-4">
-        <div className="flex items-center gap-2 pb-4 border-b border-sentinel-border/50">
-          <Shield className="w-5 h-5 text-sentinel-accent" />
+      <div className="wiestell-card border border-wiestell-border p-6 space-y-4">
+        <div className="flex items-center gap-2 pb-4 border-b border-wiestell-border/50">
+          <Shield className="w-5 h-5 text-wiestell-accent" />
           <div>
-            <h3 className="text-sm font-mono font-semibold text-sentinel-text-primary">
+            <h3 className="text-sm font-mono font-semibold text-wiestell-text-primary">
               Change Password
             </h3>
-            <p className="text-[11px] font-mono text-sentinel-text-muted">
+            <p className="text-[11px] font-mono text-wiestell-text-muted">
               Update your password to keep your account secure
             </p>
           </div>
@@ -452,23 +452,23 @@ export default function MyProfilePage() {
         <form onSubmit={handlePasswordChange} className="space-y-4">
           {/* Current Password */}
           <div>
-            <label className="block text-xs font-mono font-medium text-sentinel-text-secondary mb-1.5">
+            <label className="block text-xs font-mono font-medium text-wiestell-text-secondary mb-1.5">
               Current Password
             </label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sentinel-text-muted" />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-wiestell-text-muted" />
               <input
                 type={showCurrentPassword ? 'text' : 'password'}
                 value={passwordForm.current_password}
                 onChange={(e) => setPasswordForm({ ...passwordForm, current_password: e.target.value })}
-                className="w-full pl-10 pr-10 py-2 text-sm font-mono bg-sentinel-bg-primary border border-sentinel-border rounded text-sentinel-text-primary placeholder:text-sentinel-text-muted focus:outline-none focus:border-sentinel-accent/40 transition-colors"
+                className="w-full pl-10 pr-10 py-2 text-sm font-mono bg-wiestell-bg-primary border border-wiestell-border rounded text-wiestell-text-primary placeholder:text-wiestell-text-muted focus:outline-none focus:border-wiestell-accent/40 transition-colors"
                 placeholder="Enter current password"
                 required
               />
               <button
                 type="button"
                 onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-sentinel-text-muted hover:text-sentinel-text-primary transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-wiestell-text-muted hover:text-wiestell-text-primary transition-colors"
               >
                 {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -477,16 +477,16 @@ export default function MyProfilePage() {
 
           {/* New Password */}
           <div>
-            <label className="block text-xs font-mono font-medium text-sentinel-text-secondary mb-1.5">
+            <label className="block text-xs font-mono font-medium text-wiestell-text-secondary mb-1.5">
               New Password
             </label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sentinel-text-muted" />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-wiestell-text-muted" />
               <input
                 type={showNewPassword ? 'text' : 'password'}
                 value={passwordForm.new_password}
                 onChange={(e) => setPasswordForm({ ...passwordForm, new_password: e.target.value })}
-                className="w-full pl-10 pr-10 py-2 text-sm font-mono bg-sentinel-bg-primary border border-sentinel-border rounded text-sentinel-text-primary placeholder:text-sentinel-text-muted focus:outline-none focus:border-sentinel-accent/40 transition-colors"
+                className="w-full pl-10 pr-10 py-2 text-sm font-mono bg-wiestell-bg-primary border border-wiestell-border rounded text-wiestell-text-primary placeholder:text-wiestell-text-muted focus:outline-none focus:border-wiestell-accent/40 transition-colors"
                 placeholder="Enter new password (min 6 characters)"
                 required
                 minLength={6}
@@ -494,7 +494,7 @@ export default function MyProfilePage() {
               <button
                 type="button"
                 onClick={() => setShowNewPassword(!showNewPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-sentinel-text-muted hover:text-sentinel-text-primary transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-wiestell-text-muted hover:text-wiestell-text-primary transition-colors"
               >
                 {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -503,23 +503,23 @@ export default function MyProfilePage() {
 
           {/* Confirm Password */}
           <div>
-            <label className="block text-xs font-mono font-medium text-sentinel-text-secondary mb-1.5">
+            <label className="block text-xs font-mono font-medium text-wiestell-text-secondary mb-1.5">
               Confirm New Password
             </label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sentinel-text-muted" />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-wiestell-text-muted" />
               <input
                 type={showConfirmPassword ? 'text' : 'password'}
                 value={passwordForm.confirm_password}
                 onChange={(e) => setPasswordForm({ ...passwordForm, confirm_password: e.target.value })}
-                className="w-full pl-10 pr-10 py-2 text-sm font-mono bg-sentinel-bg-primary border border-sentinel-border rounded text-sentinel-text-primary placeholder:text-sentinel-text-muted focus:outline-none focus:border-sentinel-accent/40 transition-colors"
+                className="w-full pl-10 pr-10 py-2 text-sm font-mono bg-wiestell-bg-primary border border-wiestell-border rounded text-wiestell-text-primary placeholder:text-wiestell-text-muted focus:outline-none focus:border-wiestell-accent/40 transition-colors"
                 placeholder="Re-enter new password"
                 required
               />
               <button
                 type="button"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-sentinel-text-muted hover:text-sentinel-text-primary transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-wiestell-text-muted hover:text-wiestell-text-primary transition-colors"
               >
                 {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -528,9 +528,9 @@ export default function MyProfilePage() {
 
           {/* Password Error/Success Messages */}
           {passwordError && (
-            <div className="flex items-start gap-2 p-3 rounded bg-sentinel-danger/10 border border-sentinel-danger/20">
-              <AlertCircle className="w-4 h-4 text-sentinel-danger flex-shrink-0 mt-0.5" />
-              <p className="text-xs font-mono text-sentinel-danger">{passwordError}</p>
+            <div className="flex items-start gap-2 p-3 rounded bg-wiestell-danger/10 border border-wiestell-danger/20">
+              <AlertCircle className="w-4 h-4 text-wiestell-danger flex-shrink-0 mt-0.5" />
+              <p className="text-xs font-mono text-wiestell-danger">{passwordError}</p>
             </div>
           )}
 
@@ -545,7 +545,7 @@ export default function MyProfilePage() {
           <button
             type="submit"
             disabled={savingPassword}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-mono font-medium rounded bg-sentinel-accent text-white hover:bg-sentinel-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-mono font-medium rounded bg-wiestell-accent text-white hover:bg-wiestell-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Lock className="w-4 h-4" />
             {savingPassword ? 'Changing Password...' : 'Change Password'}

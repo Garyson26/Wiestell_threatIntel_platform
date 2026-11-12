@@ -280,14 +280,14 @@ export default function AIAssistantPage() {
     <AdminRoute>
     <div className="flex flex-col h-[calc(100vh-3rem)]">
       {/* Header */}
-      <div className="flex items-center justify-between pb-4 border-b border-sentinel-border">
+      <div className="flex items-center justify-between pb-4 border-b border-wiestell-border">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded bg-sentinel-accent/10 border border-sentinel-accent/20">
-            <Sparkles className="w-5 h-5 text-sentinel-accent" />
+          <div className="p-2 rounded bg-wiestell-accent/10 border border-wiestell-accent/20">
+            <Sparkles className="w-5 h-5 text-wiestell-accent" />
           </div>
           <div>
-            <h1 className="text-lg font-display font-bold text-sentinel-text-primary">AI Assistant</h1>
-            <p className="text-xs font-mono text-sentinel-text-muted">
+            <h1 className="text-lg font-display font-bold text-wiestell-text-primary">AI Assistant</h1>
+            <p className="text-xs font-mono text-wiestell-text-muted">
               Threat intelligence analysis powered by Groq / Llama 3.3
             </p>
           </div>
@@ -295,7 +295,7 @@ export default function AIAssistantPage() {
         {messages.length > 0 && (
           <button
             onClick={() => setMessages([])}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded border border-sentinel-border text-sentinel-text-muted hover:text-sentinel-danger hover:border-sentinel-danger/30 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded border border-wiestell-border text-wiestell-text-muted hover:text-wiestell-danger hover:border-wiestell-danger/30 transition-colors"
           >
             <Trash2 className="w-3 h-3" />
             CLEAR
@@ -307,13 +307,13 @@ export default function AIAssistantPage() {
       <div className="flex-1 overflow-y-auto py-4 space-y-4">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
-            <div className="p-4 rounded-full bg-sentinel-accent/5 border border-sentinel-accent/10 mb-4">
-              <Bot className="w-10 h-10 text-sentinel-accent/50" />
+            <div className="p-4 rounded-full bg-wiestell-accent/5 border border-wiestell-accent/10 mb-4">
+              <Bot className="w-10 h-10 text-wiestell-accent/50" />
             </div>
-            <h2 className="text-sm font-display font-semibold text-sentinel-text-primary mb-1">
+            <h2 className="text-sm font-display font-semibold text-wiestell-text-primary mb-1">
               Wiestell AI Assistant
             </h2>
-            <p className="text-xs font-mono text-sentinel-text-muted mb-6 max-w-md">
+            <p className="text-xs font-mono text-wiestell-text-muted mb-6 max-w-md">
               Ask questions about threats, IOCs, attack patterns, incident response, or any cybersecurity topic.
             </p>
             <div className="grid grid-cols-2 gap-2 w-full max-w-lg">
@@ -321,12 +321,12 @@ export default function AIAssistantPage() {
                 <button
                   key={qp.label}
                   onClick={() => sendMessage(qp.prompt)}
-                  className="p-3 rounded text-left border border-sentinel-border bg-sentinel-bg-secondary hover:border-sentinel-accent/30 hover:bg-sentinel-accent/5 transition-colors group"
+                  className="p-3 rounded text-left border border-wiestell-border bg-wiestell-bg-secondary hover:border-wiestell-accent/30 hover:bg-wiestell-accent/5 transition-colors group"
                 >
-                  <p className="text-xs font-mono font-semibold text-sentinel-text-secondary group-hover:text-sentinel-accent transition-colors">
+                  <p className="text-xs font-mono font-semibold text-wiestell-text-secondary group-hover:text-wiestell-accent transition-colors">
                     {qp.label}
                   </p>
-                  <p className="text-[10px] font-mono text-sentinel-text-muted mt-1 line-clamp-2">
+                  <p className="text-[10px] font-mono text-wiestell-text-muted mt-1 line-clamp-2">
                     {qp.prompt}
                   </p>
                 </button>
@@ -343,23 +343,23 @@ export default function AIAssistantPage() {
               )}
             >
               {msg.role === 'assistant' && (
-                <div className="flex-shrink-0 w-7 h-7 rounded bg-sentinel-accent/10 border border-sentinel-accent/20 flex items-center justify-center">
-                  <Bot className="w-4 h-4 text-sentinel-accent" />
+                <div className="flex-shrink-0 w-7 h-7 rounded bg-wiestell-accent/10 border border-wiestell-accent/20 flex items-center justify-center">
+                  <Bot className="w-4 h-4 text-wiestell-accent" />
                 </div>
               )}
               <div
                 className={cn(
                   'max-w-[75%] rounded-lg px-4 py-3 text-xs font-mono leading-relaxed',
                   msg.role === 'user'
-                    ? 'bg-sentinel-accent/10 border border-sentinel-accent/20 text-sentinel-text-primary'
-                    : 'bg-sentinel-bg-secondary border border-sentinel-border text-sentinel-text-secondary'
+                    ? 'bg-wiestell-accent/10 border border-wiestell-accent/20 text-wiestell-text-primary'
+                    : 'bg-wiestell-bg-secondary border border-wiestell-border text-wiestell-text-secondary'
                 )}
               >
                 <div className="whitespace-pre-wrap">{msg.content}</div>
               </div>
               {msg.role === 'user' && (
-                <div className="flex-shrink-0 w-7 h-7 rounded bg-sentinel-bg-tertiary border border-sentinel-border flex items-center justify-center">
-                  <User className="w-4 h-4 text-sentinel-text-muted" />
+                <div className="flex-shrink-0 w-7 h-7 rounded bg-wiestell-bg-tertiary border border-wiestell-border flex items-center justify-center">
+                  <User className="w-4 h-4 text-wiestell-text-muted" />
                 </div>
               )}
             </div>
@@ -368,11 +368,11 @@ export default function AIAssistantPage() {
 
         {loading && (
           <div className="flex gap-3 animate-fade-in">
-            <div className="flex-shrink-0 w-7 h-7 rounded bg-sentinel-accent/10 border border-sentinel-accent/20 flex items-center justify-center">
-              <Bot className="w-4 h-4 text-sentinel-accent" />
+            <div className="flex-shrink-0 w-7 h-7 rounded bg-wiestell-accent/10 border border-wiestell-accent/20 flex items-center justify-center">
+              <Bot className="w-4 h-4 text-wiestell-accent" />
             </div>
-            <div className="bg-sentinel-bg-secondary border border-sentinel-border rounded-lg px-4 py-3">
-              <div className="flex items-center gap-2 text-xs font-mono text-sentinel-text-muted">
+            <div className="bg-wiestell-bg-secondary border border-wiestell-border rounded-lg px-4 py-3">
+              <div className="flex items-center gap-2 text-xs font-mono text-wiestell-text-muted">
                 <Loader2 className="w-3 h-3 animate-spin" />
                 Analyzing...
               </div>
@@ -384,7 +384,7 @@ export default function AIAssistantPage() {
       </div>
 
       {/* Input */}
-      <div className="border-t border-sentinel-border pt-4">
+      <div className="border-t border-wiestell-border pt-4">
         <div className="flex gap-2">
           <textarea
             ref={inputRef}
@@ -393,17 +393,17 @@ export default function AIAssistantPage() {
             onKeyDown={handleKeyDown}
             placeholder="Ask about threats, IOCs, attack patterns..."
             rows={1}
-            className="flex-1 px-4 py-3 rounded-lg bg-sentinel-bg-secondary border border-sentinel-border text-sm font-mono text-sentinel-text-primary placeholder:text-sentinel-text-muted outline-none focus:border-sentinel-accent/40 resize-none"
+            className="flex-1 px-4 py-3 rounded-lg bg-wiestell-bg-secondary border border-wiestell-border text-sm font-mono text-wiestell-text-primary placeholder:text-wiestell-text-muted outline-none focus:border-wiestell-accent/40 resize-none"
           />
           <button
             onClick={() => sendMessage(input)}
             disabled={!input.trim() || loading}
-            className="px-4 py-3 rounded-lg bg-sentinel-accent/10 border border-sentinel-accent/30 text-sentinel-accent hover:bg-sentinel-accent/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-3 rounded-lg bg-wiestell-accent/10 border border-wiestell-accent/30 text-wiestell-accent hover:bg-wiestell-accent/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
             <Send className="w-4 h-4" />
           </button>
         </div>
-        <p className="text-[10px] font-mono text-sentinel-text-muted mt-2 text-center">
+        <p className="text-[10px] font-mono text-wiestell-text-muted mt-2 text-center">
           Powered by Groq / Llama 3.3 70B. Responses are AI-generated and should be verified.
         </p>
       </div>

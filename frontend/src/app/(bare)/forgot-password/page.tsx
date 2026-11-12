@@ -45,9 +45,9 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-sentinel-bg-primary">
+    <div className="min-h-screen bg-wiestell-bg-primary">
       {/* Header */}
-      <header className="border-b border-sentinel-border bg-sentinel-bg-secondary/50 backdrop-blur-sm">
+      <header className="border-b border-wiestell-border bg-wiestell-bg-secondary/50 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center">
             <Image
@@ -62,13 +62,13 @@ export default function ForgotPasswordPage() {
           <div className="flex gap-3">
             <Link
               href="/about"
-              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+              className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
             >
               About
             </Link>
             <Link
               href="/contact"
-              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+              className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
             >
               Contact Us
             </Link>
@@ -79,7 +79,7 @@ export default function ForgotPasswordPage() {
                     const dashboardPath = user.role === 'admin' ? '/dashboard' : '/analytics';
                     router.push(dashboardPath);
                   }}
-                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                  className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
                 >
                   Dashboard
                 </button>
@@ -88,7 +88,7 @@ export default function ForgotPasswordPage() {
                     logout();
                     router.push('/');
                   }}
-                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors flex items-center gap-1"
+                  className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors flex items-center gap-1"
                 >
                   <LogOut className="w-4 h-4" />
                   Logout
@@ -98,7 +98,7 @@ export default function ForgotPasswordPage() {
               <>
                 <Link
                   href="/login"
-                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                  className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
                 >
                   Login
                 </Link>
@@ -110,13 +110,13 @@ export default function ForgotPasswordPage() {
 
       {/* Main Content */}
       <div className="flex items-center justify-center min-h-[calc(100vh-73px)] py-12">
-        <div className="sentinel-card w-full max-w-sm p-8 animate-fade-in">
+        <div className="wiestell-card w-full max-w-sm p-8 animate-fade-in">
           {/* Header */}
           <div className="text-center mb-6">
-            <h2 className="text-sm font-display font-semibold text-sentinel-text-primary mb-2">
+            <h2 className="text-sm font-display font-semibold text-wiestell-text-primary mb-2">
               Forgot Password?
             </h2>
-            <p className="text-xs font-mono text-sentinel-text-muted">
+            <p className="text-xs font-mono text-wiestell-text-muted">
               Enter your email to receive a password reset OTP
             </p>
           </div>
@@ -131,10 +131,10 @@ export default function ForgotPasswordPage() {
           <div className="space-y-4">
             <div className="flex flex-col items-center justify-center py-6">
               <CheckCircle2 className="w-12 h-12 text-green-500 mb-3" />
-              <p className="text-xs font-mono text-sentinel-text-primary text-center mb-2">
+              <p className="text-xs font-mono text-wiestell-text-primary text-center mb-2">
                 {message}
               </p>
-              <p className="text-xs font-mono text-sentinel-text-muted text-center">
+              <p className="text-xs font-mono text-wiestell-text-muted text-center">
                 Redirecting to reset password page...
               </p>
             </div>
@@ -142,18 +142,18 @@ export default function ForgotPasswordPage() {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">
+              <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">
                 Email Address
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sentinel-text-muted" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-wiestell-text-muted" />
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="your.email@example.com"
                   autoFocus
-                  className="w-full pl-10 pr-3 py-2.5 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40 transition-colors"
+                  className="w-full pl-10 pr-3 py-2.5 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40 transition-colors"
                 />
               </div>
             </div>
@@ -169,10 +169,10 @@ export default function ForgotPasswordPage() {
         )}
 
         {/* Back to Login */}
-        <div className="mt-6 pt-4 border-t border-sentinel-border">
+        <div className="mt-6 pt-4 border-t border-wiestell-border">
           <button
             onClick={() => router.push('/login')}
-            className="w-full flex items-center justify-center gap-2 text-xs font-mono text-sentinel-text-muted hover:text-sentinel-accent transition-colors"
+            className="w-full flex items-center justify-center gap-2 text-xs font-mono text-wiestell-text-muted hover:text-wiestell-accent transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             Back to Login

@@ -75,18 +75,18 @@ export default function ProfilePage() {
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-lg font-display font-bold text-sentinel-text-primary">User Management</h1>
-              <span className="px-2.5 py-0.5 rounded-full bg-sentinel-accent/10 border border-sentinel-accent/30 text-[10px] font-mono font-semibold text-sentinel-accent">
+              <h1 className="text-lg font-display font-bold text-wiestell-text-primary">User Management</h1>
+              <span className="px-2.5 py-0.5 rounded-full bg-wiestell-accent/10 border border-wiestell-accent/30 text-[10px] font-mono font-semibold text-wiestell-accent">
                 {users.length} {users.length === 1 ? 'USER' : 'USERS'}
               </span>
             </div>
-            <p className="text-xs font-mono text-sentinel-text-muted mt-0.5">
+            <p className="text-xs font-mono text-wiestell-text-muted mt-0.5">
               Register new users and manage profiles
             </p>
           </div>
           <button
             onClick={() => { setShowRegister(!showRegister); setError(''); setSuccess(''); }}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded bg-sentinel-accent/10 border border-sentinel-accent/30 text-sentinel-accent hover:bg-sentinel-accent/20 transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded bg-wiestell-accent/10 border border-wiestell-accent/30 text-wiestell-accent hover:bg-wiestell-accent/20 transition-colors"
           >
             <UserPlus className="w-3 h-3" />
             REGISTER USER
@@ -95,61 +95,61 @@ export default function ProfilePage() {
 
       {/* Status Messages */}
       {error && (
-        <div className="sentinel-card p-3 border-gray-300 bg-gray-200">
+        <div className="wiestell-card p-3 border-gray-300 bg-gray-200">
           <p className="text-xs font-mono text-gray-700">{error}</p>
         </div>
       )}
       {success && (
-        <div className="sentinel-card p-3 border-gray-400 bg-gray-300">
+        <div className="wiestell-card p-3 border-gray-400 bg-gray-300">
           <p className="text-xs font-mono text-gray-800">{success}</p>
         </div>
       )}
 
       {/* Registration Form */}
       {showRegister && (
-        <div className="sentinel-card p-5 animate-fade-in">
-          <h2 className="text-sm font-display font-semibold text-sentinel-text-primary mb-4">New User Registration</h2>
+        <div className="wiestell-card p-5 animate-fade-in">
+          <h2 className="text-sm font-display font-semibold text-wiestell-text-primary mb-4">New User Registration</h2>
           <form onSubmit={handleRegister} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Email *</label>
+                <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">Email *</label>
                 <input
                   type="email"
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   placeholder="user@example.com"
                   autoFocus
-                  className="w-full px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40"
+                  className="w-full px-3 py-2 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40"
                 />
               </div>
               <div>
-                <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Full Name</label>
+                <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">Full Name</label>
                 <input
                   type="text"
                   value={form.full_name}
                   onChange={(e) => setForm({ ...form, full_name: e.target.value })}
                   placeholder="e.g., John Smith"
-                  className="w-full px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40"
+                  className="w-full px-3 py-2 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40"
                 />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Password *</label>
+                <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">Password *</label>
                 <input
                   type="password"
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                   placeholder="Min 6 characters"
-                  className="w-full px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40"
+                  className="w-full px-3 py-2 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40"
                 />
               </div>
               <div>
-                <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Role</label>
+                <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">Role</label>
                 <select
                   value={form.role}
                   onChange={(e) => setForm({ ...form, role: e.target.value })}
-                  className="w-full px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40"
+                  className="w-full px-3 py-2 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40"
                 >
                   <option value="analyst">Analyst</option>
                   <option value="admin">Admin</option>
@@ -160,14 +160,14 @@ export default function ProfilePage() {
               <button
                 type="submit"
                 disabled={registering}
-                className="px-4 py-2 rounded bg-sentinel-accent/10 border border-sentinel-accent/30 text-sentinel-accent text-xs font-mono font-semibold hover:bg-sentinel-accent/20 disabled:opacity-30 transition-colors"
+                className="px-4 py-2 rounded bg-wiestell-accent/10 border border-wiestell-accent/30 text-wiestell-accent text-xs font-mono font-semibold hover:bg-wiestell-accent/20 disabled:opacity-30 transition-colors"
               >
                 {registering ? 'REGISTERING...' : 'REGISTER'}
               </button>
               <button
                 type="button"
                 onClick={() => setShowRegister(false)}
-                className="px-4 py-2 rounded border border-sentinel-border text-xs font-mono text-sentinel-text-secondary hover:text-sentinel-text-primary transition-colors"
+                className="px-4 py-2 rounded border border-wiestell-border text-xs font-mono text-wiestell-text-secondary hover:text-wiestell-text-primary transition-colors"
               >
                 CANCEL
               </button>
@@ -180,40 +180,40 @@ export default function ProfilePage() {
       {loading ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="sentinel-card p-5 animate-pulse">
-              <div className="h-4 w-48 bg-sentinel-bg-tertiary rounded mb-2" />
-              <div className="h-3 w-64 bg-sentinel-bg-tertiary rounded" />
+            <div key={i} className="wiestell-card p-5 animate-pulse">
+              <div className="h-4 w-48 bg-wiestell-bg-tertiary rounded mb-2" />
+              <div className="h-3 w-64 bg-wiestell-bg-tertiary rounded" />
             </div>
           ))}
         </div>
       ) : users.length === 0 ? (
-        <div className="sentinel-card p-12 text-center">
-          <User className="w-10 h-10 text-sentinel-text-muted mx-auto mb-3" />
-          <p className="text-sentinel-text-muted text-sm font-mono">No users registered yet</p>
-          <p className="text-sentinel-text-muted text-xs font-mono mt-1">Click &quot;Register User&quot; to create the first account</p>
+        <div className="wiestell-card p-12 text-center">
+          <User className="w-10 h-10 text-wiestell-text-muted mx-auto mb-3" />
+          <p className="text-wiestell-text-muted text-sm font-mono">No users registered yet</p>
+          <p className="text-wiestell-text-muted text-xs font-mono mt-1">Click &quot;Register User&quot; to create the first account</p>
         </div>
       ) : (
         <div className="space-y-3">
           {users.map((user, i) => (
             <div
               key={user.id}
-              className="sentinel-card p-5 animate-fade-in"
+              className="wiestell-card p-5 animate-fade-in"
               style={{ animationDelay: `${i * 40}ms` }}
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-sentinel-accent/10 border border-sentinel-accent/20 flex items-center justify-center">
-                    <User className="w-4 h-4 text-sentinel-accent" />
+                  <div className="w-8 h-8 rounded-full bg-wiestell-accent/10 border border-wiestell-accent/20 flex items-center justify-center">
+                    <User className="w-4 h-4 text-wiestell-accent" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-mono font-semibold text-sentinel-text-primary">
+                    <h3 className="text-sm font-mono font-semibold text-wiestell-text-primary">
                       {user.full_name || user.username}
                     </h3>
-                    <p className="text-[10px] font-mono text-sentinel-text-muted">@{user.username}</p>
+                    <p className="text-[10px] font-mono text-wiestell-text-muted">@{user.username}</p>
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-4 ml-11 text-[11px] font-mono text-sentinel-text-muted">
+              <div className="flex items-center gap-4 ml-11 text-[11px] font-mono text-wiestell-text-muted">
                 <span className="flex items-center gap-1">
                   <Mail className="w-3 h-3" />
                   {user.email}

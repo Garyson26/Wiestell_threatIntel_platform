@@ -45,9 +45,9 @@ export default function GeoThreatMap({ data, loading }: GeoThreatMapProps) {
   const maxCount = Math.max(...data.map(d => d.count), 1);
 
   return (
-    <div className="sentinel-card">
-      <div className="px-5 py-3 border-b border-sentinel-border">
-        <h3 className="text-xs font-mono font-semibold uppercase tracking-widest text-sentinel-text-muted">
+    <div className="wiestell-card">
+      <div className="px-5 py-3 border-b border-wiestell-border">
+        <h3 className="text-xs font-mono font-semibold uppercase tracking-widest text-wiestell-text-muted">
           GEOGRAPHIC DISTRIBUTION
         </h3>
       </div>
@@ -56,13 +56,13 @@ export default function GeoThreatMap({ data, loading }: GeoThreatMapProps) {
           <div className="space-y-3 animate-pulse">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="flex items-center gap-3">
-                <div className="w-16 h-3 bg-sentinel-bg-tertiary rounded" />
-                <div className="flex-1 h-3 bg-sentinel-bg-tertiary rounded" />
+                <div className="w-16 h-3 bg-wiestell-bg-tertiary rounded" />
+                <div className="flex-1 h-3 bg-wiestell-bg-tertiary rounded" />
               </div>
             ))}
           </div>
         ) : data.length === 0 ? (
-          <div className="text-center py-8 text-sentinel-text-muted text-xs font-mono">
+          <div className="text-center py-8 text-wiestell-text-muted text-xs font-mono">
             Geographic data will appear after IP-based IOCs are enriched
           </div>
         ) : (
@@ -72,10 +72,10 @@ export default function GeoThreatMap({ data, loading }: GeoThreatMapProps) {
                 <span className="text-base leading-none flex-shrink-0" title={countryName(item.country)}>
                   {countryFlag(item.country)}
                 </span>
-                <span className="text-[10px] font-mono text-sentinel-text-secondary w-20 flex-shrink-0 truncate" title={countryName(item.country)}>
+                <span className="text-[10px] font-mono text-wiestell-text-secondary w-20 flex-shrink-0 truncate" title={countryName(item.country)}>
                   {countryName(item.country)}
                 </span>
-                <div className="flex-1 h-3 bg-sentinel-bg-primary rounded overflow-hidden">
+                <div className="flex-1 h-3 bg-wiestell-bg-primary rounded overflow-hidden">
                   <div
                     className="h-full rounded transition-all duration-500"
                     style={{
@@ -84,7 +84,7 @@ export default function GeoThreatMap({ data, loading }: GeoThreatMapProps) {
                     }}
                   />
                 </div>
-                <span className="text-[10px] font-mono text-sentinel-text-muted w-8 text-right flex-shrink-0">
+                <span className="text-[10px] font-mono text-wiestell-text-muted w-8 text-right flex-shrink-0">
                   {item.count}
                 </span>
               </div>

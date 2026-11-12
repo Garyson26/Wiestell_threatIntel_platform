@@ -186,7 +186,7 @@ export default function FeedsPage() {
       case 'api': return 'text-gray-700 bg-gray-200 border-gray-300';
       case 'csv': return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
       case 'stix': return 'text-purple-400 bg-purple-500/10 border-purple-500/20';
-      default: return 'text-sentinel-text-muted bg-sentinel-bg-tertiary border-sentinel-border';
+      default: return 'text-wiestell-text-muted bg-wiestell-bg-tertiary border-wiestell-border';
     }
   };
 
@@ -200,7 +200,7 @@ export default function FeedsPage() {
   const iocBarWidth = (count: number) => Math.max(2, (count / stats.maxIOC) * 100);
 
   const iocBarColor = (count: number) => {
-    if (count > 10000) return 'bg-sentinel-accent';
+    if (count > 10000) return 'bg-wiestell-accent';
     if (count > 1000) return 'bg-gray-600';
     if (count > 0) return 'bg-emerald-500';
     return 'bg-slate-600';
@@ -218,8 +218,8 @@ export default function FeedsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-display font-bold text-sentinel-text-primary">Threat Feeds</h1>
-          <p className="text-xs font-mono text-sentinel-text-muted mt-0.5">
+          <h1 className="text-lg font-display font-bold text-wiestell-text-primary">Threat Feeds</h1>
+          <p className="text-xs font-mono text-wiestell-text-muted mt-0.5">
             Manage and monitor threat intelligence feed sources
           </p>
         </div>
@@ -227,21 +227,21 @@ export default function FeedsPage() {
           <button
             onClick={handleSyncAll}
             disabled={syncingAll}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded border border-sentinel-accent/30 bg-sentinel-accent/5 text-sentinel-accent hover:bg-sentinel-accent/15 disabled:opacity-30 transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded border border-wiestell-accent/30 bg-wiestell-accent/5 text-wiestell-accent hover:bg-wiestell-accent/15 disabled:opacity-30 transition-colors"
           >
             <Zap className={cn('w-3 h-3', syncingAll && 'animate-pulse')} />
             {syncingAll ? 'SYNCING ALL...' : 'SYNC ALL'}
           </button>
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded bg-sentinel-accent/10 border border-sentinel-accent/30 text-sentinel-accent hover:bg-sentinel-accent/20 transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded bg-wiestell-accent/10 border border-wiestell-accent/30 text-wiestell-accent hover:bg-wiestell-accent/20 transition-colors"
           >
             <Plus className="w-3 h-3" />
             ADD FEED
           </button>
           <button
             onClick={loadFeeds}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded border border-sentinel-border text-sentinel-text-secondary hover:text-sentinel-accent hover:border-sentinel-accent/30 transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded border border-wiestell-border text-wiestell-text-secondary hover:text-wiestell-accent hover:border-wiestell-accent/30 transition-colors"
           >
             <RefreshCw className="w-3 h-3" />
             REFRESH
@@ -253,15 +253,15 @@ export default function FeedsPage() {
       {!loading && feeds.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { label: 'Total Feeds', value: stats.total, icon: <Rss className="w-4 h-4" />, accent: 'text-sentinel-accent' },
+            { label: 'Total Feeds', value: stats.total, icon: <Rss className="w-4 h-4" />, accent: 'text-wiestell-accent' },
             { label: 'Active Feeds', value: stats.active, icon: <Activity className="w-4 h-4" />, accent: 'text-emerald-400' },
             { label: 'Total IOCs Ingested', value: formatNumber(stats.totalIOCs), icon: <Database className="w-4 h-4" />, accent: 'text-gray-700' },
             { label: 'Healthy Syncs', value: `${stats.healthy}/${stats.total}`, icon: <CheckCircle2 className="w-4 h-4" />, accent: stats.failed > 0 ? 'text-amber-400' : 'text-emerald-400' },
           ].map((s, i) => (
-            <div key={i} className="sentinel-card p-4 animate-fade-in" style={{ animationDelay: `${i * 50}ms` }}>
+            <div key={i} className="wiestell-card p-4 animate-fade-in" style={{ animationDelay: `${i * 50}ms` }}>
               <div className="flex items-center justify-between mb-2">
                 <span className={cn('opacity-60', s.accent)}>{s.icon}</span>
-                <span className="text-[9px] font-mono text-sentinel-text-muted uppercase tracking-wider">{s.label}</span>
+                <span className="text-[9px] font-mono text-wiestell-text-muted uppercase tracking-wider">{s.label}</span>
               </div>
               <p className={cn('text-xl font-display font-bold', s.accent)}>{s.value}</p>
             </div>
@@ -271,25 +271,25 @@ export default function FeedsPage() {
 
       {/* Filters Row */}
       {!loading && feeds.length > 0 && (
-        <div className="sentinel-card p-3 animate-fade-in">
+        <div className="wiestell-card p-3 animate-fade-in">
           <div className="flex flex-wrap items-center gap-3">
             {/* Search */}
-            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded bg-sentinel-bg-primary border border-sentinel-border focus-within:border-sentinel-accent/40 transition-colors flex-1 min-w-[180px] max-w-xs">
-              <Search className="w-3.5 h-3.5 text-sentinel-text-muted flex-shrink-0" />
+            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded bg-wiestell-bg-primary border border-wiestell-border focus-within:border-wiestell-accent/40 transition-colors flex-1 min-w-[180px] max-w-xs">
+              <Search className="w-3.5 h-3.5 text-wiestell-text-muted flex-shrink-0" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search feeds..."
-                className="bg-transparent text-xs font-mono text-sentinel-text-primary placeholder:text-sentinel-text-muted w-full outline-none"
+                className="bg-transparent text-xs font-mono text-wiestell-text-primary placeholder:text-wiestell-text-muted w-full outline-none"
               />
             </div>
 
-            <div className="h-5 w-px bg-sentinel-border" />
+            <div className="h-5 w-px bg-wiestell-border" />
 
             {/* Type Filter */}
             <div className="flex items-center gap-1">
-              <Filter className="w-3 h-3 text-sentinel-text-muted mr-1" />
+              <Filter className="w-3 h-3 text-wiestell-text-muted mr-1" />
               {(['all', 'api', 'csv', 'stix', 'custom'] as FilterType[]).map(t => (
                 <button
                   key={t}
@@ -297,8 +297,8 @@ export default function FeedsPage() {
                   className={cn(
                     'px-2 py-1 text-[10px] font-mono uppercase rounded transition-colors',
                     filterType === t
-                      ? 'bg-sentinel-accent/15 text-sentinel-accent border border-sentinel-accent/30'
-                      : 'text-sentinel-text-muted hover:text-sentinel-text-secondary border border-transparent'
+                      ? 'bg-wiestell-accent/15 text-wiestell-accent border border-wiestell-accent/30'
+                      : 'text-wiestell-text-muted hover:text-wiestell-text-secondary border border-transparent'
                   )}
                 >
                   {t}
@@ -306,7 +306,7 @@ export default function FeedsPage() {
               ))}
             </div>
 
-            <div className="h-5 w-px bg-sentinel-border" />
+            <div className="h-5 w-px bg-wiestell-border" />
 
             {/* Status Filter */}
             <div className="flex items-center gap-1">
@@ -324,8 +324,8 @@ export default function FeedsPage() {
                   className={cn(
                     'px-2 py-1 text-[10px] font-mono rounded transition-colors',
                     filterStatus === s.key
-                      ? 'bg-sentinel-accent/15 text-sentinel-accent border border-sentinel-accent/30'
-                      : 'text-sentinel-text-muted hover:text-sentinel-text-secondary border border-transparent'
+                      ? 'bg-wiestell-accent/15 text-wiestell-accent border border-wiestell-accent/30'
+                      : 'text-wiestell-text-muted hover:text-wiestell-text-secondary border border-transparent'
                   )}
                 >
                   {s.label}
@@ -337,7 +337,7 @@ export default function FeedsPage() {
 
             {/* Sort */}
             <div className="flex items-center gap-1">
-              <BarChart3 className="w-3 h-3 text-sentinel-text-muted mr-1" />
+              <BarChart3 className="w-3 h-3 text-wiestell-text-muted mr-1" />
               {([
                 { key: 'name', label: 'Name' },
                 { key: 'ioc_count', label: 'IOCs' },
@@ -349,8 +349,8 @@ export default function FeedsPage() {
                   className={cn(
                     'px-2 py-1 text-[10px] font-mono rounded transition-colors',
                     sortBy === s.key
-                      ? 'bg-sentinel-accent/15 text-sentinel-accent border border-sentinel-accent/30'
-                      : 'text-sentinel-text-muted hover:text-sentinel-text-secondary border border-transparent'
+                      ? 'bg-wiestell-accent/15 text-wiestell-accent border border-wiestell-accent/30'
+                      : 'text-wiestell-text-muted hover:text-wiestell-text-secondary border border-transparent'
                   )}
                 >
                   {s.label}
@@ -365,30 +365,30 @@ export default function FeedsPage() {
       {loading ? (
         <div className="space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="sentinel-card p-5 animate-pulse">
+            <div key={i} className="wiestell-card p-5 animate-pulse">
               <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-lg bg-sentinel-bg-tertiary" />
+                <div className="w-10 h-10 rounded-lg bg-wiestell-bg-tertiary" />
                 <div className="flex-1 space-y-2">
-                  <div className="h-4 w-40 bg-sentinel-bg-tertiary rounded" />
-                  <div className="h-3 w-64 bg-sentinel-bg-tertiary rounded" />
+                  <div className="h-4 w-40 bg-wiestell-bg-tertiary rounded" />
+                  <div className="h-3 w-64 bg-wiestell-bg-tertiary rounded" />
                 </div>
-                <div className="h-3 w-20 bg-sentinel-bg-tertiary rounded" />
+                <div className="h-3 w-20 bg-wiestell-bg-tertiary rounded" />
               </div>
             </div>
           ))}
         </div>
       ) : feeds.length === 0 ? (
-        <div className="sentinel-card p-12 text-center">
-          <Rss className="w-10 h-10 text-sentinel-text-muted mx-auto mb-3" />
-          <p className="text-sentinel-text-muted text-sm font-mono">No feeds configured</p>
-          <p className="text-sentinel-text-muted text-xs font-mono mt-1">
+        <div className="wiestell-card p-12 text-center">
+          <Rss className="w-10 h-10 text-wiestell-text-muted mx-auto mb-3" />
+          <p className="text-wiestell-text-muted text-sm font-mono">No feeds configured</p>
+          <p className="text-wiestell-text-muted text-xs font-mono mt-1">
             Click &quot;ADD FEED&quot; to add a threat intelligence source
           </p>
         </div>
       ) : filteredFeeds.length === 0 ? (
-        <div className="sentinel-card p-8 text-center">
-          <Filter className="w-8 h-8 text-sentinel-text-muted mx-auto mb-2" />
-          <p className="text-sentinel-text-muted text-xs font-mono">No feeds match your filters</p>
+        <div className="wiestell-card p-8 text-center">
+          <Filter className="w-8 h-8 text-wiestell-text-muted mx-auto mb-2" />
+          <p className="text-wiestell-text-muted text-xs font-mono">No feeds match your filters</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -400,9 +400,9 @@ export default function FeedsPage() {
               <div
                 key={feed.id}
                 className={cn(
-                  'sentinel-card overflow-hidden animate-fade-in transition-all duration-200',
+                  'wiestell-card overflow-hidden animate-fade-in transition-all duration-200',
                   !feed.is_enabled && 'opacity-60',
-                  isExpanded && 'ring-1 ring-sentinel-accent/20'
+                  isExpanded && 'ring-1 ring-wiestell-accent/20'
                 )}
                 style={{ animationDelay: `${i * 30}ms` }}
               >
@@ -420,7 +420,7 @@ export default function FeedsPage() {
                     {/* Name & Description */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
-                        <h3 className="text-sm font-mono font-semibold text-sentinel-text-primary truncate">{feed.name}</h3>
+                        <h3 className="text-sm font-mono font-semibold text-wiestell-text-primary truncate">{feed.name}</h3>
                         <span className={cn(
                           'text-[9px] font-mono uppercase px-1.5 py-0.5 rounded border flex-shrink-0',
                           feedTypeColor(feed.feed_type)
@@ -428,7 +428,7 @@ export default function FeedsPage() {
                           {feed.feed_type}
                         </span>
                       </div>
-                      <p className="text-[10px] font-mono text-sentinel-text-muted truncate">
+                      <p className="text-[10px] font-mono text-wiestell-text-muted truncate">
                         {feed.description || 'No description'}
                       </p>
                     </div>
@@ -436,12 +436,12 @@ export default function FeedsPage() {
                     {/* IOC Bar */}
                     <div className="w-32 flex-shrink-0 hidden md:block">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-[9px] font-mono text-sentinel-text-muted">IOCs</span>
-                        <span className="text-[11px] font-mono font-semibold text-sentinel-text-primary">
+                        <span className="text-[9px] font-mono text-wiestell-text-muted">IOCs</span>
+                        <span className="text-[11px] font-mono font-semibold text-wiestell-text-primary">
                           {formatNumber(feed.ioc_count)}
                         </span>
                       </div>
-                      <div className="h-1.5 rounded-full bg-sentinel-bg-primary overflow-hidden">
+                      <div className="h-1.5 rounded-full bg-wiestell-bg-primary overflow-hidden">
                         <div
                           className={cn('h-full rounded-full transition-all duration-500', iocBarColor(feed.ioc_count))}
                           style={{ width: `${iocBarWidth(feed.ioc_count)}%` }}
@@ -456,7 +456,7 @@ export default function FeedsPage() {
                         <span className={cn('text-[9px] font-mono font-semibold uppercase block', status.color)}>
                           {status.label}
                         </span>
-                        <span className="text-[9px] font-mono text-sentinel-text-muted">
+                        <span className="text-[9px] font-mono text-wiestell-text-muted">
                           {feed.last_sync_at ? formatTimestamp(feed.last_sync_at) : '—'}
                         </span>
                       </div>
@@ -470,7 +470,7 @@ export default function FeedsPage() {
                           'p-1.5 rounded transition-colors',
                           feed.is_enabled
                             ? 'text-emerald-400 hover:bg-emerald-400/10'
-                            : 'text-sentinel-text-muted hover:bg-sentinel-bg-hover'
+                            : 'text-wiestell-text-muted hover:bg-wiestell-bg-hover'
                         )}
                         title={feed.is_enabled ? 'Disable feed' : 'Enable feed'}
                       >
@@ -479,14 +479,14 @@ export default function FeedsPage() {
                       <button
                         onClick={() => handleSync(feed.id)}
                         disabled={syncing === feed.id || !feed.is_enabled}
-                        className="p-1.5 rounded text-sentinel-text-muted hover:text-sentinel-accent hover:bg-sentinel-accent/10 disabled:opacity-30 transition-colors"
+                        className="p-1.5 rounded text-wiestell-text-muted hover:text-wiestell-accent hover:bg-wiestell-accent/10 disabled:opacity-30 transition-colors"
                         title="Sync now"
                       >
                         <RefreshCw className={cn('w-3.5 h-3.5', syncing === feed.id && 'animate-spin')} />
                       </button>
                       <button
                         onClick={() => setExpanded(isExpanded ? null : feed.id)}
-                        className="p-1.5 rounded text-sentinel-text-muted hover:text-sentinel-text-primary hover:bg-sentinel-bg-hover transition-colors"
+                        className="p-1.5 rounded text-wiestell-text-muted hover:text-wiestell-text-primary hover:bg-wiestell-bg-hover transition-colors"
                         title="Details"
                       >
                         {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -512,11 +512,11 @@ export default function FeedsPage() {
       {/* Add Feed Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="sentinel-card w-full max-w-lg p-6 animate-fade-in max-h-[90vh] overflow-y-auto">
+          <div className="wiestell-card w-full max-w-lg p-6 animate-fade-in max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-sm font-display font-bold text-sentinel-text-primary">Add Feed Source</h2>
-              <button onClick={() => setShowAddModal(false)} className="p-1 rounded hover:bg-sentinel-bg-hover transition-colors">
-                <X className="w-4 h-4 text-sentinel-text-muted" />
+              <h2 className="text-sm font-display font-bold text-wiestell-text-primary">Add Feed Source</h2>
+              <button onClick={() => setShowAddModal(false)} className="p-1 rounded hover:bg-wiestell-bg-hover transition-colors">
+                <X className="w-4 h-4 text-wiestell-text-muted" />
               </button>
             </div>
 
@@ -529,41 +529,41 @@ export default function FeedsPage() {
             <form onSubmit={handleAddFeed} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Name *</label>
+                  <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">Name *</label>
                   <input
                     type="text"
                     value={addForm.name}
                     onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
                     placeholder="e.g., My Custom Feed"
-                    className="w-full px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40"
+                    className="w-full px-3 py-2 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Slug *</label>
+                  <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">Slug *</label>
                   <input
                     type="text"
                     value={addForm.slug}
                     onChange={(e) => setAddForm({ ...addForm, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })}
                     placeholder="e.g., my-custom-feed"
-                    className="w-full px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40"
+                    className="w-full px-3 py-2 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Description</label>
+                <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">Description</label>
                 <input
                   type="text"
                   value={addForm.description}
                   onChange={(e) => setAddForm({ ...addForm, description: e.target.value })}
                   placeholder="Brief description of the feed source"
-                  className="w-full px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40"
+                  className="w-full px-3 py-2 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Feed Type *</label>
+                  <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">Feed Type *</label>
                   <div className="grid grid-cols-4 gap-1">
                     {['api', 'csv', 'stix', 'custom'].map(t => (
                       <button
@@ -574,7 +574,7 @@ export default function FeedsPage() {
                           'py-1.5 rounded text-[10px] font-mono uppercase border transition-colors',
                           addForm.feed_type === t
                             ? feedTypeColor(t) + ' font-semibold'
-                            : 'border-sentinel-border text-sentinel-text-muted hover:text-sentinel-text-secondary'
+                            : 'border-wiestell-border text-wiestell-text-muted hover:text-wiestell-text-secondary'
                         )}
                       >
                         {t}
@@ -583,11 +583,11 @@ export default function FeedsPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Sync Frequency</label>
+                  <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">Sync Frequency</label>
                   <select
                     value={addForm.sync_frequency}
                     onChange={(e) => setAddForm({ ...addForm, sync_frequency: Number(e.target.value) })}
-                    className="w-full px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40"
+                    className="w-full px-3 py-2 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40"
                   >
                     <option value={900}>15 minutes</option>
                     <option value={1800}>30 minutes</option>
@@ -600,24 +600,24 @@ export default function FeedsPage() {
               </div>
 
               <div>
-                <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Feed URL</label>
+                <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">Feed URL</label>
                 <input
                   type="text"
                   value={addForm.url}
                   onChange={(e) => setAddForm({ ...addForm, url: e.target.value })}
                   placeholder="https://..."
-                  className="w-full px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40"
+                  className="w-full px-3 py-2 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40"
                 />
               </div>
 
               <div>
-                <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">API Key Env Variable</label>
+                <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">API Key Env Variable</label>
                 <input
                   type="text"
                   value={addForm.api_key_env}
                   onChange={(e) => setAddForm({ ...addForm, api_key_env: e.target.value })}
                   placeholder="e.g., MY_FEED_API_KEY"
-                  className="w-full px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40"
+                  className="w-full px-3 py-2 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40"
                 />
               </div>
 
@@ -625,14 +625,14 @@ export default function FeedsPage() {
                 <button
                   type="submit"
                   disabled={adding}
-                  className="px-4 py-2 rounded bg-sentinel-accent/10 border border-sentinel-accent/30 text-sentinel-accent text-xs font-mono font-semibold hover:bg-sentinel-accent/20 disabled:opacity-30 transition-colors"
+                  className="px-4 py-2 rounded bg-wiestell-accent/10 border border-wiestell-accent/30 text-wiestell-accent text-xs font-mono font-semibold hover:bg-wiestell-accent/20 disabled:opacity-30 transition-colors"
                 >
                   {adding ? 'ADDING...' : 'ADD FEED'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 rounded border border-sentinel-border text-xs font-mono text-sentinel-text-secondary hover:text-sentinel-text-primary transition-colors"
+                  className="px-4 py-2 rounded border border-wiestell-border text-xs font-mono text-wiestell-text-secondary hover:text-wiestell-text-primary transition-colors"
                 >
                   CANCEL
                 </button>
@@ -661,11 +661,11 @@ function FeedDetailPanel({ feed, onDelete, deleting }: { feed: FeedSource; onDel
   }, [feed.id]);
 
   return (
-    <div className="border-t border-sentinel-border bg-sentinel-bg-primary/50 animate-fade-in">
+    <div className="border-t border-wiestell-border bg-wiestell-bg-primary/50 animate-fade-in">
       <div className="p-5 grid grid-cols-1 md:grid-cols-3 gap-5">
         {/* Configuration */}
         <div>
-          <h4 className="text-[10px] font-mono font-semibold text-sentinel-text-muted uppercase tracking-wider mb-3 flex items-center gap-1.5">
+          <h4 className="text-[10px] font-mono font-semibold text-wiestell-text-muted uppercase tracking-wider mb-3 flex items-center gap-1.5">
             <Settings2 className="w-3 h-3" />
             Configuration
           </h4>
@@ -679,8 +679,8 @@ function FeedDetailPanel({ feed, onDelete, deleting }: { feed: FeedSource; onDel
               { label: 'Status', value: feed.is_enabled ? 'Enabled' : 'Disabled' },
             ].map(row => (
               <div key={row.label} className="flex items-center justify-between">
-                <span className="text-[10px] font-mono text-sentinel-text-muted">{row.label}</span>
-                <span className="text-[10px] font-mono text-sentinel-text-secondary">{row.value}</span>
+                <span className="text-[10px] font-mono text-wiestell-text-muted">{row.label}</span>
+                <span className="text-[10px] font-mono text-wiestell-text-secondary">{row.value}</span>
               </div>
             ))}
           </div>
@@ -688,32 +688,32 @@ function FeedDetailPanel({ feed, onDelete, deleting }: { feed: FeedSource; onDel
 
         {/* Feed URL */}
         <div>
-          <h4 className="text-[10px] font-mono font-semibold text-sentinel-text-muted uppercase tracking-wider mb-3 flex items-center gap-1.5">
+          <h4 className="text-[10px] font-mono font-semibold text-wiestell-text-muted uppercase tracking-wider mb-3 flex items-center gap-1.5">
             <Globe className="w-3 h-3" />
             Feed Endpoint
           </h4>
           {feed.url ? (
-            <div className="p-2.5 rounded bg-sentinel-bg-primary border border-sentinel-border">
-              <p className="text-[10px] font-mono text-sentinel-text-secondary break-all leading-relaxed">{feed.url}</p>
+            <div className="p-2.5 rounded bg-wiestell-bg-primary border border-wiestell-border">
+              <p className="text-[10px] font-mono text-wiestell-text-secondary break-all leading-relaxed">{feed.url}</p>
               <a
                 href={feed.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 mt-2 text-[10px] font-mono text-sentinel-accent hover:underline"
+                className="inline-flex items-center gap-1 mt-2 text-[10px] font-mono text-wiestell-accent hover:underline"
               >
                 <ExternalLink className="w-2.5 h-2.5" />
                 Open URL
               </a>
             </div>
           ) : (
-            <p className="text-[10px] font-mono text-sentinel-text-muted italic">No URL configured</p>
+            <p className="text-[10px] font-mono text-wiestell-text-muted italic">No URL configured</p>
           )}
 
           {/* Config JSON */}
           {feed.config && Object.keys(feed.config).length > 0 && (
             <div className="mt-3">
-              <h4 className="text-[10px] font-mono font-semibold text-sentinel-text-muted uppercase tracking-wider mb-1.5">Extra Config</h4>
-              <pre className="text-[10px] font-mono text-sentinel-text-muted bg-sentinel-bg-primary border border-sentinel-border rounded p-2 overflow-auto max-h-24">
+              <h4 className="text-[10px] font-mono font-semibold text-wiestell-text-muted uppercase tracking-wider mb-1.5">Extra Config</h4>
+              <pre className="text-[10px] font-mono text-wiestell-text-muted bg-wiestell-bg-primary border border-wiestell-border rounded p-2 overflow-auto max-h-24">
                 {JSON.stringify(feed.config, null, 2)}
               </pre>
             </div>
@@ -722,22 +722,22 @@ function FeedDetailPanel({ feed, onDelete, deleting }: { feed: FeedSource; onDel
 
         {/* Sync Logs */}
         <div>
-          <h4 className="text-[10px] font-mono font-semibold text-sentinel-text-muted uppercase tracking-wider mb-3 flex items-center gap-1.5">
+          <h4 className="text-[10px] font-mono font-semibold text-wiestell-text-muted uppercase tracking-wider mb-3 flex items-center gap-1.5">
             <Clock className="w-3 h-3" />
             Sync History
           </h4>
           {loadingLogs ? (
             <div className="space-y-2">
               {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="h-6 bg-sentinel-bg-tertiary rounded animate-pulse" />
+                <div key={i} className="h-6 bg-wiestell-bg-tertiary rounded animate-pulse" />
               ))}
             </div>
           ) : logs.length === 0 ? (
-            <p className="text-[10px] font-mono text-sentinel-text-muted italic">No sync logs available</p>
+            <p className="text-[10px] font-mono text-wiestell-text-muted italic">No sync logs available</p>
           ) : (
             <div className="space-y-1.5">
               {logs.map((log, i) => (
-                <div key={i} className="flex items-center justify-between p-2 rounded bg-sentinel-bg-primary border border-sentinel-border">
+                <div key={i} className="flex items-center justify-between p-2 rounded bg-wiestell-bg-primary border border-wiestell-border">
                   <div className="flex items-center gap-2">
                     {log.status === 'success' ? (
                       <CheckCircle2 className="w-3 h-3 text-emerald-400" />
@@ -746,11 +746,11 @@ function FeedDetailPanel({ feed, onDelete, deleting }: { feed: FeedSource; onDel
                     ) : (
                       <MinusCircle className="w-3 h-3 text-slate-500" />
                     )}
-                    <span className="text-[10px] font-mono text-sentinel-text-secondary">
+                    <span className="text-[10px] font-mono text-wiestell-text-secondary">
                       {log.timestamp ? formatDate(log.timestamp) : 'No timestamp'}
                     </span>
                   </div>
-                  <span className="text-[10px] font-mono text-sentinel-text-muted">
+                  <span className="text-[10px] font-mono text-wiestell-text-muted">
                     {formatNumber(log.iocs_ingested)} IOCs
                   </span>
                 </div>
@@ -771,7 +771,7 @@ function FeedDetailPanel({ feed, onDelete, deleting }: { feed: FeedSource; onDel
           )}
 
           {/* Danger Zone */}
-          <div className="mt-4 pt-3 border-t border-sentinel-border">
+          <div className="mt-4 pt-3 border-t border-wiestell-border">
             {!confirmDelete ? (
               <button
                 onClick={() => setConfirmDelete(true)}
@@ -792,7 +792,7 @@ function FeedDetailPanel({ feed, onDelete, deleting }: { feed: FeedSource; onDel
                 </button>
                 <button
                   onClick={() => setConfirmDelete(false)}
-                  className="px-2 py-1 rounded text-[10px] font-mono text-sentinel-text-muted hover:text-sentinel-text-primary border border-sentinel-border transition-colors"
+                  className="px-2 py-1 rounded text-[10px] font-mono text-wiestell-text-muted hover:text-wiestell-text-primary border border-wiestell-border transition-colors"
                 >
                   CANCEL
                 </button>
