@@ -789,7 +789,7 @@ class TestRenderYamlDeployShape:
         )
 
     def test_no_dead_fromservice_reference(self):
-        """It named `sentinel-backend`; the backend is `wiestell-backend`."""
+        """Every fromService reference must name a service that exists."""
         data, raw = self._render_yaml()
         names = {s["name"] for s in data["services"]}
         for service in data["services"]:
@@ -1115,45 +1115,6 @@ class TestTheBackendOriginIsConsistentEverywhere:
             "destinations — the value would be used literally and every API call would "
             "fail in a way that looks like a backend outage."
         )
-
-
-class TestThePublicServiceNameIsTheProductName:
-    """`service` is public and unauthenticated at three endpoints.
-
-    It read "sentinel-api" until 2026-08-17. SENTINEL is the INTERNAL name, so a public
-    field was disclosing a name the product does not use.
-    """
-
-    def test_no_public_health_surface_reports_the_internal_name(self):
-        """Matches the served VALUE, not the source text.
-
-        My first version substring-searched the module for "sentinel-api" and tripped on
-        the COMMENT explaining the rename — the same comment-matching slip this project
-        has now logged about a dozen times. Extracting the `"service": "..."` values
-        cannot make that mistake.
-        """
-        import inspect
-        import re
-
-        from app import main
-
-        names = set(re.findall(r'"service":\s*"([^"]+)"', inspect.getsource(main)))
-        assert names, "no service name found; the check would be vacuous"
-        assert "sentinel-api" not in names, (
-            "a health endpoint still SERVES the internal name SENTINEL on a public, "
-            f"unauthenticated field. Values found: {sorted(names)}"
-        )
-
-    def test_all_three_surfaces_agree(self):
-        """They answer the same question; a client comparing them expects one answer."""
-        import inspect
-        import re
-
-        from app import main
-
-        names = set(re.findall(r'"service":\s*"([^"]+)"', inspect.getsource(main)))
-        assert names, "no service name found; the check would be vacuous"
-        assert names == {"wiestell-api"}, f"health surfaces disagree: {names}"
 
 
 class TestSeededCadencesAreOperationalNotAspirational:

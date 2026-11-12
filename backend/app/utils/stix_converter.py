@@ -61,7 +61,7 @@ def ioc_to_stix_indicator(ioc: Dict[str, Any]) -> Dict[str, Any]:
         "created": ioc.get("created_at", datetime.now(timezone.utc).isoformat()),
         "modified": ioc.get("updated_at", datetime.now(timezone.utc).isoformat()),
         "name": f"{ioc['type'].upper()} - {value}",
-        "description": f"Threat indicator from SENTINEL TIP. Score: {score}/100",
+        "description": f"Threat indicator from Wiestell TIP. Score: {score}/100",
         "indicator_types": _get_indicator_types(ioc),
         "pattern": pattern,
         "pattern_type": "stix",

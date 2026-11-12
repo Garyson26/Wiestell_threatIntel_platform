@@ -88,7 +88,7 @@ async def generate_daily_brief(session: AsyncSession) -> Report:
     report = Report(
         title=f"Daily Threat Brief - {now.strftime('%Y-%m-%d')}",
         report_type="daily_brief",
-        summary=f"SENTINEL Daily Brief: {new_count} new IOCs, {len(critical)} critical threats in the last 24 hours.",
+        summary=f"Wiestell Daily Brief: {new_count} new IOCs, {len(critical)} critical threats in the last 24 hours.",
         content=content,
         parameters={"date": now.isoformat()},
         generated_at=now,

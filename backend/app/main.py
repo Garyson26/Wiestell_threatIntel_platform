@@ -156,7 +156,7 @@ async def lifespan(app: FastAPI):
 _docs = settings.docs_enabled
 
 app = FastAPI(
-    title="SENTINEL — Threat Intelligence Platform",
+    title="Wiestell — Threat Intelligence Platform",
     description=(
         "Open-source threat intelligence platform that aggregates, enriches, "
         "and scores IOCs from multiple feeds."
