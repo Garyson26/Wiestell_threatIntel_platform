@@ -1,4 +1,4 @@
-"""SENTINEL Threat Intelligence Platform — FastAPI Application Entry Point."""
+"""Wiestell Threat Intelligence Platform — FastAPI Application Entry Point."""
 
 import traceback
 import uuid

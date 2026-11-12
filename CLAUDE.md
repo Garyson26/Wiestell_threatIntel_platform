@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Wiestell (internally "SENTINEL") is a Threat Intelligence Platform: a FastAPI backend that ingests IOCs from 10+ open-source threat feeds, enriches them (WHOIS/DNS/GeoIP/reputation/Shodan/MalwareBazaar), scores them 0–100, correlates them and maps them to MITRE ATT&CK — plus a Next.js SOC dashboard.
+Wiestell is a Threat Intelligence Platform: a FastAPI backend that ingests IOCs from 10+ open-source threat feeds, enriches them (WHOIS/DNS/GeoIP/reputation/Shodan/MalwareBazaar), scores them 0–100, correlates them and maps them to MITRE ATT&CK — plus a Next.js SOC dashboard.
 
 The project summary and security review this file used to point to were removed in `1acf081` and are no longer in the repository. Read [Authorization model](#authorization-model) below before touching auth.
 
