@@ -296,9 +296,9 @@ ALLOWED = [
 def _repository_files():
     """Every file that is, or could be committed as, part of the repository.
 
-    With git: tracked files plus untracked files that are not ignored. CI has no git
-    (the job runs in python:3.11.9-slim, so actions/checkout downloads a tarball with no
-    .git), and there the tree on disk is exactly the tracked files, so walk it.
+    With git: tracked files plus untracked files that are not ignored. Without it (a
+    tarball checkout, an image with no git, which was CI's state until git was installed
+    in the workflow container), the tree on disk is the tracked files, so walk it.
     """
     if (ROOT / ".git").exists() and shutil.which("git"):
         out = subprocess.run(
@@ -358,14 +358,14 @@ class TestNoOldNameAnywhereInTheRepository:
         assert not missing, f"files the scan must cover were not listed: {sorted(missing)}"
 
     @pytest.mark.skipif(shutil.which("git") is None or not (ROOT / ".git").exists(),
-                        reason="compares the CI walk against git; needs a git checkout")
-    def test_the_ci_walk_lists_every_tracked_file(self):
-        """CI takes the walk branch, so check that branch here, where git can vouch for it."""
+                        reason="compares the fallback walk against git; needs a git checkout")
+    def test_the_fallback_walk_lists_every_tracked_file(self):
+        """Wherever git is missing the walk is all there is, so check it where git can vouch."""
         tracked = subprocess.run(
             ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True,
         ).stdout.decode("utf-8").split("\0")
         missing = {p for p in tracked if p and (ROOT / p).is_file()} - set(_walk())
-        assert not missing, f"the walk CI uses would miss: {sorted(missing)[:10]}"
+        assert not missing, f"the fallback walk would miss: {sorted(missing)[:10]}"
 
     def test_the_old_name_appears_only_where_allowed(self):
         hits = _old_name_lines(_repository_files())
