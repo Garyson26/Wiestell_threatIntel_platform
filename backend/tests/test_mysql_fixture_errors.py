@@ -1,7 +1,7 @@
 """The MySQL tier must FAIL, not skip, when the server answers and refuses the login.
 
-`mysql_engine` skipped on any connection error. When the local credentials changed from
-sentinel to wiestell (2026-11-12), every developer whose volume predated the change got
+`mysql_engine` skipped on any connection error. When the local credentials were renamed
+on 2026-11-12, every developer whose volume predated the change got
 "Access denied" and the whole tier reported as skipped with "container unreachable",
 which reads as a pass. These run in the default tier, so they need no database.
 """

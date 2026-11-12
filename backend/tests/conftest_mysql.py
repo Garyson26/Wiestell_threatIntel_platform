@@ -75,10 +75,9 @@ def mysql_test_url() -> str:
 
 # The server ANSWERED and refused these credentials or this database. That is not
 # "unreachable", and skipping on it would report the whole tier as skipped, which reads
-# as a pass. The likeliest cause: the local credentials changed from sentinel to wiestell
-# on 2026-11-12, and MariaDB applies MARIADB_USER / MARIADB_PASSWORD / MARIADB_DATABASE
-# only when it first creates its data directory, so a volume created before then still
-# holds the old ones.
+# as a pass. The likeliest cause: the local credentials were renamed on 2026-11-12, and
+# MariaDB applies MARIADB_USER / MARIADB_PASSWORD / MARIADB_DATABASE only when it first
+# creates its data directory, so a volume created before then still holds the old ones.
 REFUSED_BY_SERVER = {1044, 1045, 1049}  # db access denied, access denied, unknown db
 
 STALE_VOLUME_REASON = (

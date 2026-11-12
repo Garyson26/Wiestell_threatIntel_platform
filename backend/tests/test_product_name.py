@@ -19,8 +19,10 @@ So this module guards the class, twice over:
 """
 
 import json
+import pathlib
 import re
-from datetime import datetime
+import shutil
+import subprocess
 
 import pytest
 
@@ -236,3 +238,155 @@ class TestEverySurfaceNamesTheProduct:
                 return []
 
         _names_the_product(_Probe().client.headers["user-agent"], "feed User-Agent")
+
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+THIS_FILE = pathlib.Path(__file__).resolve().relative_to(ROOT).as_posix()
+
+# Directories that are never part of the repository's content. Only used by the
+# fallback walk; `git ls-files` already excludes them.
+_SKIP_DIRS = {
+    ".git", "node_modules", ".next", "__pycache__", ".pytest_cache", ".mypy_cache",
+    ".ruff_cache", ".venv", "venv", "env", "build", "dist", "out", "coverage",
+}
+
+# (path, text the line contains, why the old name must stay there). Matched by line
+# content rather than number so unrelated edits do not break it. Every entry must
+# still match something: a stale entry fails, so the list cannot quietly grow.
+ALLOWED = [
+    # The rename's own history.
+    ("backend/app/feeds/base.py", 'Renamed from "SENTINEL-TIP/1.0" on',
+     "records the User-Agent rename"),
+    ("backend/app/feeds/base.py", "SENTINEL is the internal",
+     "records the User-Agent rename"),
+    ("backend/app/main.py", 'It read "sentinel-api" until 2026-08-17',
+     "records the health-endpoint rename"),
+    ("render.yaml", "A `sentinel-frontend` web service was declared here",
+     "records why the frontend service was removed"),
+    ("render.yaml", "service named `sentinel-backend`",
+     "records why the frontend service was removed"),
+    # Old wording still gets an answer.
+    ("frontend/src/app/(protected)/ai-assistant/page.tsx", "'how does sentinel work'",
+     "the assistant's phrase matcher, so old wording still gets an answer"),
+    ("frontend/src/app/(protected)/ai-assistant/page.tsx", "'how does sentinel'",
+     "the assistant's phrase matcher, so old wording still gets an answer"),
+    # Code that has to name the old values to do its job.
+    ("frontend/src/lib/storageKeys.ts", "these were `sentinel_token` and",
+     "the storage migration; remove with it"),
+    ("frontend/src/lib/storageKeys.ts", "`sentinel_user_activities`. Renaming a key",
+     "the storage migration; remove with it"),
+    ("frontend/src/lib/storageKeys.ts", "[TOKEN_KEY, 'sentinel_token']",
+     "the storage migration; remove with it"),
+    ("frontend/src/lib/storageKeys.ts", "[ACTIVITIES_KEY, 'sentinel_user_activities']",
+     "the storage migration; remove with it"),
+    ("frontend/src/lib/storageKeys.ts", "build writes `sentinel_token`",
+     "the storage migration; remove with it"),
+    ("backend/tests/conftest_mysql.py", "still holds the old sentinel credentials",
+     "tells a developer with a pre-rename volume what is in it"),
+    ("backend/tests/conftest_mysql.py", "MYSQL_TEST_URL=mysql+pymysql://root:sentinel@",
+     "tells a developer with a pre-rename volume how to keep using it"),
+    # Left deliberately: something outside the repository may match on them.
+    ("backend/app/main.py", 'logger.info("sentinel_starting"',
+     "log event; a log search or alert configured in Render's dashboard may match it"),
+    ("backend/app/main.py", 'logger.info("sentinel_shutting_down")',
+     "log event; a log search or alert configured in Render's dashboard may match it"),
+]
+
+
+def _repository_files():
+    """Every file that is, or could be committed as, part of the repository.
+
+    With git: tracked files plus untracked files that are not ignored. CI has no git
+    (the job runs in python:3.11.9-slim, so actions/checkout downloads a tarball with no
+    .git), and there the tree on disk is exactly the tracked files, so walk it.
+    """
+    if (ROOT / ".git").exists() and shutil.which("git"):
+        out = subprocess.run(
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            cwd=ROOT, capture_output=True, check=True,
+        ).stdout.decode("utf-8")
+        return sorted(p for p in out.split("\0") if p and (ROOT / p).is_file())
+    return _walk()
+
+
+def _walk():
+    found = []
+    for path in ROOT.rglob("*"):
+        rel = path.relative_to(ROOT)
+        if any(part in _SKIP_DIRS for part in rel.parts) or not path.is_file():
+            continue
+        found.append(rel.as_posix())
+    return sorted(found)
+
+
+def _old_name_lines(files):
+    """(path, line number, line) for every line naming the old name; binaries skipped."""
+    hits = []
+    for rel in files:
+        if rel == THIS_FILE:  # this guard has to name what it searches for
+            continue
+        data = (ROOT / rel).read_bytes()
+        if b"\0" in data[:8192]:
+            continue
+        for n, line in enumerate(data.decode("utf-8", errors="replace").splitlines(), 1):
+            if OLD_NAME.search(line):
+                hits.append((rel, n, line.strip()))
+    return hits
+
+
+class TestNoOldNameAnywhereInTheRepository:
+    #: Files that must be among those scanned, one per kind of file the old name has
+    #: lived in. Checked so a listing that silently shrinks fails rather than passing.
+    MUST_SCAN = {
+        "backend/app/main.py", "backend/alembic.ini", "backend/start.sh",
+        "backend/tests/conftest_mysql.py", "frontend/src/lib/storageKeys.ts",
+        "frontend/src/app/globals.css", "frontend/tailwind.config.ts",
+        "frontend/src/app/(protected)/ai-assistant/page.tsx", "docker-compose.yml",
+        "render.yaml", "README.md", "CLAUDE.md", "scripts/seed_feeds.py",
+        ".github/workflows/tests.yml",
+    }
+    #: Files in the repository on 2026-11-12: 243.
+    MIN_FILES = 240
+
+    def test_the_listing_covers_the_repository(self):
+        files = _repository_files()
+        assert len(files) >= self.MIN_FILES, (
+            f"only {len(files)} files listed; the scan would pass over a fraction of the "
+            "repository"
+        )
+        missing = self.MUST_SCAN - set(files)
+        assert not missing, f"files the scan must cover were not listed: {sorted(missing)}"
+
+    @pytest.mark.skipif(shutil.which("git") is None or not (ROOT / ".git").exists(),
+                        reason="compares the CI walk against git; needs a git checkout")
+    def test_the_ci_walk_lists_every_tracked_file(self):
+        """CI takes the walk branch, so check that branch here, where git can vouch for it."""
+        tracked = subprocess.run(
+            ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True,
+        ).stdout.decode("utf-8").split("\0")
+        missing = {p for p in tracked if p and (ROOT / p).is_file()} - set(_walk())
+        assert not missing, f"the walk CI uses would miss: {sorted(missing)[:10]}"
+
+    def test_the_old_name_appears_only_where_allowed(self):
+        hits = _old_name_lines(_repository_files())
+        assert hits, (
+            "no occurrence found at all, not even the allowlisted ones; the scan is not "
+            "reading files"
+        )
+        unexplained = [
+            f"{path}:{n}: {line[:120]}"
+            for path, n, line in hits
+            if not any(path == p and needle in line for p, needle, _ in ALLOWED)
+        ]
+        assert not unexplained, (
+            "SENTINEL is the old name. Use Wiestell, or if this occurrence must stay, add it "
+            "to ALLOWED with the reason:\n  " + "\n  ".join(unexplained)
+        )
+
+    def test_every_allowance_is_still_needed(self):
+        hits = _old_name_lines(_repository_files())
+        stale = [
+            (p, needle) for p, needle, _ in ALLOWED
+            if not any(path == p and needle in line for path, _, line in hits)
+        ]
+        assert not stale, f"ALLOWED entries that no longer match anything: {stale}"

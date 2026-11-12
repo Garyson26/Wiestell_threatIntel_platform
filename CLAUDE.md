@@ -127,7 +127,7 @@ verified via `docker inspect` (`Memory=536870912`, `NanoCpus=100000000`).
 
 `tests/conftest.py` sets the required env vars **before** importing `app` (config raises on a missing `DATABASE_URL` or a placeholder `SECRET_KEY`), and provides a `FakeSession` stub plus an `as_role("admin"|"analyst"|"viewer")` fixture that mints a token and overrides `get_db`. No test touches a real database — authorization resolves before any handler body runs, so 401/403 paths need no DB at all.
 
-What the suite pins down, i.e. what will break loudly if regressed: every route is guarded unless explicitly allowlisted; role boundaries; token forgery/`alg:none`/expiry/type; OTP hashing and purpose-binding; password policy; production `SECRET_KEY` refusal; wildcard-CORS stripping; secret redaction; the `api_key_env` allowlist (including the scheduler-level check); feed parsing and registry resolution; per-type enrichment sources; CSV formula escaping; AI prompt-role validation.
+What the suite pins down, i.e. what will break loudly if regressed: every route is guarded unless explicitly allowlisted; role boundaries; token forgery/`alg:none`/expiry/type; OTP hashing and purpose-binding; password policy; production `SECRET_KEY` refusal; wildcard-CORS stripping; secret redaction; the `api_key_env` allowlist (including the scheduler-level check); feed parsing and registry resolution; per-type enrichment sources; CSV formula escaping; AI prompt-role validation; the product name, both on every served surface and repo-wide (the old internal name may appear only where `tests/test_product_name.py::ALLOWED` gives a reason).
 
 ## Required environment
 
