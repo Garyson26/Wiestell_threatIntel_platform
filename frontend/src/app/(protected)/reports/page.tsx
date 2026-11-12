@@ -91,8 +91,8 @@ export default function ReportsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-display font-bold text-sentinel-text-primary">Reports</h1>
-          <p className="text-xs font-mono text-sentinel-text-muted mt-0.5">
+          <h1 className="text-lg font-display font-bold text-wiestell-text-primary">Reports</h1>
+          <p className="text-xs font-mono text-wiestell-text-muted mt-0.5">
             Threat intelligence reports and daily briefs
           </p>
         </div>
@@ -107,14 +107,14 @@ export default function ReportsPage() {
           </button>
           <button
             onClick={handleDailyBrief}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded border border-sentinel-border text-sentinel-text-secondary hover:text-sentinel-accent hover:border-sentinel-accent/30 transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded border border-wiestell-border text-wiestell-text-secondary hover:text-wiestell-accent hover:border-wiestell-accent/30 transition-colors"
           >
             <Calendar className="w-3 h-3" />
             DAILY BRIEF
           </button>
           <button
             onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded bg-sentinel-accent/10 border border-sentinel-accent/30 text-sentinel-accent hover:bg-sentinel-accent/20 transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded bg-wiestell-accent/10 border border-wiestell-accent/30 text-wiestell-accent hover:bg-wiestell-accent/20 transition-colors"
           >
             <Plus className="w-3 h-3" />
             NEW REPORT
@@ -125,36 +125,36 @@ export default function ReportsPage() {
       {loading ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="sentinel-card p-5 animate-pulse">
-              <div className="h-4 w-64 bg-sentinel-bg-tertiary rounded mb-2" />
-              <div className="h-3 w-96 bg-sentinel-bg-tertiary rounded" />
+            <div key={i} className="wiestell-card p-5 animate-pulse">
+              <div className="h-4 w-64 bg-wiestell-bg-tertiary rounded mb-2" />
+              <div className="h-3 w-96 bg-wiestell-bg-tertiary rounded" />
             </div>
           ))}
         </div>
       ) : reports.length === 0 ? (
-        <div className="sentinel-card p-12 text-center">
-          <FileText className="w-10 h-10 text-sentinel-text-muted mx-auto mb-3" />
-          <p className="text-sentinel-text-muted text-sm font-mono">No reports generated yet</p>
-          <p className="text-sentinel-text-muted text-xs font-mono mt-1">Create a custom report or generate a daily brief</p>
+        <div className="wiestell-card p-12 text-center">
+          <FileText className="w-10 h-10 text-wiestell-text-muted mx-auto mb-3" />
+          <p className="text-wiestell-text-muted text-sm font-mono">No reports generated yet</p>
+          <p className="text-wiestell-text-muted text-xs font-mono mt-1">Create a custom report or generate a daily brief</p>
         </div>
       ) : (
         <div className="space-y-3">
           {reports.map((report, i) => (
             <div
               key={report.id}
-              className="sentinel-card p-5 cursor-pointer hover:border-sentinel-border-hover transition-colors animate-fade-in"
+              className="wiestell-card p-5 cursor-pointer hover:border-wiestell-border-hover transition-colors animate-fade-in"
               style={{ animationDelay: `${i * 40}ms` }}
               onClick={() => setSelectedReport(report)}
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-3">
-                  <FileText className="w-4 h-4 text-sentinel-text-muted" />
-                  <h3 className="text-sm font-mono font-semibold text-sentinel-text-primary">{report.title}</h3>
+                  <FileText className="w-4 h-4 text-wiestell-text-muted" />
+                  <h3 className="text-sm font-mono font-semibold text-wiestell-text-primary">{report.title}</h3>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={(e) => handleDownload(report, e)}
-                    className="p-1 rounded text-sentinel-text-muted hover:text-sentinel-accent hover:bg-sentinel-accent/10 transition-colors"
+                    className="p-1 rounded text-wiestell-text-muted hover:text-wiestell-accent hover:bg-wiestell-accent/10 transition-colors"
                     title="Download TXT"
                   >
                     <Download className="w-3 h-3" />
@@ -165,15 +165,15 @@ export default function ReportsPage() {
                       AI
                     </span>
                   )}
-                  <span className="text-[10px] font-mono text-sentinel-text-muted uppercase px-2 py-0.5 rounded bg-sentinel-bg-primary border border-sentinel-border">
+                  <span className="text-[10px] font-mono text-wiestell-text-muted uppercase px-2 py-0.5 rounded bg-wiestell-bg-primary border border-wiestell-border">
                     {report.report_type}
                   </span>
                 </div>
               </div>
               {report.summary && (
-                <p className="text-xs font-mono text-sentinel-text-secondary ml-7">{report.summary}</p>
+                <p className="text-xs font-mono text-wiestell-text-secondary ml-7">{report.summary}</p>
               )}
-              <p className="text-[10px] font-mono text-sentinel-text-muted ml-7 mt-1">
+              <p className="text-[10px] font-mono text-wiestell-text-muted ml-7 mt-1">
                 Generated: {formatDate(report.generated_at)}
               </p>
             </div>
@@ -185,13 +185,13 @@ export default function ReportsPage() {
       <Modal isOpen={showCreate} onClose={() => setShowCreate(false)} title="Generate Report">
         <div className="space-y-4">
           <div>
-            <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Report Title</label>
+            <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">Report Title</label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g., Weekly Threat Summary"
-              className="w-full px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40"
+              className="w-full px-3 py-2 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40"
             />
           </div>
           <button
@@ -214,9 +214,9 @@ export default function ReportsPage() {
         {selectedReport && (
           <div className="space-y-4">
             {selectedReport.summary && (
-              <p className="text-xs font-mono text-sentinel-text-secondary">{selectedReport.summary}</p>
+              <p className="text-xs font-mono text-wiestell-text-secondary">{selectedReport.summary}</p>
             )}
-            <pre className="text-[11px] font-mono text-sentinel-text-secondary bg-sentinel-bg-primary rounded p-4 overflow-x-auto max-h-96">
+            <pre className="text-[11px] font-mono text-wiestell-text-secondary bg-wiestell-bg-primary rounded p-4 overflow-x-auto max-h-96">
               {JSON.stringify(selectedReport.content, null, 2)}
             </pre>
             <button

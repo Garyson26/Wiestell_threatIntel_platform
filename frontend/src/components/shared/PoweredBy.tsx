@@ -19,10 +19,10 @@ const threatSources: ThreatSource[] = [
 
 export function PoweredBy() {
   return (
-    <section className="py-8 border-t border-sentinel-border">
+    <section className="py-8 border-t border-wiestell-border">
       <div className="container mx-auto px-6">
         <div className="max-w-5xl mx-auto">
-          <p className="text-xs font-mono text-sentinel-text-muted text-center mb-4">
+          <p className="text-xs font-mono text-wiestell-text-muted text-center mb-4">
             Powered by open-source threat intelligence
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3">
@@ -32,9 +32,9 @@ export function PoweredBy() {
                 href={source.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="group px-4 py-2 rounded-md bg-sentinel-bg-secondary/50 border border-sentinel-border hover:border-sentinel-accent/40 transition-all duration-200 hover:bg-sentinel-bg-secondary"
+                className="group px-4 py-2 rounded-md bg-wiestell-bg-secondary/50 border border-wiestell-border hover:border-wiestell-accent/40 transition-all duration-200 hover:bg-wiestell-bg-secondary"
               >
-                <span className="text-xs font-mono text-sentinel-text-secondary group-hover:text-sentinel-accent transition-colors">
+                <span className="text-xs font-mono text-wiestell-text-secondary group-hover:text-wiestell-accent transition-colors">
                   {source.name}
                 </span>
               </a>

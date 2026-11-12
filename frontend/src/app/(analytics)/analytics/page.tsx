@@ -72,17 +72,17 @@ export default function AnalyticsDashboard() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-display font-bold text-sentinel-text-primary mb-2">
+          <h1 className="text-2xl font-display font-bold text-wiestell-text-primary mb-2">
             Analytics Dashboard
           </h1>
-          <p className="text-sentinel-text-secondary">
-            Welcome back, <span className="text-sentinel-accent">{user?.username}</span>
+          <p className="text-wiestell-text-secondary">
+            Welcome back, <span className="text-wiestell-accent">{user?.username}</span>
           </p>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-sentinel-border">
+      <div className="flex gap-1 border-b border-wiestell-border">
         {(['overview', 'external-sources'] as const).map((tab) => (
           <button
             key={tab}
@@ -90,8 +90,8 @@ export default function AnalyticsDashboard() {
             className={cn(
               'px-4 py-2 text-xs font-mono uppercase tracking-wider transition-colors border-b-2 -mb-px flex items-center gap-1.5',
               activeTab === tab
-                ? 'text-sentinel-accent border-sentinel-accent'
-                : 'text-sentinel-text-muted border-transparent hover:text-sentinel-text-secondary'
+                ? 'text-wiestell-accent border-wiestell-accent'
+                : 'text-wiestell-text-muted border-transparent hover:text-wiestell-text-secondary'
             )}
           >
             {tab === 'external-sources' && <ExternalLink className="w-3 h-3" />}
@@ -104,10 +104,10 @@ export default function AnalyticsDashboard() {
       {activeTab === 'external-sources' && (
         <div className="space-y-4">
           {lookupIOCs.length === 0 ? (
-            <div className="sentinel-card p-10 text-center">
-              <Database className="w-12 h-12 text-sentinel-text-muted mx-auto mb-3 opacity-40" />
-              <p className="text-sm font-mono text-sentinel-text-muted">No IOC activity yet</p>
-              <p className="text-xs font-mono text-sentinel-text-muted mt-1">
+            <div className="wiestell-card p-10 text-center">
+              <Database className="w-12 h-12 text-wiestell-text-muted mx-auto mb-3 opacity-40" />
+              <p className="text-sm font-mono text-wiestell-text-muted">No IOC activity yet</p>
+              <p className="text-xs font-mono text-wiestell-text-muted mt-1">
                 Search or submit IOCs to see external lookup links here
               </p>
             </div>
@@ -118,17 +118,17 @@ export default function AnalyticsDashboard() {
               return (
                 <div
                   key={activity.id}
-                  className="sentinel-card overflow-hidden animate-fade-in"
+                  className="wiestell-card overflow-hidden animate-fade-in"
                   style={{ animationDelay: `${idx * 40}ms` }}
                 >
                   {/* IOC identity row */}
-                  <div className="px-5 py-3 border-b border-sentinel-border flex items-center justify-between gap-3">
+                  <div className="px-5 py-3 border-b border-wiestell-border flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <Icon className="w-4 h-4 text-sentinel-text-muted flex-shrink-0" />
-                      <span className="font-mono text-xs text-sentinel-text-primary truncate">
+                      <Icon className="w-4 h-4 text-wiestell-text-muted flex-shrink-0" />
+                      <span className="font-mono text-xs text-wiestell-text-primary truncate">
                         {activity.iocValue}
                       </span>
-                      <span className="px-1.5 py-0.5 text-[9px] font-mono uppercase rounded bg-sentinel-bg-primary border border-sentinel-border text-sentinel-text-muted flex-shrink-0">
+                      <span className="px-1.5 py-0.5 text-[9px] font-mono uppercase rounded bg-wiestell-bg-primary border border-wiestell-border text-wiestell-text-muted flex-shrink-0">
                         {activity.iocType}
                       </span>
                     </div>
@@ -139,7 +139,7 @@ export default function AnalyticsDashboard() {
                       {activity.iocId && (
                         <button
                           onClick={() => router.push(`/ioc-detail/${activity.iocId}`)}
-                          className="px-2 py-1 rounded text-[10px] font-mono border border-sentinel-border text-sentinel-text-muted hover:text-sentinel-accent hover:border-sentinel-accent/30 transition-colors"
+                          className="px-2 py-1 rounded text-[10px] font-mono border border-wiestell-border text-wiestell-text-muted hover:text-wiestell-accent hover:border-wiestell-accent/30 transition-colors"
                         >
                           Detail
                         </button>
@@ -155,17 +155,17 @@ export default function AnalyticsDashboard() {
                         href={link.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center justify-between gap-2 px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border hover:border-sentinel-accent/40 hover:bg-sentinel-bg-hover transition-colors group"
+                        className="flex items-center justify-between gap-2 px-3 py-2 rounded bg-wiestell-bg-primary border border-wiestell-border hover:border-wiestell-accent/40 hover:bg-wiestell-bg-hover transition-colors group"
                       >
                         <div className="min-w-0">
-                          <p className="text-[11px] font-mono font-semibold text-sentinel-text-primary group-hover:text-sentinel-accent transition-colors">
+                          <p className="text-[11px] font-mono font-semibold text-wiestell-text-primary group-hover:text-wiestell-accent transition-colors">
                             {link.label}
                           </p>
-                          <p className="text-[9px] font-mono text-sentinel-text-muted truncate mt-0.5">
+                          <p className="text-[9px] font-mono text-wiestell-text-muted truncate mt-0.5">
                             {link.description}
                           </p>
                         </div>
-                        <ExternalLink className="w-3 h-3 text-sentinel-text-muted group-hover:text-sentinel-accent transition-colors flex-shrink-0" />
+                        <ExternalLink className="w-3 h-3 text-wiestell-text-muted group-hover:text-wiestell-accent transition-colors flex-shrink-0" />
                       </a>
                     ))}
                   </div>
@@ -181,39 +181,39 @@ export default function AnalyticsDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <button
           onClick={() => router.push('/ioc-search')}
-          className="sentinel-card p-6 hover:border-sentinel-accent/30 transition-all text-left group"
+          className="wiestell-card p-6 hover:border-wiestell-accent/30 transition-all text-left group"
         >
-          <Search className="w-8 h-8 text-sentinel-accent mb-3 group-hover:scale-110 transition-transform" />
-          <h3 className="text-sm font-display font-semibold text-sentinel-text-primary mb-1">
+          <Search className="w-8 h-8 text-wiestell-accent mb-3 group-hover:scale-110 transition-transform" />
+          <h3 className="text-sm font-display font-semibold text-wiestell-text-primary mb-1">
             Search IOCs
           </h3>
-          <p className="text-xs text-sentinel-text-muted">
+          <p className="text-xs text-wiestell-text-muted">
             Search and analyze threat indicators
           </p>
         </button>
 
         <button
           onClick={() => router.push('/submit')}
-          className="sentinel-card p-6 hover:border-sentinel-accent/30 transition-all text-left group"
+          className="wiestell-card p-6 hover:border-wiestell-accent/30 transition-all text-left group"
         >
-          <Upload className="w-8 h-8 text-sentinel-accent mb-3 group-hover:scale-110 transition-transform" />
-          <h3 className="text-sm font-display font-semibold text-sentinel-text-primary mb-1">
+          <Upload className="w-8 h-8 text-wiestell-accent mb-3 group-hover:scale-110 transition-transform" />
+          <h3 className="text-sm font-display font-semibold text-wiestell-text-primary mb-1">
             Submit IOCs
           </h3>
-          <p className="text-xs text-sentinel-text-muted">
+          <p className="text-xs text-wiestell-text-muted">
             Upload files or enter IOCs manually
           </p>
         </button>
 
         <button
           onClick={() => router.push('/history')}
-          className="sentinel-card p-6 hover:border-sentinel-accent/30 transition-all text-left group"
+          className="wiestell-card p-6 hover:border-wiestell-accent/30 transition-all text-left group"
         >
-          <Clock className="w-8 h-8 text-sentinel-accent mb-3 group-hover:scale-110 transition-transform" />
-          <h3 className="text-sm font-display font-semibold text-sentinel-text-primary mb-1">
+          <Clock className="w-8 h-8 text-wiestell-accent mb-3 group-hover:scale-110 transition-transform" />
+          <h3 className="text-sm font-display font-semibold text-wiestell-text-primary mb-1">
             View History
           </h3>
-          <p className="text-xs text-sentinel-text-muted">
+          <p className="text-xs text-wiestell-text-muted">
             Track your IOC analysis history
           </p>
         </button>
@@ -221,70 +221,70 @@ export default function AnalyticsDashboard() {
 
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="sentinel-card p-6">
+        <div className="wiestell-card p-6">
           <div className="flex items-center justify-between mb-3">
-            <Search className="w-8 h-8 text-sentinel-accent" />
+            <Search className="w-8 h-8 text-wiestell-accent" />
           </div>
-          <h3 className="text-sm font-mono text-sentinel-text-muted mb-1">
+          <h3 className="text-sm font-mono text-wiestell-text-muted mb-1">
             Your Searches
           </h3>
-          <p className="text-3xl font-bold text-sentinel-text-primary">
+          <p className="text-3xl font-bold text-wiestell-text-primary">
             {stats?.totalSearches || 0}
           </p>
-          <p className="text-xs text-sentinel-text-secondary mt-2">
+          <p className="text-xs text-wiestell-text-secondary mt-2">
             Total IOC searches performed
           </p>
         </div>
 
-        <div className="sentinel-card p-6">
+        <div className="wiestell-card p-6">
           <div className="flex items-center justify-between mb-3">
-            <FileUp className="w-8 h-8 text-sentinel-accent" />
+            <FileUp className="w-8 h-8 text-wiestell-accent" />
           </div>
-          <h3 className="text-sm font-mono text-sentinel-text-muted mb-1">
+          <h3 className="text-sm font-mono text-wiestell-text-muted mb-1">
             IOCs Submitted
           </h3>
-          <p className="text-3xl font-bold text-sentinel-text-primary">
+          <p className="text-3xl font-bold text-wiestell-text-primary">
             {stats?.totalSubmissions || 0}
           </p>
-          <p className="text-xs text-sentinel-text-secondary mt-2">
+          <p className="text-xs text-wiestell-text-secondary mt-2">
             IOCs analyzed by you
           </p>
         </div>
 
-        <div className="sentinel-card p-6">
+        <div className="wiestell-card p-6">
           <div className="flex items-center justify-between mb-3">
-            <Eye className="w-8 h-8 text-sentinel-accent" />
+            <Eye className="w-8 h-8 text-wiestell-accent" />
           </div>
-          <h3 className="text-sm font-mono text-sentinel-text-muted mb-1">
+          <h3 className="text-sm font-mono text-wiestell-text-muted mb-1">
             IOCs Viewed
           </h3>
-          <p className="text-3xl font-bold text-sentinel-text-primary">
+          <p className="text-3xl font-bold text-wiestell-text-primary">
             {stats?.totalViews || 0}
           </p>
-          <p className="text-xs text-sentinel-text-secondary mt-2">
+          <p className="text-xs text-wiestell-text-secondary mt-2">
             Detailed views accessed
           </p>
         </div>
 
-        <div className="sentinel-card p-6">
+        <div className="wiestell-card p-6">
           <div className="flex items-center justify-between mb-3">
-            <Shield className="w-8 h-8 text-sentinel-accent" />
+            <Shield className="w-8 h-8 text-wiestell-accent" />
           </div>
-          <h3 className="text-sm font-mono text-sentinel-text-muted mb-1">
+          <h3 className="text-sm font-mono text-wiestell-text-muted mb-1">
             Critical IOCs
           </h3>
-          <p className="text-3xl font-bold text-sentinel-text-primary">
+          <p className="text-3xl font-bold text-wiestell-text-primary">
             {stats?.criticalIOCs || 0}
           </p>
-          <p className="text-xs text-sentinel-danger mt-2">
+          <p className="text-xs text-wiestell-danger mt-2">
             High threat indicators
           </p>
         </div>
       </div>
 
       {/* Activity Trend */}
-      <div className="sentinel-card p-6">
-        <h2 className="text-lg font-display font-semibold text-sentinel-text-primary mb-4 flex items-center gap-2">
+      <div className="wiestell-card p-6">
+        <h2 className="text-lg font-display font-semibold text-wiestell-text-primary mb-4 flex items-center gap-2">
           <Activity className="w-5 h-5" />
           Your Activity (Last 7 Days)
         </h2>
@@ -296,15 +296,15 @@ export default function AnalyticsDashboard() {
               <div key={idx} className="flex-1 flex flex-col items-center gap-2">
                 <div className="flex-1 w-full flex items-end">
                   <div
-                    className="w-full bg-sentinel-accent/20 hover:bg-sentinel-accent/30 transition-colors rounded-t relative group"
+                    className="w-full bg-wiestell-accent/20 hover:bg-wiestell-accent/30 transition-colors rounded-t relative group"
                     style={{ height: `${height}%`, minHeight: day.count > 0 ? '4px' : '0' }}
                   >
-                    <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-sentinel-bg-primary border border-sentinel-border px-2 py-1 rounded text-xs font-mono opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                    <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-wiestell-bg-primary border border-wiestell-border px-2 py-1 rounded text-xs font-mono opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
                       {day.count} activities
                     </div>
                   </div>
                 </div>
-                <span className="text-[9px] font-mono text-sentinel-text-muted">
+                <span className="text-[9px] font-mono text-wiestell-text-muted">
                   {new Date(day.date).toLocaleDateString('en-US', { weekday: 'short' })}
                 </span>
               </div>
@@ -314,13 +314,13 @@ export default function AnalyticsDashboard() {
       </div>
 
       {/* Recent IOCs */}
-      <div className="sentinel-card overflow-hidden">
-        <div className="px-5 py-3 border-b border-sentinel-border flex items-center justify-between">
-          <h3 className="text-sm font-display font-semibold text-sentinel-text-primary flex items-center gap-2">
+      <div className="wiestell-card overflow-hidden">
+        <div className="px-5 py-3 border-b border-wiestell-border flex items-center justify-between">
+          <h3 className="text-sm font-display font-semibold text-wiestell-text-primary flex items-center gap-2">
             <Clock className="w-4 h-4" />
             Your Recent IOC Activity
           </h3>
-          <span className="text-xs font-mono text-sentinel-text-muted">
+          <span className="text-xs font-mono text-wiestell-text-muted">
             Last 10 items
           </span>
         </div>
@@ -329,13 +329,13 @@ export default function AnalyticsDashboard() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-sentinel-border">
-                  <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase tracking-wider text-sentinel-text-muted">Action</th>
-                  <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase tracking-wider text-sentinel-text-muted">IOC Value</th>
-                  <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase tracking-wider text-sentinel-text-muted">Type</th>
-                  <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase tracking-wider text-sentinel-text-muted">Threat Score</th>
-                  <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase tracking-wider text-sentinel-text-muted">Time</th>
-                  <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase tracking-wider text-sentinel-text-muted">Actions</th>
+                <tr className="border-b border-wiestell-border">
+                  <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase tracking-wider text-wiestell-text-muted">Action</th>
+                  <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase tracking-wider text-wiestell-text-muted">IOC Value</th>
+                  <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase tracking-wider text-wiestell-text-muted">Type</th>
+                  <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase tracking-wider text-wiestell-text-muted">Threat Score</th>
+                  <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase tracking-wider text-wiestell-text-muted">Time</th>
+                  <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase tracking-wider text-wiestell-text-muted">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -343,38 +343,38 @@ export default function AnalyticsDashboard() {
                   <tr
                     key={activity.id}
                     onClick={() => activity.iocId && router.push(`/ioc-detail/${activity.iocId}`)}
-                    className={`border-b border-sentinel-border/50 hover:bg-sentinel-bg-hover transition-colors ${activity.iocId ? 'cursor-pointer' : ''}`}
+                    className={`border-b border-wiestell-border/50 hover:bg-wiestell-bg-hover transition-colors ${activity.iocId ? 'cursor-pointer' : ''}`}
                   >
                     <td className="px-4 py-2.5">
                       <span className={`px-2 py-0.5 text-[9px] font-mono rounded uppercase ${
                         activity.type === 'submit'
-                          ? 'bg-sentinel-success/10 text-sentinel-success border border-sentinel-success/20'
-                          : 'bg-sentinel-accent/10 text-sentinel-accent border border-sentinel-accent/20'
+                          ? 'bg-wiestell-success/10 text-wiestell-success border border-wiestell-success/20'
+                          : 'bg-wiestell-accent/10 text-wiestell-accent border border-wiestell-accent/20'
                       }`}>
                         {activity.type}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary max-w-xs truncate">
+                    <td className="px-4 py-2.5 font-mono text-xs text-wiestell-text-primary max-w-xs truncate">
                       {activity.iocValue || '-'}
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-[10px] text-sentinel-text-muted uppercase">
+                    <td className="px-4 py-2.5 font-mono text-[10px] text-wiestell-text-muted uppercase">
                       {activity.iocType || '-'}
                     </td>
                     <td className="px-4 py-2.5">
                       {activity.threatScore !== undefined ? (
                         <ScoreBadge score={activity.threatScore} size="sm" />
                       ) : (
-                        <span className="text-xs text-sentinel-text-muted">-</span>
+                        <span className="text-xs text-wiestell-text-muted">-</span>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-[10px] text-sentinel-text-muted">
+                    <td className="px-4 py-2.5 font-mono text-[10px] text-wiestell-text-muted">
                       {formatTimestamp(activity.timestamp)}
                     </td>
                     <td className="px-4 py-2.5">
                       {activity.iocId && (
                         <button
                           onClick={() => router.push(`/ioc-detail/${activity.iocId}`)}
-                          className="px-2 py-1 rounded text-[10px] font-mono border border-sentinel-border text-sentinel-text-muted hover:text-sentinel-accent hover:border-sentinel-accent/30 transition-colors"
+                          className="px-2 py-1 rounded text-[10px] font-mono border border-wiestell-border text-wiestell-text-muted hover:text-wiestell-accent hover:border-wiestell-accent/30 transition-colors"
                         >
                           View
                         </button>
@@ -387,9 +387,9 @@ export default function AnalyticsDashboard() {
           </div>
         ) : (
           <div className="p-8 text-center">
-            <Database className="w-12 h-12 text-sentinel-text-muted mx-auto mb-3 opacity-50" />
-            <p className="text-sm font-mono text-sentinel-text-muted">No activity yet</p>
-            <p className="text-xs font-mono text-sentinel-text-muted mt-1">
+            <Database className="w-12 h-12 text-wiestell-text-muted mx-auto mb-3 opacity-50" />
+            <p className="text-sm font-mono text-wiestell-text-muted">No activity yet</p>
+            <p className="text-xs font-mono text-wiestell-text-muted mt-1">
               Start by searching or submitting IOCs to see your activity here
             </p>
           </div>

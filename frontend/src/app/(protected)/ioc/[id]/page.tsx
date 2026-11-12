@@ -124,10 +124,10 @@ export default function IOCDetailPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="h-6 w-48 bg-sentinel-bg-tertiary rounded animate-pulse" />
-        <div className="sentinel-card p-6 space-y-4 animate-pulse">
-          <div className="h-8 w-96 bg-sentinel-bg-tertiary rounded" />
-          <div className="h-4 w-64 bg-sentinel-bg-tertiary rounded" />
+        <div className="h-6 w-48 bg-wiestell-bg-tertiary rounded animate-pulse" />
+        <div className="wiestell-card p-6 space-y-4 animate-pulse">
+          <div className="h-8 w-96 bg-wiestell-bg-tertiary rounded" />
+          <div className="h-4 w-64 bg-wiestell-bg-tertiary rounded" />
         </div>
       </div>
     );
@@ -135,9 +135,9 @@ export default function IOCDetailPage() {
 
   if (error || !ioc) {
     return (
-      <div className="sentinel-card p-8 text-center">
-        <p className="text-sentinel-danger font-mono text-sm">{error || 'IOC not found'}</p>
-        <button onClick={() => router.back()} className="mt-4 text-xs font-mono text-sentinel-accent hover:underline">
+      <div className="wiestell-card p-8 text-center">
+        <p className="text-wiestell-danger font-mono text-sm">{error || 'IOC not found'}</p>
+        <button onClick={() => router.back()} className="mt-4 text-xs font-mono text-wiestell-accent hover:underline">
           Go back
         </button>
       </div>
@@ -152,28 +152,28 @@ export default function IOCDetailPage() {
       {/* Back Button */}
       <button
         onClick={() => router.back()}
-        className="flex items-center gap-2 text-xs font-mono text-sentinel-text-muted hover:text-sentinel-accent transition-colors"
+        className="flex items-center gap-2 text-xs font-mono text-wiestell-text-muted hover:text-wiestell-accent transition-colors"
       >
         <ArrowLeft className="w-3 h-3" /> Back to search
       </button>
 
       {/* IOC Header */}
-      <div className="sentinel-card p-6">
+      <div className="wiestell-card p-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="p-3 rounded bg-sentinel-bg-primary border border-sentinel-border">
+            <div className="p-3 rounded bg-wiestell-bg-primary border border-wiestell-border">
               <Icon className="w-6 h-6" style={{ color: scoreColor }} />
             </div>
             <div>
-              <p className="font-mono text-lg text-sentinel-text-primary break-all">{ioc.value}</p>
+              <p className="font-mono text-lg text-wiestell-text-primary break-all">{ioc.value}</p>
               <div className="flex items-center gap-3 mt-1">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-sentinel-text-muted px-2 py-0.5 rounded bg-sentinel-bg-primary border border-sentinel-border">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-wiestell-text-muted px-2 py-0.5 rounded bg-wiestell-bg-primary border border-wiestell-border">
                   {ioc.type}
                 </span>
-                <span className="text-[10px] font-mono text-sentinel-text-muted">
+                <span className="text-[10px] font-mono text-wiestell-text-muted">
                   {ioc.sighting_count} sightings
                 </span>
-                <span className="text-[10px] font-mono text-sentinel-text-muted">
+                <span className="text-[10px] font-mono text-wiestell-text-muted">
                   First: {formatDate(ioc.first_seen)}
                 </span>
               </div>
@@ -187,7 +187,7 @@ export default function IOCDetailPage() {
             <button
               onClick={handleEnrich}
               disabled={enriching}
-              className="px-3 py-2 rounded border border-sentinel-border text-xs font-mono text-sentinel-text-secondary hover:text-sentinel-accent hover:border-sentinel-accent/30 transition-colors disabled:opacity-50"
+              className="px-3 py-2 rounded border border-wiestell-border text-xs font-mono text-wiestell-text-secondary hover:text-wiestell-accent hover:border-wiestell-accent/30 transition-colors disabled:opacity-50"
             >
               <RefreshCw className={cn('w-3 h-3', enriching && 'animate-spin')} />
             </button>
@@ -197,9 +197,9 @@ export default function IOCDetailPage() {
         {/* Tags */}
         {ioc.tags && ioc.tags.length > 0 && (
           <div className="flex items-center gap-2 mt-4 flex-wrap">
-            <Tag className="w-3 h-3 text-sentinel-text-muted" />
+            <Tag className="w-3 h-3 text-wiestell-text-muted" />
             {ioc.tags.map((tag) => (
-              <span key={tag} className="px-2 py-0.5 text-[10px] font-mono rounded bg-sentinel-accent/10 text-sentinel-accent border border-sentinel-accent/20">
+              <span key={tag} className="px-2 py-0.5 text-[10px] font-mono rounded bg-wiestell-accent/10 text-wiestell-accent border border-wiestell-accent/20">
                 {tag}
               </span>
             ))}
@@ -209,7 +209,7 @@ export default function IOCDetailPage() {
         {/* MITRE Techniques */}
         {ioc.mitre_techniques && ioc.mitre_techniques.length > 0 && (
           <div className="flex items-center gap-2 mt-3 flex-wrap">
-            <ShieldAlert className="w-3 h-3 text-sentinel-text-muted" />
+            <ShieldAlert className="w-3 h-3 text-wiestell-text-muted" />
             {ioc.mitre_techniques.map((tech) => (
               <span key={tech} className="px-2 py-0.5 text-[10px] font-mono rounded bg-gray-200 text-gray-700 border border-gray-300">
                 {tech}
@@ -220,7 +220,7 @@ export default function IOCDetailPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-sentinel-border">
+      <div className="flex gap-1 border-b border-wiestell-border">
         {['enrichment', 'sources', 'relationships', 'raw', 'ai-analysis', 'external-sources'].map((tab) => (
           <button
             key={tab}
@@ -231,8 +231,8 @@ export default function IOCDetailPage() {
             className={cn(
               'px-4 py-2 text-xs font-mono uppercase tracking-wider transition-colors border-b-2 -mb-px flex items-center gap-1.5',
               activeTab === tab
-                ? 'text-sentinel-accent border-sentinel-accent'
-                : 'text-sentinel-text-muted border-transparent hover:text-sentinel-text-secondary'
+                ? 'text-wiestell-accent border-wiestell-accent'
+                : 'text-wiestell-text-muted border-transparent hover:text-wiestell-text-secondary'
             )}
           >
             {tab === 'ai-analysis' && <Sparkles className="w-3 h-3" />}
@@ -247,41 +247,41 @@ export default function IOCDetailPage() {
         {activeTab === 'enrichment' && (
           <div className="space-y-6">
             {ioc.enrichments.length === 0 ? (
-              <div className="sentinel-card p-8 text-center">
-                <p className="text-sentinel-text-muted text-sm font-mono">No enrichment data available</p>
-                <button onClick={handleEnrich} className="mt-3 text-xs font-mono text-sentinel-accent hover:underline">
+              <div className="wiestell-card p-8 text-center">
+                <p className="text-wiestell-text-muted text-sm font-mono">No enrichment data available</p>
+                <button onClick={handleEnrich} className="mt-3 text-xs font-mono text-wiestell-accent hover:underline">
                   Trigger enrichment
                 </button>
               </div>
             ) : (
               ioc.enrichments.map((e, i) => (
-                <div key={i} className="sentinel-card overflow-hidden">
-                  <div className="bg-sentinel-bg-secondary/50 px-4 py-2.5 border-b border-sentinel-border flex items-center justify-between">
-                    <h3 className="text-xs font-mono font-semibold uppercase tracking-wider text-sentinel-text-primary">{e.source}</h3>
-                    <span className="text-[10px] font-mono text-sentinel-text-muted">{formatTimestamp(e.enriched_at)}</span>
+                <div key={i} className="wiestell-card overflow-hidden">
+                  <div className="bg-wiestell-bg-secondary/50 px-4 py-2.5 border-b border-wiestell-border flex items-center justify-between">
+                    <h3 className="text-xs font-mono font-semibold uppercase tracking-wider text-wiestell-text-primary">{e.source}</h3>
+                    <span className="text-[10px] font-mono text-wiestell-text-muted">{formatTimestamp(e.enriched_at)}</span>
                   </div>
                   
                   {/* GeoIP Table */}
                   {e.source === 'geoip' && e.data && (
                     <table className="w-full">
                       <thead>
-                        <tr className="border-b border-sentinel-border/50 bg-sentinel-bg-primary/30">
-                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Field</th>
-                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Value</th>
+                        <tr className="border-b border-wiestell-border/50 bg-wiestell-bg-primary/30">
+                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-wiestell-text-muted">Field</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-wiestell-text-muted">Value</th>
                         </tr>
                       </thead>
                       <tbody>
                         {Object.entries(e.data).map(([key, value]) => (
-                          <tr key={key} className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
-                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted capitalize">{key.replace(/_/g, ' ')}</td>
-                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">
+                          <tr key={key} className="border-b border-wiestell-border/30 hover:bg-wiestell-bg-secondary/20">
+                            <td className="px-4 py-2.5 font-mono text-xs text-wiestell-text-muted capitalize">{key.replace(/_/g, ' ')}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-wiestell-text-primary">
                               {Array.isArray(value) ? (
                                 value.length === 0 ? (
-                                  <span className="text-sentinel-text-muted italic">Empty</span>
+                                  <span className="text-wiestell-text-muted italic">Empty</span>
                                 ) : (
                                   <div className="flex flex-wrap gap-1">
                                     {value.map((item, idx) => (
-                                      <span key={idx} className="px-2 py-0.5 bg-sentinel-bg-secondary/50 border border-sentinel-border/30 rounded text-[10px]">
+                                      <span key={idx} className="px-2 py-0.5 bg-wiestell-bg-secondary/50 border border-wiestell-border/30 rounded text-[10px]">
                                         {String(item)}
                                       </span>
                                     ))}
@@ -301,23 +301,23 @@ export default function IOCDetailPage() {
                   {e.source === 'whois' && e.data && (
                     <table className="w-full">
                       <thead>
-                        <tr className="border-b border-sentinel-border/50 bg-sentinel-bg-primary/30">
-                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Field</th>
-                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Value</th>
+                        <tr className="border-b border-wiestell-border/50 bg-wiestell-bg-primary/30">
+                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-wiestell-text-muted">Field</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-wiestell-text-muted">Value</th>
                         </tr>
                       </thead>
                       <tbody>
                         {Object.entries(e.data).map(([key, value]) => (
-                          <tr key={key} className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
-                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted capitalize">{key.replace(/_/g, ' ')}</td>
-                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">
+                          <tr key={key} className="border-b border-wiestell-border/30 hover:bg-wiestell-bg-secondary/20">
+                            <td className="px-4 py-2.5 font-mono text-xs text-wiestell-text-muted capitalize">{key.replace(/_/g, ' ')}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-wiestell-text-primary">
                               {Array.isArray(value) ? (
                                 value.length === 0 ? (
-                                  <span className="text-sentinel-text-muted italic">Empty</span>
+                                  <span className="text-wiestell-text-muted italic">Empty</span>
                                 ) : (
                                   <div className="flex flex-wrap gap-1">
                                     {value.map((item, idx) => (
-                                      <span key={idx} className="px-2 py-0.5 bg-sentinel-bg-secondary/50 border border-sentinel-border/30 rounded text-[10px]">
+                                      <span key={idx} className="px-2 py-0.5 bg-wiestell-bg-secondary/50 border border-wiestell-border/30 rounded text-[10px]">
                                         {String(item)}
                                       </span>
                                     ))}
@@ -337,17 +337,17 @@ export default function IOCDetailPage() {
                   {e.source === 'dns' && e.data && (
                     <table className="w-full">
                       <thead>
-                        <tr className="border-b border-sentinel-border/50 bg-sentinel-bg-primary/30">
-                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Record Type</th>
-                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Records</th>
+                        <tr className="border-b border-wiestell-border/50 bg-wiestell-bg-primary/30">
+                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-wiestell-text-muted">Record Type</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-wiestell-text-muted">Records</th>
                         </tr>
                       </thead>
                       <tbody>
                         {Object.entries(e.data).map(([recordType, records]) => 
                           Array.isArray(records) && records.length > 0 ? (
-                            <tr key={recordType} className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
-                              <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted uppercase">{recordType}</td>
-                              <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">
+                            <tr key={recordType} className="border-b border-wiestell-border/30 hover:bg-wiestell-bg-secondary/20">
+                              <td className="px-4 py-2.5 font-mono text-xs text-wiestell-text-muted uppercase">{recordType}</td>
+                              <td className="px-4 py-2.5 font-mono text-xs text-wiestell-text-primary">
                                 {records.map((r, idx) => (
                                   <div key={idx}>{String(r)}</div>
                                 ))}
@@ -364,28 +364,28 @@ export default function IOCDetailPage() {
                     <div>
                       <table className="w-full mb-4">
                         <thead>
-                          <tr className="border-b border-sentinel-border/50 bg-sentinel-bg-primary/30">
-                            <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Metric</th>
-                            <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Value</th>
+                          <tr className="border-b border-wiestell-border/50 bg-wiestell-bg-primary/30">
+                            <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-wiestell-text-muted">Metric</th>
+                            <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-wiestell-text-muted">Value</th>
                           </tr>
                         </thead>
                         <tbody>
-                          <tr className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
-                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted">Aggregate Score</td>
-                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary font-semibold">{String((e.data.aggregate_score as number) ?? 0)}</td>
+                          <tr className="border-b border-wiestell-border/30 hover:bg-wiestell-bg-secondary/20">
+                            <td className="px-4 py-2.5 font-mono text-xs text-wiestell-text-muted">Aggregate Score</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-wiestell-text-primary font-semibold">{String((e.data.aggregate_score as number) ?? 0)}</td>
                           </tr>
-                          <tr className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
-                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted">Sources Checked</td>
-                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">{String((e.data.sources_checked as number) ?? 0)}</td>
+                          <tr className="border-b border-wiestell-border/30 hover:bg-wiestell-bg-secondary/20">
+                            <td className="px-4 py-2.5 font-mono text-xs text-wiestell-text-muted">Sources Checked</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-wiestell-text-primary">{String((e.data.sources_checked as number) ?? 0)}</td>
                           </tr>
-                          <tr className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
-                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted">Sources Flagged</td>
-                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">{String((e.data.sources_flagged as number) ?? 0)}</td>
+                          <tr className="border-b border-wiestell-border/30 hover:bg-wiestell-bg-secondary/20">
+                            <td className="px-4 py-2.5 font-mono text-xs text-wiestell-text-muted">Sources Flagged</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-wiestell-text-primary">{String((e.data.sources_flagged as number) ?? 0)}</td>
                           </tr>
                           {e.data.note ? (
-                            <tr className="hover:bg-sentinel-bg-secondary/20">
-                              <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted">Note</td>
-                              <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-secondary italic">{String(e.data.note)}</td>
+                            <tr className="hover:bg-wiestell-bg-secondary/20">
+                              <td className="px-4 py-2.5 font-mono text-xs text-wiestell-text-muted">Note</td>
+                              <td className="px-4 py-2.5 font-mono text-xs text-wiestell-text-secondary italic">{String(e.data.note)}</td>
                             </tr>
                           ) : null}
                         </tbody>
@@ -394,19 +394,19 @@ export default function IOCDetailPage() {
                       {/* Reputation Details */}
                       {e.data.details && typeof e.data.details === 'object' && Object.keys(e.data.details as Record<string, unknown>).length > 0 ? (
                         <div className="px-4 pb-4">
-                          <h4 className="text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted mb-2">Source Details</h4>
+                          <h4 className="text-[10px] font-mono font-semibold uppercase text-wiestell-text-muted mb-2">Source Details</h4>
                           {Object.entries(e.data.details as Record<string, unknown>).map(([source, data]) => (
                             <div key={source} className="mb-4 last:mb-0">
-                              <div className="text-[10px] font-mono font-semibold uppercase text-sentinel-accent mb-1">{source}</div>
-                              <table className="w-full border border-sentinel-border/30 rounded">
+                              <div className="text-[10px] font-mono font-semibold uppercase text-wiestell-accent mb-1">{source}</div>
+                              <table className="w-full border border-wiestell-border/30 rounded">
                                 <tbody>
                                   {typeof data === 'object' && data !== null ? (
                                     Object.entries(data as Record<string, unknown>).map(([key, value]) => (
-                                      <tr key={key} className="border-b border-sentinel-border/20 last:border-0 hover:bg-sentinel-bg-secondary/10">
-                                        <td className="px-3 py-2 font-mono text-[10px] text-sentinel-text-muted w-1/3 capitalize">
+                                      <tr key={key} className="border-b border-wiestell-border/20 last:border-0 hover:bg-wiestell-bg-secondary/10">
+                                        <td className="px-3 py-2 font-mono text-[10px] text-wiestell-text-muted w-1/3 capitalize">
                                           {key.replace(/_/g, ' ')}
                                         </td>
-                                        <td className="px-3 py-2 font-mono text-[10px] text-sentinel-text-primary">
+                                        <td className="px-3 py-2 font-mono text-[10px] text-wiestell-text-primary">
                                           {typeof value === 'object' && value !== null
                                             ? JSON.stringify(value)
                                             : value === null || value === undefined
@@ -417,7 +417,7 @@ export default function IOCDetailPage() {
                                     ))
                                   ) : (
                                     <tr>
-                                      <td className="px-3 py-2 font-mono text-[10px] text-sentinel-text-secondary" colSpan={2}>
+                                      <td className="px-3 py-2 font-mono text-[10px] text-wiestell-text-secondary" colSpan={2}>
                                         {String(data)}
                                       </td>
                                     </tr>
@@ -435,23 +435,23 @@ export default function IOCDetailPage() {
                   {e.source === 'malwarebazaar' && e.data && (
                     <table className="w-full">
                       <thead>
-                        <tr className="border-b border-sentinel-border/50 bg-sentinel-bg-primary/30">
-                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Field</th>
-                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Value</th>
+                        <tr className="border-b border-wiestell-border/50 bg-wiestell-bg-primary/30">
+                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-wiestell-text-muted">Field</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-wiestell-text-muted">Value</th>
                         </tr>
                       </thead>
                       <tbody>
                         {Object.entries(e.data).map(([key, value]) => (
-                          <tr key={key} className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
-                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted capitalize">{key.replace(/_/g, ' ')}</td>
-                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">
+                          <tr key={key} className="border-b border-wiestell-border/30 hover:bg-wiestell-bg-secondary/20">
+                            <td className="px-4 py-2.5 font-mono text-xs text-wiestell-text-muted capitalize">{key.replace(/_/g, ' ')}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-wiestell-text-primary">
                               {Array.isArray(value) ? (
                                 value.length === 0 ? (
-                                  <span className="text-sentinel-text-muted italic">Empty</span>
+                                  <span className="text-wiestell-text-muted italic">Empty</span>
                                 ) : (
                                   <div className="flex flex-wrap gap-1">
                                     {value.map((item, idx) => (
-                                      <span key={idx} className="px-2 py-0.5 bg-sentinel-bg-secondary/50 border border-sentinel-border/30 rounded text-[10px]">
+                                      <span key={idx} className="px-2 py-0.5 bg-wiestell-bg-secondary/50 border border-wiestell-border/30 rounded text-[10px]">
                                         {String(item)}
                                       </span>
                                     ))}
@@ -479,23 +479,23 @@ export default function IOCDetailPage() {
                   {!['geoip', 'whois', 'dns', 'reputation', 'malwarebazaar', ...VULN_ENRICHMENT_SOURCES].includes(e.source) && e.data && (
                     <table className="w-full">
                       <thead>
-                        <tr className="border-b border-sentinel-border/50 bg-sentinel-bg-primary/30">
-                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Field</th>
-                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Value</th>
+                        <tr className="border-b border-wiestell-border/50 bg-wiestell-bg-primary/30">
+                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-wiestell-text-muted">Field</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-mono font-semibold uppercase text-wiestell-text-muted">Value</th>
                         </tr>
                       </thead>
                       <tbody>
                         {enrichmentEntries(e.source, e.data as Record<string, unknown>).map(([key, value]) => (
-                          <tr key={key} className="border-b border-sentinel-border/30 hover:bg-sentinel-bg-secondary/20">
-                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-muted capitalize">{formatEnrichmentField(e.source, key)}</td>
-                            <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">
+                          <tr key={key} className="border-b border-wiestell-border/30 hover:bg-wiestell-bg-secondary/20">
+                            <td className="px-4 py-2.5 font-mono text-xs text-wiestell-text-muted capitalize">{formatEnrichmentField(e.source, key)}</td>
+                            <td className="px-4 py-2.5 font-mono text-xs text-wiestell-text-primary">
                               {Array.isArray(value) ? (
                                 value.length === 0 ? (
-                                  <span className="text-sentinel-text-muted italic">Empty</span>
+                                  <span className="text-wiestell-text-muted italic">Empty</span>
                                 ) : (
                                   <div className="flex flex-wrap gap-1">
                                     {value.map((item, idx) => (
-                                      <span key={idx} className="px-2 py-0.5 bg-sentinel-bg-secondary/50 border border-sentinel-border/30 rounded text-[10px]">
+                                      <span key={idx} className="px-2 py-0.5 bg-wiestell-bg-secondary/50 border border-wiestell-border/30 rounded text-[10px]">
                                         {typeof item === 'object' && item !== null ? JSON.stringify(item) : String(item)}
                                       </span>
                                     ))}
@@ -504,7 +504,7 @@ export default function IOCDetailPage() {
                               ) : typeof value === 'object' && value !== null ? (
                                 <pre className="text-[10px] overflow-x-auto">{JSON.stringify(value, null, 2)}</pre>
                               ) : typeof value === 'boolean' ? (
-                                <span className={value ? 'text-red-400' : 'text-sentinel-text-muted'}>{value ? 'Yes' : 'No'}</span>
+                                <span className={value ? 'text-red-400' : 'text-wiestell-text-muted'}>{value ? 'Yes' : 'No'}</span>
                               ) : (
                                 String(value ?? 'N/A')
                               )}
@@ -521,22 +521,22 @@ export default function IOCDetailPage() {
         )}
 
         {activeTab === 'sources' && (
-          <div className="sentinel-card overflow-hidden">
+          <div className="wiestell-card overflow-hidden">
             {ioc.sources.length === 0 ? (
-              <div className="p-8 text-center text-sentinel-text-muted text-sm font-mono">No source information available</div>
+              <div className="p-8 text-center text-wiestell-text-muted text-sm font-mono">No source information available</div>
             ) : (
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-sentinel-border">
-                    <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Feed</th>
-                    <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Ingested</th>
+                  <tr className="border-b border-wiestell-border">
+                    <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase text-wiestell-text-muted">Feed</th>
+                    <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase text-wiestell-text-muted">Ingested</th>
                   </tr>
                 </thead>
                 <tbody>
                   {ioc.sources.map((s, i) => (
-                    <tr key={i} className="border-b border-sentinel-border/50">
-                      <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">{s.feed_name}</td>
-                      <td className="px-4 py-2.5 font-mono text-[10px] text-sentinel-text-muted">{formatTimestamp(s.ingested_at)}</td>
+                    <tr key={i} className="border-b border-wiestell-border/50">
+                      <td className="px-4 py-2.5 font-mono text-xs text-wiestell-text-primary">{s.feed_name}</td>
+                      <td className="px-4 py-2.5 font-mono text-[10px] text-wiestell-text-muted">{formatTimestamp(s.ingested_at)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -546,29 +546,29 @@ export default function IOCDetailPage() {
         )}
 
         {activeTab === 'relationships' && (
-          <div className="sentinel-card overflow-hidden">
+          <div className="wiestell-card overflow-hidden">
             {ioc.relationships.length === 0 ? (
-              <div className="p-8 text-center text-sentinel-text-muted text-sm font-mono">No relationships discovered yet</div>
+              <div className="p-8 text-center text-wiestell-text-muted text-sm font-mono">No relationships discovered yet</div>
             ) : (
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-sentinel-border">
-                    <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Related IOC</th>
-                    <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Type</th>
-                    <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Relationship</th>
-                    <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase text-sentinel-text-muted">Score</th>
+                  <tr className="border-b border-wiestell-border">
+                    <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase text-wiestell-text-muted">Related IOC</th>
+                    <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase text-wiestell-text-muted">Type</th>
+                    <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase text-wiestell-text-muted">Relationship</th>
+                    <th className="px-4 py-2.5 text-left text-[10px] font-mono font-semibold uppercase text-wiestell-text-muted">Score</th>
                   </tr>
                 </thead>
                 <tbody>
                   {ioc.relationships.map((r, i) => (
                     <tr
                       key={i}
-                      className="border-b border-sentinel-border/50 cursor-pointer hover:bg-sentinel-bg-hover transition-colors"
+                      className="border-b border-wiestell-border/50 cursor-pointer hover:bg-wiestell-bg-hover transition-colors"
                       onClick={() => router.push(`/ioc/${r.id}`)}
                     >
-                      <td className="px-4 py-2.5 font-mono text-xs text-sentinel-text-primary">{r.value}</td>
-                      <td className="px-4 py-2.5 font-mono text-[10px] text-sentinel-text-muted uppercase">{r.type}</td>
-                      <td className="px-4 py-2.5 font-mono text-[10px] text-sentinel-accent">{r.relationship_type}</td>
+                      <td className="px-4 py-2.5 font-mono text-xs text-wiestell-text-primary">{r.value}</td>
+                      <td className="px-4 py-2.5 font-mono text-[10px] text-wiestell-text-muted uppercase">{r.type}</td>
+                      <td className="px-4 py-2.5 font-mono text-[10px] text-wiestell-accent">{r.relationship_type}</td>
                       <td className="px-4 py-2.5"><ScoreBadge score={r.threat_score} size="sm" /></td>
                     </tr>
                   ))}
@@ -579,8 +579,8 @@ export default function IOCDetailPage() {
         )}
 
         {activeTab === 'raw' && (
-          <div className="sentinel-card p-5">
-            <pre className="text-[11px] font-mono text-sentinel-text-secondary bg-sentinel-bg-primary rounded p-4 overflow-x-auto max-h-[500px]">
+          <div className="wiestell-card p-5">
+            <pre className="text-[11px] font-mono text-wiestell-text-secondary bg-wiestell-bg-primary rounded p-4 overflow-x-auto max-h-[500px]">
               {JSON.stringify(ioc, null, 2)}
             </pre>
           </div>
@@ -589,25 +589,25 @@ export default function IOCDetailPage() {
         {activeTab === 'ai-analysis' && (
           <div className="space-y-4">
             {aiLoading ? (
-              <div className="sentinel-card p-8 text-center">
-                <Loader2 className="w-6 h-6 text-sentinel-accent animate-spin mx-auto mb-3" />
-                <p className="text-sm font-mono text-sentinel-text-muted">Generating AI analysis...</p>
-                <p className="text-[10px] font-mono text-sentinel-text-muted mt-1">This may take a few seconds</p>
+              <div className="wiestell-card p-8 text-center">
+                <Loader2 className="w-6 h-6 text-wiestell-accent animate-spin mx-auto mb-3" />
+                <p className="text-sm font-mono text-wiestell-text-muted">Generating AI analysis...</p>
+                <p className="text-[10px] font-mono text-wiestell-text-muted mt-1">This may take a few seconds</p>
               </div>
             ) : aiError ? (
-              <div className="sentinel-card p-8 text-center">
-                <p className="text-sentinel-danger text-sm font-mono">{aiError}</p>
-                <button onClick={handleAIAnalyze} className="mt-3 text-xs font-mono text-sentinel-accent hover:underline">
+              <div className="wiestell-card p-8 text-center">
+                <p className="text-wiestell-danger text-sm font-mono">{aiError}</p>
+                <button onClick={handleAIAnalyze} className="mt-3 text-xs font-mono text-wiestell-accent hover:underline">
                   Retry analysis
                 </button>
               </div>
             ) : aiAnalysis ? (
               <>
                 {/* Summary & Risk */}
-                <div className="sentinel-card p-5">
+                <div className="wiestell-card p-5">
                   <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-xs font-mono font-semibold uppercase tracking-wider text-sentinel-text-muted flex items-center gap-1.5">
-                      <Sparkles className="w-3 h-3 text-sentinel-accent" />
+                    <h3 className="text-xs font-mono font-semibold uppercase tracking-wider text-wiestell-text-muted flex items-center gap-1.5">
+                      <Sparkles className="w-3 h-3 text-wiestell-accent" />
                       AI Summary
                     </h3>
                     <div className="flex items-center gap-2">
@@ -622,35 +622,35 @@ export default function IOCDetailPage() {
                       </span>
                       <button
                         onClick={handleAIAnalyze}
-                        className="text-[10px] font-mono text-sentinel-accent hover:underline"
+                        className="text-[10px] font-mono text-wiestell-accent hover:underline"
                       >
                         Re-analyze
                       </button>
                     </div>
                   </div>
-                  <p className="text-xs font-mono text-sentinel-text-primary leading-relaxed">{aiAnalysis.summary}</p>
+                  <p className="text-xs font-mono text-wiestell-text-primary leading-relaxed">{aiAnalysis.summary}</p>
                 </div>
 
                 {/* Detailed Analysis */}
-                <div className="sentinel-card p-5">
-                  <h3 className="text-xs font-mono font-semibold uppercase tracking-wider text-sentinel-text-muted mb-3">
+                <div className="wiestell-card p-5">
+                  <h3 className="text-xs font-mono font-semibold uppercase tracking-wider text-wiestell-text-muted mb-3">
                     Detailed Analysis
                   </h3>
-                  <div className="text-xs font-mono text-sentinel-text-secondary leading-relaxed whitespace-pre-wrap">
+                  <div className="text-xs font-mono text-wiestell-text-secondary leading-relaxed whitespace-pre-wrap">
                     {aiAnalysis.analysis}
                   </div>
                 </div>
 
                 {/* Recommendations */}
                 {aiAnalysis.recommendations.length > 0 && (
-                  <div className="sentinel-card p-5">
-                    <h3 className="text-xs font-mono font-semibold uppercase tracking-wider text-sentinel-text-muted mb-3">
+                  <div className="wiestell-card p-5">
+                    <h3 className="text-xs font-mono font-semibold uppercase tracking-wider text-wiestell-text-muted mb-3">
                       Recommendations
                     </h3>
                     <ul className="space-y-2">
                       {aiAnalysis.recommendations.map((rec, i) => (
-                        <li key={i} className="flex items-start gap-2 text-xs font-mono text-sentinel-text-secondary">
-                          <span className="text-sentinel-accent mt-0.5 flex-shrink-0">{'>'}</span>
+                        <li key={i} className="flex items-start gap-2 text-xs font-mono text-wiestell-text-secondary">
+                          <span className="text-wiestell-accent mt-0.5 flex-shrink-0">{'>'}</span>
                           {rec}
                         </li>
                       ))}
@@ -659,10 +659,10 @@ export default function IOCDetailPage() {
                 )}
               </>
             ) : (
-              <div className="sentinel-card p-8 text-center">
-                <Sparkles className="w-6 h-6 text-sentinel-text-muted mx-auto mb-3" />
-                <p className="text-sm font-mono text-sentinel-text-muted">No AI analysis yet</p>
-                <button onClick={handleAIAnalyze} className="mt-3 text-xs font-mono text-sentinel-accent hover:underline">
+              <div className="wiestell-card p-8 text-center">
+                <Sparkles className="w-6 h-6 text-wiestell-text-muted mx-auto mb-3" />
+                <p className="text-sm font-mono text-wiestell-text-muted">No AI analysis yet</p>
+                <button onClick={handleAIAnalyze} className="mt-3 text-xs font-mono text-wiestell-accent hover:underline">
                   Generate AI analysis
                 </button>
               </div>
@@ -671,7 +671,7 @@ export default function IOCDetailPage() {
         )}
         {activeTab === 'external-sources' && (
           <div className="space-y-3">
-            <p className="text-[10px] font-mono text-sentinel-text-muted uppercase tracking-wider px-1">
+            <p className="text-[10px] font-mono text-wiestell-text-muted uppercase tracking-wider px-1">
               Open {ioc.value} in external intelligence platforms
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -681,17 +681,17 @@ export default function IOCDetailPage() {
                   href={link.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="sentinel-card p-4 flex items-start justify-between gap-3 hover:border-sentinel-accent/40 transition-colors group"
+                  className="wiestell-card p-4 flex items-start justify-between gap-3 hover:border-wiestell-accent/40 transition-colors group"
                 >
                   <div className="min-w-0">
-                    <p className="text-xs font-mono font-semibold text-sentinel-text-primary group-hover:text-sentinel-accent transition-colors">
+                    <p className="text-xs font-mono font-semibold text-wiestell-text-primary group-hover:text-wiestell-accent transition-colors">
                       {link.label}
                     </p>
-                    <p className="text-[10px] font-mono text-sentinel-text-muted mt-0.5 leading-relaxed">
+                    <p className="text-[10px] font-mono text-wiestell-text-muted mt-0.5 leading-relaxed">
                       {link.description}
                     </p>
                   </div>
-                  <ExternalLink className="w-3.5 h-3.5 text-sentinel-text-muted group-hover:text-sentinel-accent transition-colors flex-shrink-0 mt-0.5" />
+                  <ExternalLink className="w-3.5 h-3.5 text-wiestell-text-muted group-hover:text-wiestell-accent transition-colors flex-shrink-0 mt-0.5" />
                 </a>
               ))}
             </div>

@@ -4,20 +4,20 @@
 
 @theme {
   /* Colors */
-  --color-sentinel-bg-primary: #ffffff;
-  --color-sentinel-bg-secondary: #f5f5f5;
-  --color-sentinel-bg-tertiary: #ebebeb;
-  --color-sentinel-bg-hover: #e0e0e0;
-  --color-sentinel-border: #d4d4d4;
-  --color-sentinel-border-hover: #b3b3b3;
-  --color-sentinel-accent: #000000;
-  --color-sentinel-accent-secondary: #1a1a1a;
-  --color-sentinel-warning: #333333;
-  --color-sentinel-danger: #666666;
-  --color-sentinel-success: #2a2a2a;
-  --color-sentinel-text-primary: #000000;
-  --color-sentinel-text-secondary: #4a4a4a;
-  --color-sentinel-text-muted: #8c8c8c;
+  --color-wiestell-bg-primary: #ffffff;
+  --color-wiestell-bg-secondary: #f5f5f5;
+  --color-wiestell-bg-tertiary: #ebebeb;
+  --color-wiestell-bg-hover: #e0e0e0;
+  --color-wiestell-border: #d4d4d4;
+  --color-wiestell-border-hover: #b3b3b3;
+  --color-wiestell-accent: #000000;
+  --color-wiestell-accent-secondary: #1a1a1a;
+  --color-wiestell-warning: #333333;
+  --color-wiestell-danger: #666666;
+  --color-wiestell-success: #2a2a2a;
+  --color-wiestell-text-primary: #000000;
+  --color-wiestell-text-secondary: #4a4a4a;
+  --color-wiestell-text-muted: #8c8c8c;
 
   /* Font families */
   --font-family-display: 'Space Grotesk', sans-serif;
@@ -167,14 +167,14 @@ html, body {
 }
 
 /* Card hover effect */
-.sentinel-card {
+.wiestell-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 6px;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.sentinel-card:hover {
+.wiestell-card:hover {
   border-color: var(--border-hover);
   box-shadow: 0 0 15px rgba(0, 0, 0, 0.05);
 }

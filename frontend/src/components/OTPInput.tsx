@@ -183,7 +183,7 @@ export default function OTPInput({
           onKeyDown={(e) => handleKeyDown(index, e)}
           onPaste={handlePaste}
           onFocus={() => handleFocus(index)}
-          className="w-12 h-14 text-center text-2xl font-mono rounded bg-sentinel-bg-primary border border-sentinel-border text-sentinel-text-primary outline-none focus:border-sentinel-accent focus:ring-2 focus:ring-sentinel-accent/20 transition-all"
+          className="w-12 h-14 text-center text-2xl font-mono rounded bg-wiestell-bg-primary border border-wiestell-border text-wiestell-text-primary outline-none focus:border-wiestell-accent focus:ring-2 focus:ring-wiestell-accent/20 transition-all"
           aria-label={`Digit ${index + 1}`}
         />
       ))}

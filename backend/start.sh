@@ -4,7 +4,7 @@ set -e
 echo "Running database migrations..."
 alembic upgrade head
 
-echo "Starting SENTINEL API server..."
+echo "Starting Wiestell API server..."
 # --workers 1 is deliberate and load-bearing. uvicorn defaults to one worker, so this
 # declares the assumption rather than depending on the default. Four things assume a
 # single process per instance: the in-memory rate limiter (otherwise N independent

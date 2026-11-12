@@ -64,13 +64,13 @@ export default function Sidebar() {
   return (
     <aside
       className={cn(
-        'flex flex-col h-screen border-r border-sentinel-border transition-all duration-300',
-        'bg-sentinel-bg-secondary',
+        'flex flex-col h-screen border-r border-wiestell-border transition-all duration-300',
+        'bg-wiestell-bg-secondary',
         collapsed ? 'w-16' : 'w-60'
       )}
     >
       {/* Logo */}
-      <div className="flex items-center gap-3 px-4 py-5 border-b border-sentinel-border justify-center">
+      <div className="flex items-center gap-3 px-4 py-5 border-b border-wiestell-border justify-center">
         {!collapsed ? (
           <Link href="/" className="flex items-center">
           <Image
@@ -82,24 +82,24 @@ export default function Sidebar() {
           />
           </Link>
         ) : (
-          <div className="w-7 h-7 rounded bg-sentinel-accent/20 flex items-center justify-center">
-            <span className="text-sentinel-accent font-bold text-sm">W</span>
+          <div className="w-7 h-7 rounded bg-wiestell-accent/20 flex items-center justify-center">
+            <span className="text-wiestell-accent font-bold text-sm">W</span>
           </div>
         )}
       </div>
 
       {/* User Role Badge */}
       {/* {!collapsed && user && (
-        <div className="px-4 py-3 border-b border-sentinel-border">
+        <div className="px-4 py-3 border-b border-wiestell-border">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono text-sentinel-text-muted uppercase tracking-widest">
+            <span className="text-[10px] font-mono text-wiestell-text-muted uppercase tracking-widest">
               Role:
             </span>
             <span className={cn(
               'text-xs font-mono px-2 py-0.5 rounded',
               user.role === 'admin' 
-                ? 'bg-sentinel-accent/10 text-sentinel-accent border border-sentinel-accent/20'
-                : 'bg-sentinel-bg-tertiary text-sentinel-text-secondary border border-sentinel-border'
+                ? 'bg-wiestell-accent/10 text-wiestell-accent border border-wiestell-accent/20'
+                : 'bg-wiestell-bg-tertiary text-wiestell-text-secondary border border-wiestell-border'
             )}>
               {user.role.toUpperCase()}
             </span>
@@ -121,8 +121,8 @@ export default function Sidebar() {
                 className={cn(
                   'flex items-center gap-3 px-3 py-2.5 rounded text-sm font-mono transition-all duration-150',
                   isActive
-                    ? 'bg-sentinel-accent/10 text-sentinel-accent border border-sentinel-accent/20'
-                    : 'text-sentinel-text-secondary hover:text-sentinel-text-primary hover:bg-sentinel-bg-hover border border-transparent'
+                    ? 'bg-wiestell-accent/10 text-wiestell-accent border border-wiestell-accent/20'
+                    : 'text-wiestell-text-secondary hover:text-wiestell-text-primary hover:bg-wiestell-bg-hover border border-transparent'
                 )}
               >
                 <Icon className="w-4 h-4 flex-shrink-0" />
@@ -134,8 +134,8 @@ export default function Sidebar() {
 
       {/* System Status */}
       {/* {!collapsed && (
-        <div className="px-4 py-4 border-t border-sentinel-border space-y-2">
-          <p className="text-[10px] font-mono text-sentinel-text-muted uppercase tracking-widest">
+        <div className="px-4 py-4 border-t border-wiestell-border space-y-2">
+          <p className="text-[10px] font-mono text-wiestell-text-muted uppercase tracking-widest">
             System Status
           </p>
           <div className="space-y-1.5">
@@ -149,7 +149,7 @@ export default function Sidebar() {
       {/* Collapse Toggle */}
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="flex items-center justify-center py-3 border-t border-sentinel-border text-sentinel-text-muted hover:text-sentinel-text-primary transition-colors"
+        className="flex items-center justify-center py-3 border-t border-wiestell-border text-wiestell-text-muted hover:text-wiestell-text-primary transition-colors"
       >
         {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
       </button>
@@ -171,9 +171,9 @@ function StatusLine({
   return (
     <div className="flex items-center gap-2 text-xs font-mono">
       <span className="status-dot w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-      <Icon className="w-3 h-3 text-sentinel-text-muted" />
-      <span className="text-sentinel-text-muted">{label}:</span>
-      <span className="text-sentinel-text-secondary ml-auto">{value}</span>
+      <Icon className="w-3 h-3 text-wiestell-text-muted" />
+      <span className="text-wiestell-text-muted">{label}:</span>
+      <span className="text-wiestell-text-secondary ml-auto">{value}</span>
     </div>
   );
 }

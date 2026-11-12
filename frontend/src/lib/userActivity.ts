@@ -1,4 +1,5 @@
 import type { IOC } from './types';
+import { ACTIVITIES_KEY, readStorage, removeLegacy } from './storageKeys';
 
 export interface UserActivity {
   id: string;
@@ -23,7 +24,7 @@ export interface UserStats {
   lastActivityTime: string | null;
 }
 
-const STORAGE_KEY = 'sentinel_user_activities';
+const STORAGE_KEY = ACTIVITIES_KEY;
 const MAX_ACTIVITIES = 500; // Keep last 500 activities per user
 
 // Get all activities for a specific user
@@ -31,7 +32,7 @@ export function getUserActivities(userId: string): UserActivity[] {
   if (typeof window === 'undefined') return [];
   
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = readStorage(STORAGE_KEY);
     if (!stored) return [];
     
     const allActivities: UserActivity[] = JSON.parse(stored);
@@ -51,7 +52,7 @@ export function addUserActivity(
   if (typeof window === 'undefined') return;
   
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = readStorage(STORAGE_KEY);
     const allActivities: UserActivity[] = stored ? JSON.parse(stored) : [];
     
     const newActivity: UserActivity = {
@@ -162,7 +163,10 @@ export function clearUserActivities(userId: string): void {
   if (typeof window === 'undefined') return;
   
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = readStorage(STORAGE_KEY);
+    // Before the early return: a leftover under the old name would otherwise be migrated
+    // back on the next load, restoring history this call exists to discard.
+    removeLegacy(STORAGE_KEY);
     if (!stored) return;
     
     const allActivities: UserActivity[] = JSON.parse(stored);

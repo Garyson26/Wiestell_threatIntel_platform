@@ -249,36 +249,8 @@ services:
   # next.config.js -- so setting the env var alone does not repoint traffic.
 
 # ============================================================================
-# CRON JOBS - Scheduled Tasks
+# CRON JOBS
 # ============================================================================
-# Note: Render cron jobs require a paid plan. For free tier, use an external
-# service like cron-job.org pointing to your /api/v1/feeds/sync-all endpoint,
-# sending the CRON_SECRET value in an "X-Cron-Secret" header.
-#
-# Uncomment below if you have a paid plan. Render cron jobs are NOT available on free,
-# which is exactly why the live path is an external GitHub Actions schedule hitting
-# POST /api/v1/feeds/sync-all with X-Cron-Secret instead.
-# jobs:
-#   - type: cron
-#     name: daily-feed-sync
-#     plan: starter
-#     schedule: "0 0 * * *"  # Daily at midnight UTC
-#     buildCommand: pip install -r requirements.txt
-#     startCommand: |
-#       python -c "
-#       import httpx
-#       import asyncio
-#       async def sync():
-#         async with httpx.AsyncClient(timeout=300) as client:
-#           response = await client.post(
-#             'https://sentinel-backend.onrender.com/api/v1/feeds/sync-all',
-#             params={'force': 'true', 'enrich': 'true', 'enrich_limit': 100}
-#           )
-#           print(f'Status: {response.status_code}')
-#           print(f'Response: {response.text}')
-#       asyncio.run(sync())
-#       "
-#     rootDir: backend
-#     envVars:
-#       - key: PYTHON_VERSION
-#         value: 3.11.9
+# None. Render cron jobs are a paid feature. The live schedule is
+# .github/workflows/feed-sync.yml, which calls POST /api/v1/feeds/sync-all with
+# the X-Cron-Secret header.

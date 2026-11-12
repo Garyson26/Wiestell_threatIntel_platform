@@ -18,8 +18,8 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-sentinel-accent/30 border-t-sentinel-accent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-sentinel-text-muted font-mono text-sm">Loading...</p>
+          <div className="w-16 h-16 border-4 border-wiestell-accent/30 border-t-wiestell-accent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-wiestell-text-muted font-mono text-sm">Loading...</p>
         </div>
       </div>
     );

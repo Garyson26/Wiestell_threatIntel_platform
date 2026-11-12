@@ -173,8 +173,8 @@ export default function ContactPage() {
 
   if (isSuccess) {
     return (
-      <div className="min-h-screen bg-sentinel-bg-primary">
-        <header className="border-b border-sentinel-border bg-sentinel-bg-secondary/50 backdrop-blur-sm">
+      <div className="min-h-screen bg-wiestell-bg-primary">
+        <header className="border-b border-wiestell-border bg-wiestell-bg-secondary/50 backdrop-blur-sm">
           <div className="container mx-auto px-6 py-4 flex items-center justify-between">
             <Link href="/" className="flex items-center">
               <Image
@@ -189,13 +189,13 @@ export default function ContactPage() {
             <div className="flex gap-3">
               <Link
                 href="/about"
-                className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
               >
                 About
               </Link>
               <Link
                 href="/contact"
-                className="px-4 py-2 text-sm font-mono text-sentinel-accent hover:text-sentinel-accent transition-colors font-semibold"
+                className="px-4 py-2 text-sm font-mono text-wiestell-accent hover:text-wiestell-accent transition-colors font-semibold"
               >
                 Contact Us
               </Link>
@@ -206,7 +206,7 @@ export default function ContactPage() {
                       const dashboardPath = user.role === 'admin' ? '/dashboard' : '/analytics';
                       router.push(dashboardPath);
                     }}
-                    className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                    className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
                   >
                     Dashboard
                   </button>
@@ -215,7 +215,7 @@ export default function ContactPage() {
                       logout();
                       router.push('/');
                     }}
-                    className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors flex items-center gap-1"
+                    className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors flex items-center gap-1"
                   >
                     <LogOut className="w-4 h-4" />
                     Logout
@@ -225,7 +225,7 @@ export default function ContactPage() {
                 <>
                   <Link
                     href="/login"
-                    className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                    className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
                   >
                     Login
                   </Link>
@@ -237,26 +237,26 @@ export default function ContactPage() {
 
         <main className="container mx-auto px-6 py-12">
           <div className="max-w-2xl mx-auto">
-            <div className="sentinel-card p-10 text-center">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-sentinel-bg-secondary mb-6">
-                <CheckCircle className="w-8 h-8 text-sentinel-accent" />
+            <div className="wiestell-card p-10 text-center">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-wiestell-bg-secondary mb-6">
+                <CheckCircle className="w-8 h-8 text-wiestell-accent" />
               </div>
-              <h1 className="text-3xl font-display font-bold text-sentinel-text-primary mb-4">
+              <h1 className="text-3xl font-display font-bold text-wiestell-text-primary mb-4">
                 Message Sent Successfully
               </h1>
-              <p className="text-sentinel-text-secondary font-mono text-sm mb-8 leading-relaxed">
-                Thank you for reaching out. We have received your message and will respond within 2 business days. Our team will review your inquiry and get back to you at <strong className="text-sentinel-accent">{formData.email || 'the provided email address'}</strong>.
+              <p className="text-wiestell-text-secondary font-mono text-sm mb-8 leading-relaxed">
+                Thank you for reaching out. We have received your message and will respond within 2 business days. Our team will review your inquiry and get back to you at <strong className="text-wiestell-accent">{formData.email || 'the provided email address'}</strong>.
               </p>
               <div className="flex gap-4 justify-center">
                 <button
                   onClick={() => setIsSuccess(false)}
-                  className="px-6 py-3 bg-sentinel-accent text-white font-mono text-sm rounded hover:bg-sentinel-accent-secondary transition-colors"
+                  className="px-6 py-3 bg-wiestell-accent text-white font-mono text-sm rounded hover:bg-wiestell-accent-secondary transition-colors"
                 >
                   Send Another Message
                 </button>
                 <Link
                   href="/"
-                  className="px-6 py-3 border border-sentinel-border text-sentinel-text-primary font-mono text-sm rounded hover:bg-sentinel-bg-secondary transition-colors"
+                  className="px-6 py-3 border border-wiestell-border text-wiestell-text-primary font-mono text-sm rounded hover:bg-wiestell-bg-secondary transition-colors"
                 >
                   Return to Home
                 </Link>
@@ -269,9 +269,9 @@ export default function ContactPage() {
   }
 
   return (
-    <div className="min-h-screen bg-sentinel-bg-primary">
+    <div className="min-h-screen bg-wiestell-bg-primary">
       {/* Header */}
-      <header className="border-b border-sentinel-border bg-sentinel-bg-secondary/50 backdrop-blur-sm">
+      <header className="border-b border-wiestell-border bg-wiestell-bg-secondary/50 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center">
             <Image
@@ -286,13 +286,13 @@ export default function ContactPage() {
           <div className="flex gap-3">
             <Link
               href="/about"
-              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+              className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
             >
               About
             </Link>
             <Link
               href="/contact"
-              className="px-4 py-2 text-sm font-mono text-sentinel-accent hover:text-sentinel-accent transition-colors font-semibold"
+              className="px-4 py-2 text-sm font-mono text-wiestell-accent hover:text-wiestell-accent transition-colors font-semibold"
             >
               Contact Us
             </Link>
@@ -303,7 +303,7 @@ export default function ContactPage() {
                     const dashboardPath = user.role === 'admin' ? '/dashboard' : '/analytics';
                     router.push(dashboardPath);
                   }}
-                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                  className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
                 >
                   Dashboard
                 </button>
@@ -312,7 +312,7 @@ export default function ContactPage() {
                     logout();
                     router.push('/');
                   }}
-                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors flex items-center gap-1"
+                  className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors flex items-center gap-1"
                 >
                   <LogOut className="w-4 h-4" />
                   Logout
@@ -322,7 +322,7 @@ export default function ContactPage() {
               <>
                 <Link
                   href="/login"
-                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                  className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
                 >
                   Login
                 </Link>
@@ -337,10 +337,10 @@ export default function ContactPage() {
         <div className="max-w-4xl mx-auto">
           {/* Page Header */}
           <div className="text-center mb-12">
-            <h1 className="text-4xl md:text-5xl font-display font-bold text-sentinel-text-primary mb-4">
+            <h1 className="text-4xl md:text-5xl font-display font-bold text-wiestell-text-primary mb-4">
               Contact Wiestell
             </h1>
-            <p className="text-sentinel-text-secondary font-mono text-sm max-w-2xl mx-auto leading-relaxed">
+            <p className="text-wiestell-text-secondary font-mono text-sm max-w-2xl mx-auto leading-relaxed">
               Have a question about Wiestell? Found a bug? Want to suggest a new threat intelligence feed? We'd like to hear from you. Use the options below to get in touch.
             </p>
           </div>
@@ -357,26 +357,26 @@ export default function ContactPage() {
                   type="button"
                   onClick={() => handleReasonSelect(card.id)}
                   className={`
-                    sentinel-card p-6 text-left transition-all duration-200
+                    wiestell-card p-6 text-left transition-all duration-200
                     ${
                       isSelected
-                        ? 'border-2 border-sentinel-accent bg-sentinel-bg-secondary'
-                        : 'border border-sentinel-border hover:border-sentinel-border-hover hover:bg-sentinel-bg-secondary/50'
+                        ? 'border-2 border-wiestell-accent bg-wiestell-bg-secondary'
+                        : 'border border-wiestell-border hover:border-wiestell-border-hover hover:bg-wiestell-bg-secondary/50'
                     }
                   `}
                 >
                   <div className="flex items-start gap-4">
                     <div className={`
                       p-3 rounded-lg transition-colors
-                      ${isSelected ? 'bg-sentinel-accent' : 'bg-sentinel-bg-secondary'}
+                      ${isSelected ? 'bg-wiestell-accent' : 'bg-wiestell-bg-secondary'}
                     `}>
-                      <Icon className={`w-6 h-6 ${isSelected ? 'text-white' : 'text-sentinel-accent'}`} />
+                      <Icon className={`w-6 h-6 ${isSelected ? 'text-white' : 'text-wiestell-accent'}`} />
                     </div>
                     <div className="flex-1">
-                      <h3 className="text-lg font-display font-semibold text-sentinel-text-primary mb-2">
+                      <h3 className="text-lg font-display font-semibold text-wiestell-text-primary mb-2">
                         {card.title}
                       </h3>
-                      <p className="text-sm font-mono text-sentinel-text-secondary leading-relaxed">
+                      <p className="text-sm font-mono text-wiestell-text-secondary leading-relaxed">
                         {card.description}
                       </p>
                     </div>
@@ -387,21 +387,21 @@ export default function ContactPage() {
           </div>
 
           {errors.reason && (
-            <p className="text-sm font-mono text-sentinel-danger mb-6 text-center">
+            <p className="text-sm font-mono text-wiestell-danger mb-6 text-center">
               {errors.reason}
             </p>
           )}
 
           {/* Contact Form */}
-          <div className="sentinel-card p-8">
+          <div className="wiestell-card p-8">
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Name Field */}
               <div>
-                <label htmlFor="name" className="block text-sm font-mono font-semibold text-sentinel-text-primary mb-2">
-                  Name <span className="text-sentinel-danger">*</span>
+                <label htmlFor="name" className="block text-sm font-mono font-semibold text-wiestell-text-primary mb-2">
+                  Name <span className="text-wiestell-danger">*</span>
                 </label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-sentinel-text-muted" />
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-wiestell-text-muted" />
                   <input
                     type="text"
                     id="name"
@@ -410,25 +410,25 @@ export default function ContactPage() {
                     onChange={handleInputChange}
                     className={`
                       w-full pl-11 pr-4 py-3 rounded border font-mono text-sm
-                      bg-sentinel-bg-primary text-sentinel-text-primary
-                      focus:outline-none focus:ring-2 focus:ring-sentinel-accent
-                      ${errors.name ? 'border-sentinel-danger' : 'border-sentinel-border'}
+                      bg-wiestell-bg-primary text-wiestell-text-primary
+                      focus:outline-none focus:ring-2 focus:ring-wiestell-accent
+                      ${errors.name ? 'border-wiestell-danger' : 'border-wiestell-border'}
                     `}
                     placeholder="Your full name"
                   />
                 </div>
                 {errors.name && (
-                  <p className="mt-1 text-xs font-mono text-sentinel-danger">{errors.name}</p>
+                  <p className="mt-1 text-xs font-mono text-wiestell-danger">{errors.name}</p>
                 )}
               </div>
 
               {/* Email Field */}
               <div>
-                <label htmlFor="email" className="block text-sm font-mono font-semibold text-sentinel-text-primary mb-2">
-                  Email <span className="text-sentinel-danger">*</span>
+                <label htmlFor="email" className="block text-sm font-mono font-semibold text-wiestell-text-primary mb-2">
+                  Email <span className="text-wiestell-danger">*</span>
                 </label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-sentinel-text-muted" />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-wiestell-text-muted" />
                   <input
                     type="email"
                     id="email"
@@ -437,22 +437,22 @@ export default function ContactPage() {
                     onChange={handleInputChange}
                     className={`
                       w-full pl-11 pr-4 py-3 rounded border font-mono text-sm
-                      bg-sentinel-bg-primary text-sentinel-text-primary
-                      focus:outline-none focus:ring-2 focus:ring-sentinel-accent
-                      ${errors.email ? 'border-sentinel-danger' : 'border-sentinel-border'}
+                      bg-wiestell-bg-primary text-wiestell-text-primary
+                      focus:outline-none focus:ring-2 focus:ring-wiestell-accent
+                      ${errors.email ? 'border-wiestell-danger' : 'border-wiestell-border'}
                     `}
                     placeholder="your.email@example.com"
                   />
                 </div>
                 {errors.email && (
-                  <p className="mt-1 text-xs font-mono text-sentinel-danger">{errors.email}</p>
+                  <p className="mt-1 text-xs font-mono text-wiestell-danger">{errors.email}</p>
                 )}
               </div>
 
               {/* Reason Dropdown */}
               <div>
-                <label htmlFor="reason" className="block text-sm font-mono font-semibold text-sentinel-text-primary mb-2">
-                  Reason <span className="text-sentinel-danger">*</span>
+                <label htmlFor="reason" className="block text-sm font-mono font-semibold text-wiestell-text-primary mb-2">
+                  Reason <span className="text-wiestell-danger">*</span>
                 </label>
                 <select
                   id="reason"
@@ -466,9 +466,9 @@ export default function ContactPage() {
                   }}
                   className={`
                     w-full px-4 py-3 rounded border font-mono text-sm
-                    bg-sentinel-bg-primary text-sentinel-text-primary
-                    focus:outline-none focus:ring-2 focus:ring-sentinel-accent
-                    ${errors.reason ? 'border-sentinel-danger' : 'border-sentinel-border'}
+                    bg-wiestell-bg-primary text-wiestell-text-primary
+                    focus:outline-none focus:ring-2 focus:ring-wiestell-accent
+                    ${errors.reason ? 'border-wiestell-danger' : 'border-wiestell-border'}
                   `}
                 >
                   <option value="">Select a reason</option>
@@ -478,14 +478,14 @@ export default function ContactPage() {
                   <option value="abuse-report">Abuse Report</option>
                 </select>
                 {errors.reason && (
-                  <p className="mt-1 text-xs font-mono text-sentinel-danger">{errors.reason}</p>
+                  <p className="mt-1 text-xs font-mono text-wiestell-danger">{errors.reason}</p>
                 )}
               </div>
 
               {/* IOC/Indicator Field (Optional) */}
               <div>
-                <label htmlFor="ioc" className="block text-sm font-mono font-semibold text-sentinel-text-primary mb-2">
-                  IOC / Indicator <span className="text-sentinel-text-muted">(Optional)</span>
+                <label htmlFor="ioc" className="block text-sm font-mono font-semibold text-wiestell-text-primary mb-2">
+                  IOC / Indicator <span className="text-wiestell-text-muted">(Optional)</span>
                 </label>
                 <input
                   type="text"
@@ -493,21 +493,21 @@ export default function ContactPage() {
                   name="ioc"
                   value={formData.ioc}
                   onChange={handleInputChange}
-                  className="w-full px-4 py-3 rounded border border-sentinel-border font-mono text-sm bg-sentinel-bg-primary text-sentinel-text-primary focus:outline-none focus:ring-2 focus:ring-sentinel-accent"
+                  className="w-full px-4 py-3 rounded border border-wiestell-border font-mono text-sm bg-wiestell-bg-primary text-wiestell-text-primary focus:outline-none focus:ring-2 focus:ring-wiestell-accent"
                   placeholder="e.g., 192.168.1.1, example.com, hash..."
                 />
-                <p className="mt-1 text-xs font-mono text-sentinel-text-muted">
+                <p className="mt-1 text-xs font-mono text-wiestell-text-muted">
                   If reporting about a specific IOC, include it here
                 </p>
               </div>
 
               {/* Message Field */}
               <div>
-                <label htmlFor="message" className="block text-sm font-mono font-semibold text-sentinel-text-primary mb-2">
-                  Message <span className="text-sentinel-danger">*</span>
+                <label htmlFor="message" className="block text-sm font-mono font-semibold text-wiestell-text-primary mb-2">
+                  Message <span className="text-wiestell-danger">*</span>
                 </label>
                 <div className="relative">
-                  <MessageSquare className="absolute left-3 top-3 w-5 h-5 text-sentinel-text-muted" />
+                  <MessageSquare className="absolute left-3 top-3 w-5 h-5 text-wiestell-text-muted" />
                   <textarea
                     id="message"
                     name="message"
@@ -516,22 +516,22 @@ export default function ContactPage() {
                     rows={6}
                     className={`
                       w-full pl-11 pr-4 py-3 rounded border font-mono text-sm
-                      bg-sentinel-bg-primary text-sentinel-text-primary
-                      focus:outline-none focus:ring-2 focus:ring-sentinel-accent resize-none
-                      ${errors.message ? 'border-sentinel-danger' : 'border-sentinel-border'}
+                      bg-wiestell-bg-primary text-wiestell-text-primary
+                      focus:outline-none focus:ring-2 focus:ring-wiestell-accent resize-none
+                      ${errors.message ? 'border-wiestell-danger' : 'border-wiestell-border'}
                     `}
                     placeholder="Describe your inquiry in detail (20-1000 characters)..."
                   />
                 </div>
                 <div className="flex justify-between items-center mt-1">
                   {errors.message ? (
-                    <p className="text-xs font-mono text-sentinel-danger">{errors.message}</p>
+                    <p className="text-xs font-mono text-wiestell-danger">{errors.message}</p>
                   ) : (
-                    <p className="text-xs font-mono text-sentinel-text-muted">
+                    <p className="text-xs font-mono text-wiestell-text-muted">
                       Minimum 20 characters required
                     </p>
                   )}
-                  <p className="text-xs font-mono text-sentinel-text-muted">
+                  <p className="text-xs font-mono text-wiestell-text-muted">
                     {formData.message.length}/1000
                   </p>
                 </div>
@@ -546,8 +546,8 @@ export default function ContactPage() {
                   transition-all duration-200
                   ${
                     isSubmitting
-                      ? 'bg-sentinel-text-muted text-white cursor-not-allowed'
-                      : 'bg-sentinel-accent text-white hover:bg-sentinel-accent-secondary'
+                      ? 'bg-wiestell-text-muted text-white cursor-not-allowed'
+                      : 'bg-wiestell-accent text-white hover:bg-wiestell-accent-secondary'
                   }
                 `}
               >
@@ -558,11 +558,11 @@ export default function ContactPage() {
 
           {/* Additional Contact Info */}
           <div className="mt-8 text-center">
-            <p className="text-sm font-mono text-sentinel-text-secondary">
+            <p className="text-sm font-mono text-wiestell-text-secondary">
               For urgent security issues, please email{' '}
               <a
                 href="mailto:security@wiestell.com"
-                className="text-sentinel-accent hover:underline font-semibold"
+                className="text-wiestell-accent hover:underline font-semibold"
               >
                 security@wiestell.com
               </a>

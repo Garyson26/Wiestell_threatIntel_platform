@@ -270,7 +270,7 @@ async def main() -> None:
     args = parser.parse_args()
 
     _log("=" * 55)
-    _log("  SENTINEL — Enrichment Backfill")
+    _log("  Wiestell — Enrichment Backfill")
     _log("=" * 55)
 
     if args.ioc_id:

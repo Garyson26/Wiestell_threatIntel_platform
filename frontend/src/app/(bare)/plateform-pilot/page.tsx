@@ -77,9 +77,9 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-sentinel-bg-primary">
+    <div className="min-h-screen bg-wiestell-bg-primary">
       {/* Header */}
-      <header className="border-b border-sentinel-border bg-sentinel-bg-secondary/50 backdrop-blur-sm">
+      <header className="border-b border-wiestell-border bg-wiestell-bg-secondary/50 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center">
             <Image
@@ -94,13 +94,13 @@ export default function AdminLoginPage() {
           <div className="flex gap-3">
             <Link
               href="/about"
-              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+              className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
             >
               About
             </Link>
             <Link
               href="/contact"
-              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+              className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
             >
               Contact Us
             </Link>
@@ -111,7 +111,7 @@ export default function AdminLoginPage() {
                     const dashboardPath = user.role === 'admin' ? '/dashboard' : '/analytics';
                     router.push(dashboardPath);
                   }}
-                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                  className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
                 >
                   Dashboard
                 </button>
@@ -120,7 +120,7 @@ export default function AdminLoginPage() {
                     logout();
                     router.push('/');
                   }}
-                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors flex items-center gap-1"
+                  className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors flex items-center gap-1"
                 >
                   <LogOut className="w-4 h-4" />
                   Logout
@@ -130,13 +130,13 @@ export default function AdminLoginPage() {
               <>
                 <Link
                   href="/login"
-                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                  className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
                 >
                   Login
                 </Link>
                 <Link
                   href="/plateform-pilot"
-                  className="px-4 py-2 text-sm font-mono text-sentinel-accent hover:text-sentinel-accent transition-colors font-semibold"
+                  className="px-4 py-2 text-sm font-mono text-wiestell-accent hover:text-wiestell-accent transition-colors font-semibold"
                 >
                   Admin
                 </Link>
@@ -148,11 +148,11 @@ export default function AdminLoginPage() {
 
       {/* Main Content */}
       <div className="flex items-center justify-center min-h-[calc(100vh-73px)] py-12">
-        <div className="sentinel-card w-full max-w-sm p-8 animate-fade-in">
+        <div className="wiestell-card w-full max-w-sm p-8 animate-fade-in">
           {/* Admin Badge */}
           <div className="flex items-center justify-center gap-2 mb-6">
-            <Shield className="w-4 h-4 text-sentinel-accent" />
-            <h2 className="text-sm font-display font-semibold text-sentinel-text-primary">
+            <Shield className="w-4 h-4 text-wiestell-accent" />
+            <h2 className="text-sm font-display font-semibold text-wiestell-text-primary">
               {otpStep ? 'Enter OTP' : 'Admin Sign In'}
             </h2>
           </div>
@@ -164,32 +164,32 @@ export default function AdminLoginPage() {
         )}
 
         {otpMessage && otpStep && (
-          <div className="mb-4 p-2.5 rounded bg-sentinel-accent/5 border border-sentinel-accent/20">
-            <p className="text-xs font-mono text-sentinel-accent text-center">{otpMessage}</p>
+          <div className="mb-4 p-2.5 rounded bg-wiestell-accent/5 border border-wiestell-accent/20">
+            <p className="text-xs font-mono text-wiestell-accent text-center">{otpMessage}</p>
           </div>
         )}
 
         {!otpStep ? (
           <form onSubmit={handleCredentialsSubmit} className="space-y-4">
             <div>
-              <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Admin Email</label>
+              <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">Admin Email</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Enter admin email"
                 autoFocus
-                className="w-full px-3 py-2.5 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40 transition-colors"
+                className="w-full px-3 py-2.5 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40 transition-colors"
               />
             </div>
             <div>
-              <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Password</label>
+              <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">Password</label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter password"
-                className="w-full px-3 py-2.5 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40 transition-colors"
+                className="w-full px-3 py-2.5 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40 transition-colors"
               />
             </div>
             <button
@@ -204,7 +204,7 @@ export default function AdminLoginPage() {
         ) : (
           <form onSubmit={handleOtpSubmit} className="space-y-4">
             <div>
-              <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-3 text-center">Enter OTP</label>
+              <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-3 text-center">Enter OTP</label>
               <OTPInput
                 length={6}
                 value={otp}
@@ -228,18 +228,18 @@ export default function AdminLoginPage() {
                 setError('');
                 setOtpMessage('');
               }}
-              className="w-full text-xs font-mono text-sentinel-text-muted hover:text-sentinel-accent transition-colors"
+              className="w-full text-xs font-mono text-wiestell-text-muted hover:text-wiestell-accent transition-colors"
             >
               ← Back to login
             </button>
           </form>
         )}
 
-        <p className="text-center text-[10px] font-mono text-sentinel-text-muted mt-5">
+        <p className="text-center text-[10px] font-mono text-wiestell-text-muted mt-5">
           Not an admin?{' '}
           <button
             onClick={() => router.push('/login')}
-            className="text-sentinel-accent hover:underline"
+            className="text-wiestell-accent hover:underline"
           >
             Login
           </button>

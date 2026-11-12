@@ -212,7 +212,7 @@ async def generate_ai_report(db: AsyncSession = Depends(get_db)):
         content={"ai_report": ai_result["content"], **stats},
         parameters={"generated_by": "llama-3.3-70b-versatile"},
         generated_at=now,
-        created_by="SENTINEL AI",
+        created_by="Wiestell AI",
     )
     db.add(report)
     await db.flush()

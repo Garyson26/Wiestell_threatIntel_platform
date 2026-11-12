@@ -50,9 +50,9 @@ export default function DataTable<T extends Record<string, unknown>>({
 
   if (data.length === 0) {
     return (
-      <div className="sentinel-card p-8 text-center">
-        <p className="text-sentinel-text-muted font-mono text-sm">{emptyMessage}</p>
-        <p className="text-sentinel-text-muted font-mono text-xs mt-2">
+      <div className="wiestell-card p-8 text-center">
+        <p className="text-wiestell-text-muted font-mono text-sm">{emptyMessage}</p>
+        <p className="text-wiestell-text-muted font-mono text-xs mt-2">
           Start by enabling threat feeds to ingest IOCs
         </p>
       </div>
@@ -60,17 +60,17 @@ export default function DataTable<T extends Record<string, unknown>>({
   }
 
   return (
-    <div className={cn('sentinel-card overflow-hidden', className)}>
+    <div className={cn('wiestell-card overflow-hidden', className)}>
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-sentinel-border">
+            <tr className="border-b border-wiestell-border">
               {columns.map((col) => (
                 <th
                   key={col.key}
                   className={cn(
-                    'px-4 py-3 text-left text-[11px] font-mono font-semibold uppercase tracking-wider text-sentinel-text-muted',
-                    col.sortable && 'cursor-pointer hover:text-sentinel-text-secondary select-none',
+                    'px-4 py-3 text-left text-[11px] font-mono font-semibold uppercase tracking-wider text-wiestell-text-muted',
+                    col.sortable && 'cursor-pointer hover:text-wiestell-text-secondary select-none',
                     col.className
                   )}
                   onClick={() => col.sortable && handleSort(col.key)}
@@ -90,8 +90,8 @@ export default function DataTable<T extends Record<string, unknown>>({
               <tr
                 key={i}
                 className={cn(
-                  'border-b border-sentinel-border/50 transition-colors animate-fade-in',
-                  onRowClick && 'cursor-pointer hover:bg-sentinel-bg-hover',
+                  'border-b border-wiestell-border/50 transition-colors animate-fade-in',
+                  onRowClick && 'cursor-pointer hover:bg-wiestell-bg-hover',
                 )}
                 style={{ animationDelay: `${Math.min(i * 30, 300)}ms` }}
                 onClick={() => onRowClick?.(item)}

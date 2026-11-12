@@ -69,7 +69,7 @@ export default function Home() {
       <SoftwareApplicationSchema />
       
       {/* Header */}
-      <header className="border-b border-sentinel-border bg-sentinel-bg-secondary/50 backdrop-blur-sm">
+      <header className="border-b border-wiestell-border bg-wiestell-bg-secondary/50 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center">
             <Image
@@ -84,13 +84,13 @@ export default function Home() {
           <div className="flex gap-3">
             <button
               onClick={() => router.push('/about')}
-              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+              className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
             >
               About
             </button>
              <button
               onClick={() => router.push('/contact')}
-              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+              className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
             >
               Contact Us
             </button>
@@ -101,7 +101,7 @@ export default function Home() {
                     const dashboardPath = user.role === 'admin' ? '/dashboard' : '/analytics';
                     router.push(dashboardPath);
                   }}
-                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                  className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
                 >
                   Dashboard
                 </button>
@@ -110,7 +110,7 @@ export default function Home() {
                     logout();
                     router.push('/');
                   }}
-                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors flex items-center gap-1"
+                  className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors flex items-center gap-1"
                 >
                   <LogOut className="w-4 h-4" />
                   Logout
@@ -120,7 +120,7 @@ export default function Home() {
               <>
                 <button
                   onClick={() => router.push('/login')}
-                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                  className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
                 >
                   Login
                 </button>
@@ -134,27 +134,27 @@ export default function Home() {
       <main className="flex-1 container mx-auto px-6 py-12">
         {/* Hero Section */}
         <div className="text-center mb-12 animate-fade-in">
-          <h1 className="text-4xl md:text-4xl font-bold font-display text-sentinel-text-primary mb-4 leading-tight">
+          <h1 className="text-4xl md:text-4xl font-bold font-display text-wiestell-text-primary mb-4 leading-tight">
             Free Threat Intelligence Platform — IP, Domain & Hash IOC Lookup
           </h1>
         </div>
 
         {/* Main Card */}
-        <div className="max-w-3xl mx-auto sentinel-card p-8 animate-slide-up">
+        <div className="max-w-3xl mx-auto wiestell-card p-8 animate-slide-up">
           {/* Tabs */}
-          <div className="flex gap-2 mb-6 border-b border-sentinel-border">
+          <div className="flex gap-2 mb-6 border-b border-wiestell-border">
             <button
               onClick={() => setActiveTab('search')}
               className={`flex items-center gap-2 px-4 py-3 font-mono text-sm font-medium transition-colors relative ${
                 activeTab === 'search'
-                  ? 'text-sentinel-accent'
-                  : 'text-sentinel-text-muted hover:text-sentinel-text-secondary'
+                  ? 'text-wiestell-accent'
+                  : 'text-wiestell-text-muted hover:text-wiestell-text-secondary'
               }`}
             >
               <Search className="w-4 h-4" />
               Search
               {activeTab === 'search' && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-sentinel-accent"></div>
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-wiestell-accent"></div>
               )}
             </button>
           </div>
@@ -165,7 +165,7 @@ export default function Home() {
             {activeTab === 'search' && (
               <form onSubmit={handleSearchSubmit} className="space-y-4">
                 <div>
-                  <label className="text-sm font-mono text-sentinel-text-muted block mb-3">
+                  <label className="text-sm font-mono text-wiestell-text-muted block mb-3">
                     Search for IP, domain, hash, or other Indicators of Compromise
                   </label>
                   <input
@@ -173,13 +173,13 @@ export default function Home() {
                     value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}
                     placeholder="8.8.8.8, example.com, or file hash..."
-                    className="w-full px-4 py-3 rounded bg-sentinel-bg-primary border border-sentinel-border text-sentinel-text-primary font-mono text-sm outline-none focus:border-sentinel-accent/40 transition-colors"
+                    className="w-full px-4 py-3 rounded bg-wiestell-bg-primary border border-wiestell-border text-wiestell-text-primary font-mono text-sm outline-none focus:border-wiestell-accent/40 transition-colors"
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={!searchInput.trim()}
-                  className="w-full px-6 py-3 rounded bg-sentinel-accent/10 border border-sentinel-accent/30 text-sentinel-accent text-sm font-mono font-semibold hover:bg-sentinel-accent/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                  className="w-full px-6 py-3 rounded bg-wiestell-accent/10 border border-wiestell-accent/30 text-wiestell-accent text-sm font-mono font-semibold hover:bg-wiestell-accent/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
                 >
                   <Search className="w-4 h-4" />
                   Search IOCs
@@ -192,58 +192,58 @@ export default function Home() {
         {/* About Wiestell Section */}
         <section className="max-w-4xl mx-auto mt-20 mb-16">
           <article className="prose prose-invert max-w-none">
-            <div className="sentinel-card p-8 md:p-10">
+            <div className="wiestell-card p-8 md:p-10">
                          
-              <div className="space-y-6 text-sentinel-text-secondary font-mono text-sm leading-relaxed">
+              <div className="space-y-6 text-wiestell-text-secondary font-mono text-sm leading-relaxed">
                 <p>
-                  <strong className="text-sentinel-accent font-semibold">Wiestell</strong> is a free threat intelligence platform that aggregates data from the most trusted open-source feeds on the internet. Security analysts, SOC teams, and threat researchers can instantly look up any IP address, domain name, URL, or file hash to check its reputation, malware associations, and threat history.
+                  <strong className="text-wiestell-accent font-semibold">Wiestell</strong> is a free threat intelligence platform that aggregates data from the most trusted open-source feeds on the internet. Security analysts, SOC teams, and threat researchers can instantly look up any IP address, domain name, URL, or file hash to check its reputation, malware associations, and threat history.
                 </p>
 
-                <blockquote className="border-l-4 border-sentinel-accent pl-6 py-4 my-8 bg-sentinel-bg-tertiary/30 rounded-r">
-                  <p className="text-sentinel-text-primary font-mono text-base italic mb-3 leading-relaxed">
+                <blockquote className="border-l-4 border-wiestell-accent pl-6 py-4 my-8 bg-wiestell-bg-tertiary/30 rounded-r">
+                  <p className="text-wiestell-text-primary font-mono text-base italic mb-3 leading-relaxed">
                     "Threat intelligence shouldn't be a privilege. Every defender — whether in a mature
 enterprise SOC or working solo — deserves access to the same quality of threat data.
 That's why Wiestell exists."
                   </p>
-                  <footer className="text-sentinel-text-muted text-xs font-mono not-italic">
-                    — <cite className="font-semibold text-sentinel-accent">Gary(son) Pereira</cite>, Founder, Wiestell
+                  <footer className="text-wiestell-text-muted text-xs font-mono not-italic">
+                    — <cite className="font-semibold text-wiestell-accent">Gary(son) Pereira</cite>, Founder, Wiestell
                   </footer>
                 </blockquote>
 
                 {/* Feature Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-8">
-                  <div className="bg-sentinel-bg-tertiary/20 border border-sentinel-border rounded p-5 hover:border-sentinel-accent/30 transition-colors">
-                    <div className="w-10 h-10 rounded bg-sentinel-accent/10 border border-sentinel-accent/30 flex items-center justify-center mb-3">
-                      <Zap className="w-5 h-5 text-sentinel-accent" />
+                  <div className="bg-wiestell-bg-tertiary/20 border border-wiestell-border rounded p-5 hover:border-wiestell-accent/30 transition-colors">
+                    <div className="w-10 h-10 rounded bg-wiestell-accent/10 border border-wiestell-accent/30 flex items-center justify-center mb-3">
+                      <Zap className="w-5 h-5 text-wiestell-accent" />
                     </div>
-                    <h3 className="text-sm font-display font-semibold text-sentinel-text-primary mb-2">
+                    <h3 className="text-sm font-display font-semibold text-wiestell-text-primary mb-2">
                       Real-time Analysis
                     </h3>
-                    <p className="text-xs font-mono text-sentinel-text-secondary leading-relaxed">
+                    <p className="text-xs font-mono text-wiestell-text-secondary leading-relaxed">
                       Instant IOC detection powered by multiple live intelligence feeds updated continuously by the security community.
                     </p>
                   </div>
 
-                  <div className="bg-sentinel-bg-tertiary/20 border border-sentinel-border rounded p-5 hover:border-sentinel-accent/30 transition-colors">
-                    <div className="w-10 h-10 rounded bg-sentinel-accent/10 border border-sentinel-accent/30 flex items-center justify-center mb-3">
-                      <Database className="w-5 h-5 text-sentinel-accent" />
+                  <div className="bg-wiestell-bg-tertiary/20 border border-wiestell-border rounded p-5 hover:border-wiestell-accent/30 transition-colors">
+                    <div className="w-10 h-10 rounded bg-wiestell-accent/10 border border-wiestell-accent/30 flex items-center justify-center mb-3">
+                      <Database className="w-5 h-5 text-wiestell-accent" />
                     </div>
-                    <h3 className="text-sm font-display font-semibold text-sentinel-text-primary mb-2">
+                    <h3 className="text-sm font-display font-semibold text-wiestell-text-primary mb-2">
                       Enrichment Engine
                     </h3>
-                    <p className="text-xs font-mono text-sentinel-text-secondary leading-relaxed">
+                    <p className="text-xs font-mono text-wiestell-text-secondary leading-relaxed">
                       Comprehensive enrichment including geolocation, WHOIS records, ASN data, and historical reputation scoring.
                     </p>
                   </div>
 
-                  <div className="bg-sentinel-bg-tertiary/20 border border-sentinel-border rounded p-5 hover:border-sentinel-accent/30 transition-colors">
-                    <div className="w-10 h-10 rounded bg-sentinel-accent/10 border border-sentinel-accent/30 flex items-center justify-center mb-3">
-                      <TrendingUp className="w-5 h-5 text-sentinel-accent" />
+                  <div className="bg-wiestell-bg-tertiary/20 border border-wiestell-border rounded p-5 hover:border-wiestell-accent/30 transition-colors">
+                    <div className="w-10 h-10 rounded bg-wiestell-accent/10 border border-wiestell-accent/30 flex items-center justify-center mb-3">
+                      <TrendingUp className="w-5 h-5 text-wiestell-accent" />
                     </div>
-                    <h3 className="text-sm font-display font-semibold text-sentinel-text-primary mb-2">
+                    <h3 className="text-sm font-display font-semibold text-wiestell-text-primary mb-2">
                       Threat Scoring
                     </h3>
-                    <p className="text-xs font-mono text-sentinel-text-secondary leading-relaxed">
+                    <p className="text-xs font-mono text-wiestell-text-secondary leading-relaxed">
                       AI-powered risk correlation across all data sources. Get a single actionable verdict on any indicator of compromise.
                     </p>
                   </div>
@@ -259,9 +259,9 @@ That's why Wiestell exists."
       <PoweredBy />
 
       {/* Footer */}
-      <footer className="border-t border-sentinel-border bg-sentinel-bg-secondary/50 py-6">
+      <footer className="border-t border-wiestell-border bg-wiestell-bg-secondary/50 py-6">
         <div className="container mx-auto px-6 text-center">
-          <p className="text-xs font-mono text-sentinel-text-muted">
+          <p className="text-xs font-mono text-wiestell-text-muted">
             © 2026 Wiestell Free Threat Intelligence Platform.
           </p>
         </div>

@@ -18,15 +18,15 @@ export default function ThreatGauge({ score, size = 180, loading = false }: Thre
   const center = size / 2;
 
   return (
-    <div className="sentinel-card p-5 flex flex-col items-center">
-      <p className="text-[10px] font-mono font-semibold uppercase tracking-widest text-sentinel-text-muted mb-3">
+    <div className="wiestell-card p-5 flex flex-col items-center">
+      <p className="text-[10px] font-mono font-semibold uppercase tracking-widest text-wiestell-text-muted mb-3">
         THREAT LEVEL
       </p>
       {loading ? (
         <div className="flex flex-col items-center animate-pulse" style={{ width: size, height: size / 2 + 20 }}>
           <div className="w-full h-full flex flex-col items-center justify-end pb-2">
-            <div className="h-8 w-16 bg-sentinel-bg-tertiary rounded mb-1" />
-            <div className="h-3 w-12 bg-sentinel-bg-tertiary rounded" />
+            <div className="h-8 w-16 bg-wiestell-bg-tertiary rounded mb-1" />
+            <div className="h-3 w-12 bg-wiestell-bg-tertiary rounded" />
           </div>
         </div>
       ) : (

@@ -9,7 +9,7 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        sentinel: {
+        wiestell: {
           'bg-primary': '#ffffff',
           'bg-secondary': '#f5f5f5',
           'bg-tertiary': '#ebebeb',

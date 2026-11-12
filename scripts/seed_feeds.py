@@ -359,5 +359,5 @@ def seed(dry_run: bool = False):
 
 if __name__ == "__main__":
     dry = "--dry-run" in sys.argv
-    print("Seeding SENTINEL feed sources..." + ("  (DRY RUN)" if dry else ""))
+    print("Seeding Wiestell feed sources..." + ("  (DRY RUN)" if dry else ""))
     seed(dry_run=dry)

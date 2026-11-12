@@ -319,5 +319,5 @@ def generate():
 
 
 if __name__ == "__main__":
-    print("Generating SENTINEL sample data...")
+    print("Generating Wiestell sample data...")
     generate()

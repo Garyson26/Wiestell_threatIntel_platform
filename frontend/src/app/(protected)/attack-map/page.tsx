@@ -35,7 +35,7 @@ function getHeatColor(intensity: number): string {
 }
 
 function getHeatBorder(intensity: number): string {
-  if (intensity <= 0) return 'border-sentinel-border/30';
+  if (intensity <= 0) return 'border-wiestell-border/30';
   if (intensity < 0.3) return 'border-emerald-500/30';
   if (intensity < 0.5) return 'border-yellow-500/30';
   if (intensity < 0.7) return 'border-amber-500/30';
@@ -43,7 +43,7 @@ function getHeatBorder(intensity: number): string {
 }
 
 function getTextColor(intensity: number): string {
-  if (intensity <= 0) return 'text-sentinel-text-muted/50';
+  if (intensity <= 0) return 'text-wiestell-text-muted/50';
   if (intensity < 0.3) return 'text-emerald-400';
   if (intensity < 0.5) return 'text-yellow-400';
   if (intensity < 0.7) return 'text-amber-400';
@@ -119,27 +119,27 @@ export default function AttackMapPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-display font-bold text-sentinel-text-primary">MITRE ATT&CK Map</h1>
-          <p className="text-xs font-mono text-sentinel-text-muted mt-0.5">
+          <h1 className="text-lg font-display font-bold text-wiestell-text-primary">MITRE ATT&CK Map</h1>
+          <p className="text-xs font-mono text-wiestell-text-muted mt-0.5">
             Enterprise technique heatmap &mdash; {activeTechniques} active across {activeTactics} tactics
           </p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <label className="text-[10px] font-mono text-sentinel-text-muted">MIN SCORE</label>
+            <label className="text-[10px] font-mono text-wiestell-text-muted">MIN SCORE</label>
             <input
               type="range"
               min={0}
               max={100}
               value={minScore}
               onChange={(e) => setMinScore(Number(e.target.value))}
-              className="w-20 h-1 accent-sentinel-accent"
+              className="w-20 h-1 accent-wiestell-accent"
             />
-            <span className="text-[10px] font-mono text-sentinel-accent w-6 text-right">{minScore}</span>
+            <span className="text-[10px] font-mono text-wiestell-accent w-6 text-right">{minScore}</span>
           </div>
           <button
             onClick={loadHeatmap}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded border border-sentinel-border text-sentinel-text-secondary hover:text-sentinel-accent hover:border-sentinel-accent/30 transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded border border-wiestell-border text-wiestell-text-secondary hover:text-wiestell-accent hover:border-wiestell-accent/30 transition-colors"
           >
             <RefreshCw className="w-3 h-3" />
             REFRESH
@@ -150,20 +150,20 @@ export default function AttackMapPage() {
       {/* Stats Bar */}
       <div className="grid grid-cols-4 gap-3">
         {[
-          { label: 'TOTAL TECHNIQUES', value: totalTechniques, color: 'text-sentinel-text-primary' },
-          { label: 'ACTIVE TECHNIQUES', value: activeTechniques, color: 'text-sentinel-accent' },
+          { label: 'TOTAL TECHNIQUES', value: totalTechniques, color: 'text-wiestell-text-primary' },
+          { label: 'ACTIVE TECHNIQUES', value: activeTechniques, color: 'text-wiestell-accent' },
           { label: 'MAPPED IOC LINKS', value: totalMappedIOCs, color: 'text-amber-400' },
           { label: 'ACTIVE TACTICS', value: `${activeTactics} / ${TACTICS_ORDER.length}`, color: 'text-emerald-400' },
         ].map((stat) => (
-          <div key={stat.label} className="sentinel-card px-4 py-3">
-            <p className="text-[10px] font-mono text-sentinel-text-muted uppercase tracking-wider">{stat.label}</p>
+          <div key={stat.label} className="wiestell-card px-4 py-3">
+            <p className="text-[10px] font-mono text-wiestell-text-muted uppercase tracking-wider">{stat.label}</p>
             <p className={cn('text-xl font-mono font-bold mt-0.5', stat.color)}>{stat.value}</p>
           </div>
         ))}
       </div>
 
       {/* Kill Chain Flow */}
-      <div className="sentinel-card p-3 overflow-x-auto">
+      <div className="wiestell-card p-3 overflow-x-auto">
         <div className="flex items-center gap-0.5 min-w-max">
           {TACTICS_ORDER.map((tactic, i) => {
             const techs = groupedByTactic[tactic.id] || [];
@@ -179,24 +179,24 @@ export default function AttackMapPage() {
                   className={cn(
                     'px-3 py-2 rounded text-center transition-all min-w-[80px]',
                     isActive
-                      ? 'bg-sentinel-accent/10 border border-sentinel-accent/20 hover:bg-sentinel-accent/15'
-                      : 'bg-sentinel-bg-tertiary/50 border border-sentinel-border/30 opacity-50 hover:opacity-75'
+                      ? 'bg-wiestell-accent/10 border border-wiestell-accent/20 hover:bg-wiestell-accent/15'
+                      : 'bg-wiestell-bg-tertiary/50 border border-wiestell-border/30 opacity-50 hover:opacity-75'
                   )}
                 >
                   <p className={cn(
                     'text-[9px] font-mono font-bold tracking-wider',
-                    isActive ? 'text-sentinel-accent' : 'text-sentinel-text-muted'
+                    isActive ? 'text-wiestell-accent' : 'text-wiestell-text-muted'
                   )}>
                     {tactic.short}
                   </p>
                   {isActive && (
-                    <p className="text-[10px] font-mono text-sentinel-accent mt-0.5">{activeCount}</p>
+                    <p className="text-[10px] font-mono text-wiestell-accent mt-0.5">{activeCount}</p>
                   )}
                 </button>
                 {i < TACTICS_ORDER.length - 1 && (
                   <div className={cn(
                     'w-4 h-px mx-0.5',
-                    isActive ? 'bg-sentinel-accent/30' : 'bg-sentinel-border/30'
+                    isActive ? 'bg-wiestell-accent/30' : 'bg-wiestell-border/30'
                   )} />
                 )}
               </div>
@@ -207,15 +207,15 @@ export default function AttackMapPage() {
 
       {/* Matrix Grid */}
       {loading ? (
-        <div className="sentinel-card p-10 text-center animate-pulse">
-          <Grid3X3 className="w-10 h-10 text-sentinel-text-muted mx-auto mb-3" />
-          <p className="text-sentinel-text-muted text-sm font-mono">Loading ATT&CK matrix...</p>
+        <div className="wiestell-card p-10 text-center animate-pulse">
+          <Grid3X3 className="w-10 h-10 text-wiestell-text-muted mx-auto mb-3" />
+          <p className="text-wiestell-text-muted text-sm font-mono">Loading ATT&CK matrix...</p>
         </div>
       ) : heatmap.length === 0 ? (
-        <div className="sentinel-card p-12 text-center">
-          <Grid3X3 className="w-10 h-10 text-sentinel-text-muted mx-auto mb-3" />
-          <p className="text-sentinel-text-muted text-sm font-mono">No ATT&CK data loaded</p>
-          <p className="text-sentinel-text-muted text-xs font-mono mt-1">
+        <div className="wiestell-card p-12 text-center">
+          <Grid3X3 className="w-10 h-10 text-wiestell-text-muted mx-auto mb-3" />
+          <p className="text-wiestell-text-muted text-sm font-mono">No ATT&CK data loaded</p>
+          <p className="text-wiestell-text-muted text-xs font-mono mt-1">
             Run the MITRE seed script: python scripts/seed_mitre.py
           </p>
         </div>
@@ -231,34 +231,34 @@ export default function AttackMapPage() {
                   <div className={cn(
                     'rounded-lg overflow-hidden border transition-all',
                     hasActive
-                      ? 'border-sentinel-accent/15 bg-sentinel-bg-secondary'
-                      : 'border-sentinel-border/30 bg-sentinel-bg-secondary/50 opacity-60'
+                      ? 'border-wiestell-accent/15 bg-wiestell-bg-secondary'
+                      : 'border-wiestell-border/30 bg-wiestell-bg-secondary/50 opacity-60'
                   )}>
                     {/* Tactic Header */}
                     <div className={cn(
                       'px-3 py-2.5 border-b',
                       hasActive
-                        ? 'bg-sentinel-accent/5 border-sentinel-accent/15'
-                        : 'bg-sentinel-bg-tertiary/50 border-sentinel-border/30'
+                        ? 'bg-wiestell-accent/5 border-wiestell-accent/15'
+                        : 'bg-wiestell-bg-tertiary/50 border-wiestell-border/30'
                     )}>
                       <div className="flex items-center justify-between">
                         <h3 className={cn(
                           'text-[9px] font-mono font-bold uppercase tracking-wider',
-                          hasActive ? 'text-sentinel-accent' : 'text-sentinel-text-muted'
+                          hasActive ? 'text-wiestell-accent' : 'text-wiestell-text-muted'
                         )}>
                           {tactic.short}
                         </h3>
-                        <span className="text-[9px] font-mono text-sentinel-text-muted">
+                        <span className="text-[9px] font-mono text-wiestell-text-muted">
                           {techniques.filter(t => t.ioc_count > 0).length}/{techniques.length}
                         </span>
                       </div>
-                      <p className="text-[8px] font-mono text-sentinel-text-muted mt-0.5 truncate">{tactic.id}</p>
+                      <p className="text-[8px] font-mono text-wiestell-text-muted mt-0.5 truncate">{tactic.id}</p>
                     </div>
 
                     {/* Techniques */}
                     <div className="p-1.5 space-y-1 max-h-[420px] overflow-y-auto">
                       {techniques.length === 0 ? (
-                        <p className="text-[8px] font-mono text-sentinel-text-muted text-center py-3">No data</p>
+                        <p className="text-[8px] font-mono text-wiestell-text-muted text-center py-3">No data</p>
                       ) : (
                         techniques
                           .sort((a, b) => b.ioc_count - a.ioc_count)
@@ -271,7 +271,7 @@ export default function AttackMapPage() {
                                 className={cn(
                                   'w-full text-left px-2.5 py-2 rounded-md border transition-all',
                                   isSelected
-                                    ? 'border-sentinel-accent/50 ring-1 ring-sentinel-accent/20 scale-[1.02]'
+                                    ? 'border-wiestell-accent/50 ring-1 ring-wiestell-accent/20 scale-[1.02]'
                                     : getHeatBorder(tech.intensity),
                                   tech.ioc_count === 0 && !isSelected && 'opacity-40 hover:opacity-70'
                                 )}
@@ -284,7 +284,7 @@ export default function AttackMapPage() {
                                 <div className="flex justify-between items-center gap-1">
                                   <span className={cn(
                                     'text-[10px] font-mono font-semibold',
-                                    isSelected ? 'text-sentinel-accent' : tech.ioc_count > 0 ? 'text-sentinel-text-primary' : 'text-sentinel-text-muted'
+                                    isSelected ? 'text-wiestell-accent' : tech.ioc_count > 0 ? 'text-wiestell-text-primary' : 'text-wiestell-text-muted'
                                   )}>
                                     {tech.technique_id}
                                   </span>
@@ -301,7 +301,7 @@ export default function AttackMapPage() {
                                 </div>
                                 <p className={cn(
                                   'text-[8px] font-mono mt-0.5 truncate',
-                                  isSelected ? 'text-sentinel-accent/70' : 'text-sentinel-text-muted'
+                                  isSelected ? 'text-wiestell-accent/70' : 'text-wiestell-text-muted'
                                 )}>
                                   {tech.technique_name}
                                 </p>
@@ -319,12 +319,12 @@ export default function AttackMapPage() {
       )}
 
       {/* Intensity Legend */}
-      <div className="sentinel-card p-4">
+      <div className="wiestell-card p-4">
         <div className="flex items-center gap-6">
-          <span className="text-[10px] font-mono font-semibold text-sentinel-text-muted uppercase tracking-wider flex-shrink-0">Intensity</span>
+          <span className="text-[10px] font-mono font-semibold text-wiestell-text-muted uppercase tracking-wider flex-shrink-0">Intensity</span>
           <div className="flex items-center gap-3 flex-1">
             {[
-              { label: 'None', color: 'rgba(30, 41, 59, 0.5)', border: 'border-sentinel-border/30', text: 'text-sentinel-text-muted', desc: '0 IOCs' },
+              { label: 'None', color: 'rgba(30, 41, 59, 0.5)', border: 'border-wiestell-border/30', text: 'text-wiestell-text-muted', desc: '0 IOCs' },
               { label: 'Low', color: 'rgba(16, 185, 129, 0.35)', border: 'border-emerald-500/30', text: 'text-emerald-400', desc: '1–3 IOCs' },
               { label: 'Medium', color: 'rgba(245, 158, 11, 0.45)', border: 'border-amber-500/30', text: 'text-amber-400', desc: '4–8 IOCs' },
               { label: 'High', color: 'rgba(239, 68, 68, 0.5)', border: 'border-red-500/40', text: 'text-red-400', desc: '9+ IOCs' },
@@ -336,7 +336,7 @@ export default function AttackMapPage() {
                 />
                 <div>
                   <span className={cn('text-[10px] font-mono font-semibold block', l.text)}>{l.label}</span>
-                  <span className="text-[8px] font-mono text-sentinel-text-muted">{l.desc}</span>
+                  <span className="text-[8px] font-mono text-wiestell-text-muted">{l.desc}</span>
                 </div>
               </div>
             ))}
@@ -358,14 +358,14 @@ export default function AttackMapPage() {
 
       {/* Selected Technique Detail Panel */}
       {selectedTech && (
-        <div className="sentinel-card overflow-hidden animate-slide-up">
-          <div className="px-5 py-4 border-b border-sentinel-border bg-sentinel-bg-tertiary/50">
+        <div className="wiestell-card overflow-hidden animate-slide-up">
+          <div className="px-5 py-4 border-b border-wiestell-border bg-wiestell-bg-tertiary/50">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-mono font-bold text-sentinel-text-primary">
+                <h3 className="text-sm font-mono font-bold text-wiestell-text-primary">
                   {selectedTech.technique_id}: {selectedTech.technique_name}
                 </h3>
-                <p className="text-[10px] font-mono text-sentinel-text-muted mt-0.5">
+                <p className="text-[10px] font-mono text-wiestell-text-muted mt-0.5">
                   Tactic: {selectedTech.tactic} &mdash; {selectedTech.ioc_count} associated IOCs
                 </p>
               </div>
@@ -382,7 +382,7 @@ export default function AttackMapPage() {
                 )}
                 <button
                   onClick={() => setSelectedTech(null)}
-                  className="text-[10px] font-mono text-sentinel-text-muted hover:text-sentinel-text-primary transition-colors"
+                  className="text-[10px] font-mono text-wiestell-text-muted hover:text-wiestell-text-primary transition-colors"
                 >
                   CLOSE
                 </button>
@@ -392,11 +392,11 @@ export default function AttackMapPage() {
 
           <div className="p-5">
             {detailLoading ? (
-              <p className="text-xs font-mono text-sentinel-text-muted animate-pulse">Loading technique details...</p>
+              <p className="text-xs font-mono text-wiestell-text-muted animate-pulse">Loading technique details...</p>
             ) : techDetail ? (
               <div className="space-y-4">
                 {techDetail.description && (
-                  <p className="text-xs font-mono text-sentinel-text-secondary leading-relaxed line-clamp-3">
+                  <p className="text-xs font-mono text-wiestell-text-secondary leading-relaxed line-clamp-3">
                     {techDetail.description}
                   </p>
                 )}
@@ -406,7 +406,7 @@ export default function AttackMapPage() {
                     href={techDetail.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-[10px] font-mono text-sentinel-accent hover:underline"
+                    className="inline-flex items-center gap-1.5 text-[10px] font-mono text-wiestell-accent hover:underline"
                   >
                     <ExternalLink className="w-3 h-3" />
                     View on MITRE ATT&CK
@@ -415,10 +415,10 @@ export default function AttackMapPage() {
 
                 {techDetail.data_sources.length > 0 && (
                   <div>
-                    <p className="text-[10px] font-mono text-sentinel-text-muted uppercase mb-1.5">Data Sources</p>
+                    <p className="text-[10px] font-mono text-wiestell-text-muted uppercase mb-1.5">Data Sources</p>
                     <div className="flex flex-wrap gap-1.5">
                       {techDetail.data_sources.slice(0, 8).map((ds) => (
-                        <span key={ds} className="text-[9px] font-mono px-2 py-0.5 rounded bg-sentinel-bg-tertiary border border-sentinel-border text-sentinel-text-secondary">
+                        <span key={ds} className="text-[9px] font-mono px-2 py-0.5 rounded bg-wiestell-bg-tertiary border border-wiestell-border text-wiestell-text-secondary">
                           {ds}
                         </span>
                       ))}
@@ -428,17 +428,17 @@ export default function AttackMapPage() {
 
                 {techDetail.associated_iocs.length > 0 && (
                   <div>
-                    <p className="text-[10px] font-mono text-sentinel-text-muted uppercase mb-1.5">Associated IOCs</p>
+                    <p className="text-[10px] font-mono text-wiestell-text-muted uppercase mb-1.5">Associated IOCs</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                       {techDetail.associated_iocs.map((ioc) => (
                         <a
                           key={ioc.id}
                           href={`/ioc/${ioc.id}`}
-                          className="flex items-center justify-between px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border hover:border-sentinel-accent/30 transition-colors"
+                          className="flex items-center justify-between px-3 py-2 rounded bg-wiestell-bg-primary border border-wiestell-border hover:border-wiestell-accent/30 transition-colors"
                         >
                           <div className="min-w-0 flex-1 mr-2">
-                            <p className="text-[10px] font-mono text-sentinel-text-primary truncate">{ioc.value}</p>
-                            <p className="text-[9px] font-mono text-sentinel-text-muted uppercase">{ioc.type}</p>
+                            <p className="text-[10px] font-mono text-wiestell-text-primary truncate">{ioc.value}</p>
+                            <p className="text-[9px] font-mono text-wiestell-text-muted uppercase">{ioc.type}</p>
                           </div>
                           <span className={cn(
                             'text-[10px] font-mono font-bold px-1.5 py-0.5 rounded flex-shrink-0',
@@ -456,7 +456,7 @@ export default function AttackMapPage() {
                 )}
               </div>
             ) : (
-              <p className="text-xs font-mono text-sentinel-text-muted">
+              <p className="text-xs font-mono text-wiestell-text-muted">
                 No associated IOCs for this technique at the current score threshold.
               </p>
             )}

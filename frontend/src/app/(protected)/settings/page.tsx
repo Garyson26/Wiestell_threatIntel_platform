@@ -20,8 +20,8 @@ export default function SettingsPage() {
     <AdminRoute>
     <div className="space-y-6">
       <div>
-        <h1 className="text-lg font-display font-bold text-sentinel-text-primary">Settings</h1>
-        <p className="text-xs font-mono text-sentinel-text-muted mt-0.5">
+        <h1 className="text-lg font-display font-bold text-wiestell-text-primary">Settings</h1>
+        <p className="text-xs font-mono text-wiestell-text-muted mt-0.5">
           Platform configuration and preferences
         </p>
       </div>
@@ -38,8 +38,8 @@ export default function SettingsPage() {
                 className={cn(
                   'w-full flex items-center gap-3 px-3 py-2.5 rounded text-xs font-mono transition-colors text-left',
                   activeSection === section.id
-                    ? 'bg-sentinel-accent/10 text-sentinel-accent border border-sentinel-accent/20'
-                    : 'text-sentinel-text-secondary hover:text-sentinel-text-primary hover:bg-sentinel-bg-hover border border-transparent'
+                    ? 'bg-wiestell-accent/10 text-wiestell-accent border border-wiestell-accent/20'
+                    : 'text-wiestell-text-secondary hover:text-wiestell-text-primary hover:bg-wiestell-bg-hover border border-transparent'
                 )}
               >
                 <Icon className="w-4 h-4 flex-shrink-0" />
@@ -51,30 +51,30 @@ export default function SettingsPage() {
 
         {/* Content */}
         <div className="lg:col-span-3">
-          <div className="sentinel-card p-6 space-y-6">
+          <div className="wiestell-card p-6 space-y-6">
             {activeSection === 'general' && (
               <>
-                <h2 className="text-sm font-display font-semibold text-sentinel-text-primary">General Settings</h2>
+                <h2 className="text-sm font-display font-semibold text-wiestell-text-primary">General Settings</h2>
                 <div className="space-y-4">
                   <div>
-                    <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Platform Name</label>
+                    <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">Platform Name</label>
                     <input
                       type="text"
                       defaultValue="Wiestell"
-                      className="w-full max-w-md px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40"
+                      className="w-full max-w-md px-3 py-2 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40"
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Default Sync Interval (seconds)</label>
+                    <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">Default Sync Interval (seconds)</label>
                     <input
                       type="number"
                       defaultValue={3600}
-                      className="w-full max-w-md px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40"
+                      className="w-full max-w-md px-3 py-2 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40"
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Log Level</label>
-                    <select className="w-full max-w-md px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40">
+                    <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">Log Level</label>
+                    <select className="w-full max-w-md px-3 py-2 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40">
                       <option>INFO</option>
                       <option>DEBUG</option>
                       <option>WARNING</option>
@@ -87,8 +87,8 @@ export default function SettingsPage() {
 
             {activeSection === 'api-keys' && (
               <>
-                <h2 className="text-sm font-display font-semibold text-sentinel-text-primary">API Keys</h2>
-                <p className="text-xs font-mono text-sentinel-text-muted">
+                <h2 className="text-sm font-display font-semibold text-wiestell-text-primary">API Keys</h2>
+                <p className="text-xs font-mono text-wiestell-text-muted">
                   API keys are configured via environment variables. Update your .env file or Docker environment.
                 </p>
                 <div className="space-y-3">
@@ -100,12 +100,12 @@ export default function SettingsPage() {
                     { name: 'MALWAREBAZAAR_API_KEY', label: 'MalwareBazaar' },
                     { name: 'NVD_API_KEY', label: 'NVD' },
                   ].map((key) => (
-                    <div key={key.name} className="flex items-center justify-between p-3 rounded bg-sentinel-bg-primary border border-sentinel-border">
+                    <div key={key.name} className="flex items-center justify-between p-3 rounded bg-wiestell-bg-primary border border-wiestell-border">
                       <div>
-                        <p className="text-xs font-mono text-sentinel-text-primary">{key.label}</p>
-                        <p className="text-[10px] font-mono text-sentinel-text-muted">{key.name}</p>
+                        <p className="text-xs font-mono text-wiestell-text-primary">{key.label}</p>
+                        <p className="text-[10px] font-mono text-wiestell-text-muted">{key.name}</p>
                       </div>
-                      <span className="text-[10px] font-mono text-sentinel-text-muted px-2 py-0.5 rounded bg-sentinel-bg-tertiary">
+                      <span className="text-[10px] font-mono text-wiestell-text-muted px-2 py-0.5 rounded bg-wiestell-bg-tertiary">
                         ENV VAR
                       </span>
                     </div>
@@ -116,22 +116,22 @@ export default function SettingsPage() {
 
             {activeSection === 'feeds' && (
               <>
-                <h2 className="text-sm font-display font-semibold text-sentinel-text-primary">Feed Configuration</h2>
-                <p className="text-xs font-mono text-sentinel-text-muted">
+                <h2 className="text-sm font-display font-semibold text-wiestell-text-primary">Feed Configuration</h2>
+                <p className="text-xs font-mono text-wiestell-text-muted">
                   Manage feed sources from the Threat Feeds page. Global feed settings can be adjusted here.
                 </p>
                 <div className="space-y-4">
                   <div>
-                    <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Max IOCs Per Feed Sync</label>
+                    <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">Max IOCs Per Feed Sync</label>
                     <input
                       type="number"
                       defaultValue={5000}
-                      className="w-full max-w-md px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40"
+                      className="w-full max-w-md px-3 py-2 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40"
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">Auto-Enrichment on Ingest</label>
-                    <select className="w-full max-w-md px-3 py-2 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40">
+                    <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">Auto-Enrichment on Ingest</label>
+                    <select className="w-full max-w-md px-3 py-2 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40">
                       <option>Enabled</option>
                       <option>Disabled</option>
                     </select>
@@ -142,44 +142,44 @@ export default function SettingsPage() {
 
             {activeSection === 'ai' && (
               <>
-                <h2 className="text-sm font-display font-semibold text-sentinel-text-primary">AI Configuration</h2>
-                <p className="text-xs font-mono text-sentinel-text-muted">
+                <h2 className="text-sm font-display font-semibold text-wiestell-text-primary">AI Configuration</h2>
+                <p className="text-xs font-mono text-wiestell-text-muted">
                   Wiestell uses Groq (Llama 3.3 70B) for AI-powered threat analysis, chat assistance, and report generation.
                 </p>
                 <div className="space-y-3">
-                  <div className="p-3 rounded bg-sentinel-bg-primary border border-sentinel-border">
+                  <div className="p-3 rounded bg-wiestell-bg-primary border border-wiestell-border">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-xs font-mono text-sentinel-text-primary">Groq API Key</p>
-                        <p className="text-[10px] font-mono text-sentinel-text-muted">GROQ_API_KEY</p>
+                        <p className="text-xs font-mono text-wiestell-text-primary">Groq API Key</p>
+                        <p className="text-[10px] font-mono text-wiestell-text-muted">GROQ_API_KEY</p>
                       </div>
-                      <span className="text-[10px] font-mono text-sentinel-text-muted px-2 py-0.5 rounded bg-sentinel-bg-tertiary">
+                      <span className="text-[10px] font-mono text-wiestell-text-muted px-2 py-0.5 rounded bg-wiestell-bg-tertiary">
                         ENV VAR
                       </span>
                     </div>
                   </div>
-                  <div className="p-3 rounded bg-sentinel-bg-primary border border-sentinel-border">
+                  <div className="p-3 rounded bg-wiestell-bg-primary border border-wiestell-border">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-xs font-mono text-sentinel-text-primary">Model</p>
-                        <p className="text-[10px] font-mono text-sentinel-text-muted">llama-3.3-70b-versatile</p>
+                        <p className="text-xs font-mono text-wiestell-text-primary">Model</p>
+                        <p className="text-[10px] font-mono text-wiestell-text-muted">llama-3.3-70b-versatile</p>
                       </div>
                       <span className="text-[10px] font-mono text-gray-800 px-2 py-0.5 rounded bg-gray-300 border border-gray-400">
                         FAST
                       </span>
                     </div>
                   </div>
-                  <div className="p-3 rounded bg-sentinel-bg-primary border border-sentinel-border">
-                    <p className="text-xs font-mono text-sentinel-text-primary mb-2">AI Features</p>
+                  <div className="p-3 rounded bg-wiestell-bg-primary border border-wiestell-border">
+                    <p className="text-xs font-mono text-wiestell-text-primary mb-2">AI Features</p>
                     <ul className="space-y-1.5">
-                      <li className="flex items-center gap-2 text-[10px] font-mono text-sentinel-text-secondary">
-                        <Sparkles className="w-3 h-3 text-sentinel-accent" /> IOC Threat Analysis
+                      <li className="flex items-center gap-2 text-[10px] font-mono text-wiestell-text-secondary">
+                        <Sparkles className="w-3 h-3 text-wiestell-accent" /> IOC Threat Analysis
                       </li>
-                      <li className="flex items-center gap-2 text-[10px] font-mono text-sentinel-text-secondary">
-                        <Sparkles className="w-3 h-3 text-sentinel-accent" /> Chat Assistant
+                      <li className="flex items-center gap-2 text-[10px] font-mono text-wiestell-text-secondary">
+                        <Sparkles className="w-3 h-3 text-wiestell-accent" /> Chat Assistant
                       </li>
-                      <li className="flex items-center gap-2 text-[10px] font-mono text-sentinel-text-secondary">
-                        <Sparkles className="w-3 h-3 text-sentinel-accent" /> AI Report Generation
+                      <li className="flex items-center gap-2 text-[10px] font-mono text-wiestell-text-secondary">
+                        <Sparkles className="w-3 h-3 text-wiestell-accent" /> AI Report Generation
                       </li>
                     </ul>
                   </div>
@@ -189,15 +189,15 @@ export default function SettingsPage() {
 
             {activeSection === 'database' && (
               <>
-                <h2 className="text-sm font-display font-semibold text-sentinel-text-primary">Database Info</h2>
+                <h2 className="text-sm font-display font-semibold text-wiestell-text-primary">Database Info</h2>
                 <div className="space-y-3">
-                  <div className="p-3 rounded bg-sentinel-bg-primary border border-sentinel-border">
-                    <p className="text-[10px] font-mono text-sentinel-text-muted">Connection</p>
-                    <p className="text-xs font-mono text-sentinel-text-secondary mt-0.5">******</p>
+                  <div className="p-3 rounded bg-wiestell-bg-primary border border-wiestell-border">
+                    <p className="text-[10px] font-mono text-wiestell-text-muted">Connection</p>
+                    <p className="text-xs font-mono text-wiestell-text-secondary mt-0.5">******</p>
                   </div>
-                  <div className="p-3 rounded bg-sentinel-bg-primary border border-sentinel-border">
-                    <p className="text-[10px] font-mono text-sentinel-text-muted">Redis</p>
-                    <p className="text-xs font-mono text-sentinel-text-secondary mt-0.5">******</p>
+                  <div className="p-3 rounded bg-wiestell-bg-primary border border-wiestell-border">
+                    <p className="text-[10px] font-mono text-wiestell-text-muted">Redis</p>
+                    <p className="text-xs font-mono text-wiestell-text-secondary mt-0.5">******</p>
                   </div>
                 </div>
               </>

@@ -755,7 +755,7 @@ async def export_iocs(request: IOCExportRequest, db: AsyncSession = Depends(get_
         return Response(
             content=stix_json,
             media_type="application/json",
-            headers={"Content-Disposition": "attachment; filename=sentinel_export.stix.json"},
+            headers={"Content-Disposition": "attachment; filename=wiestell_export.stix.json"},
         )
     elif request.format == "csv":
         output = io.StringIO()
@@ -771,7 +771,7 @@ async def export_iocs(request: IOCExportRequest, db: AsyncSession = Depends(get_
         return Response(
             content=output.getvalue(),
             media_type="text/csv",
-            headers={"Content-Disposition": "attachment; filename=sentinel_export.csv"},
+            headers={"Content-Disposition": "attachment; filename=wiestell_export.csv"},
         )
     else:
         return ioc_dicts

@@ -33,8 +33,8 @@ export default function RoleBasedRoute({
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-sentinel-accent/30 border-t-sentinel-accent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-sentinel-text-muted font-mono text-sm">Loading...</p>
+          <div className="w-16 h-16 border-4 border-wiestell-accent/30 border-t-wiestell-accent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-wiestell-text-muted font-mono text-sm">Loading...</p>
         </div>
       </div>
     );
@@ -51,24 +51,24 @@ export default function RoleBasedRoute({
     
     return (
       <div className="flex items-center justify-center min-h-screen p-6">
-        <div className="sentinel-card max-w-md w-full p-8 text-center">
+        <div className="wiestell-card max-w-md w-full p-8 text-center">
           <div className="flex justify-center mb-6">
             <div className="relative">
-              <Shield className="w-16 h-16 text-sentinel-danger" />
-              <AlertTriangle className="w-8 h-8 text-sentinel-warning absolute -bottom-1 -right-1" />
+              <Shield className="w-16 h-16 text-wiestell-danger" />
+              <AlertTriangle className="w-8 h-8 text-wiestell-warning absolute -bottom-1 -right-1" />
             </div>
           </div>
           
-          <h1 className="text-2xl font-display font-bold text-sentinel-text-primary mb-3">
+          <h1 className="text-2xl font-display font-bold text-wiestell-text-primary mb-3">
             Access Denied
           </h1>
           
-          <p className="text-sentinel-text-secondary mb-6">
+          <p className="text-wiestell-text-secondary mb-6">
             You don't have permission to access this area. 
-            <span className="block mt-2 text-sentinel-text-muted text-sm font-mono">
+            <span className="block mt-2 text-wiestell-text-muted text-sm font-mono">
               Required role: {allowedRoles.join(' or ')}
             </span>
-            <span className="block text-sentinel-text-muted text-sm font-mono">
+            <span className="block text-wiestell-text-muted text-sm font-mono">
               Your role: {user.role}
             </span>
           </p>

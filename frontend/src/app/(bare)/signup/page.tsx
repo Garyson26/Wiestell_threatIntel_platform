@@ -111,9 +111,9 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen bg-sentinel-bg-primary">
+    <div className="min-h-screen bg-wiestell-bg-primary">
       {/* Header */}
-      <header className="border-b border-sentinel-border bg-sentinel-bg-secondary/50 backdrop-blur-sm">
+      <header className="border-b border-wiestell-border bg-wiestell-bg-secondary/50 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center">
             <Image
@@ -128,13 +128,13 @@ export default function SignupPage() {
           <div className="flex gap-3">
             <Link
               href="/about"
-              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+              className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
             >
               About
             </Link>
             <Link
               href="/contact"
-              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+              className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
             >
               Contact Us
             </Link>
@@ -145,7 +145,7 @@ export default function SignupPage() {
                     const dashboardPath = user.role === 'admin' ? '/dashboard' : '/analytics';
                     router.push(dashboardPath);
                   }}
-                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                  className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
                 >
                   Dashboard
                 </button>
@@ -154,7 +154,7 @@ export default function SignupPage() {
                     logout();
                     router.push('/');
                   }}
-                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors flex items-center gap-1"
+                  className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors flex items-center gap-1"
                 >
                   <LogOut className="w-4 h-4" />
                   Logout
@@ -164,7 +164,7 @@ export default function SignupPage() {
               <>
                 <Link
                   href="/login"
-                  className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                  className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
                 >
                   Login
                 </Link>
@@ -176,8 +176,8 @@ export default function SignupPage() {
 
       {/* Main Content */}
       <div className="flex items-center justify-center min-h-[calc(100vh-73px)] py-12">
-        <div className="sentinel-card w-full max-w-md p-8 animate-fade-in">
-          <h2 className="text-sm font-display font-semibold text-sentinel-text-primary mb-5 text-center">
+        <div className="wiestell-card w-full max-w-md p-8 animate-fade-in">
+          <h2 className="text-sm font-display font-semibold text-wiestell-text-primary mb-5 text-center">
             {otpStep ? 'Verify OTP' : 'Create Account'}
           </h2>
 
@@ -188,8 +188,8 @@ export default function SignupPage() {
         )}
 
         {otpMessage && otpStep && (
-          <div className="mb-4 p-2.5 rounded bg-sentinel-accent/5 border border-sentinel-accent/20">
-            <p className="text-xs font-mono text-sentinel-accent text-center">{otpMessage}</p>
+          <div className="mb-4 p-2.5 rounded bg-wiestell-accent/5 border border-wiestell-accent/20">
+            <p className="text-xs font-mono text-wiestell-accent text-center">{otpMessage}</p>
           </div>
         )}
 
@@ -197,11 +197,11 @@ export default function SignupPage() {
           <form onSubmit={handleSubmit} className="space-y-4">{/* Full Name */}
           {/* Full Name */}
           <div>
-            <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">
+            <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">
               Full Name (Optional)
             </label>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sentinel-text-muted" />
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-wiestell-text-muted" />
               <input
                 type="text"
                 name="fullName"
@@ -209,61 +209,61 @@ export default function SignupPage() {
                 onChange={handleChange}
                 placeholder="Enter full name"
                 autoFocus
-                className="w-full pl-10 pr-3 py-2.5 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40 transition-colors"
+                className="w-full pl-10 pr-3 py-2.5 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40 transition-colors"
               />
             </div>
           </div>
 
           {/* Email */}
           <div>
-            <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">
+            <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">
               Email *
             </label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sentinel-text-muted" />
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-wiestell-text-muted" />
               <input
                 type="email"
                 name="email"
                 value={formData.email}
                 onChange={handleChange}
                 placeholder="your@email.com"
-                className="w-full pl-10 pr-3 py-2.5 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40 transition-colors"
+                className="w-full pl-10 pr-3 py-2.5 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40 transition-colors"
               />
             </div>
           </div>
 
           {/* Password */}
           <div>
-            <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">
+            <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">
               Password *
             </label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sentinel-text-muted" />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-wiestell-text-muted" />
               <input
                 type="password"
                 name="password"
                 value={formData.password}
                 onChange={handleChange}
                 placeholder="Minimum 6 characters"
-                className="w-full pl-10 pr-3 py-2.5 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40 transition-colors"
+                className="w-full pl-10 pr-3 py-2.5 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40 transition-colors"
               />
             </div>
           </div>
 
           {/* Confirm Password */}
           <div>
-            <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">
+            <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">
               Confirm Password *
             </label>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sentinel-text-muted" />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-wiestell-text-muted" />
               <input
                 type="password"
                 name="confirmPassword"
                 value={formData.confirmPassword}
                 onChange={handleChange}
                 placeholder="Re-enter password"
-                className="w-full pl-10 pr-3 py-2.5 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40 transition-colors"
+                className="w-full pl-10 pr-3 py-2.5 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40 transition-colors"
               />
             </div>
           </div>
@@ -280,7 +280,7 @@ export default function SignupPage() {
         ) : (
           <form onSubmit={handleOtpSubmit} className="space-y-4">
             <div>
-              <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-3 text-center">Enter OTP</label>
+              <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-3 text-center">Enter OTP</label>
               <OTPInput
                 length={6}
                 value={otp}
@@ -304,18 +304,18 @@ export default function SignupPage() {
                 setError('');
                 setOtpMessage('');
               }}
-              className="w-full text-xs font-mono text-sentinel-text-muted hover:text-sentinel-accent transition-colors"
+              className="w-full text-xs font-mono text-wiestell-text-muted hover:text-wiestell-accent transition-colors"
             >
               ← Back to registration
             </button>
           </form>
         )}
 
-          <p className="text-center text-[10px] font-mono text-sentinel-text-muted mt-5">
+          <p className="text-center text-[10px] font-mono text-wiestell-text-muted mt-5">
             Already have an account?{' '}
             <button
               onClick={() => router.push('/login')}
-              className="text-sentinel-accent hover:underline"
+              className="text-wiestell-accent hover:underline"
             >
               Sign in
             </button>

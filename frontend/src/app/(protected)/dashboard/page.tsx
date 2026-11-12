@@ -23,16 +23,16 @@ export default function DashboardPage() {
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-display font-bold text-sentinel-text-primary">
+          <h1 className="text-lg font-display font-bold text-wiestell-text-primary">
             Threat Overview
           </h1>
-          <p className="text-xs font-mono text-sentinel-text-muted mt-0.5">
+          <p className="text-xs font-mono text-wiestell-text-muted mt-0.5">
             Real-time threat intelligence dashboard
           </p>
         </div>
         <button
           onClick={refresh}
-          className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded border border-sentinel-border text-sentinel-text-secondary hover:text-sentinel-accent hover:border-sentinel-accent/30 transition-colors"
+          className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded border border-wiestell-border text-wiestell-text-secondary hover:text-wiestell-accent hover:border-wiestell-accent/30 transition-colors"
         >
           <RefreshCw className="w-3 h-3" />
           REFRESH
@@ -40,8 +40,8 @@ export default function DashboardPage() {
       </div>
 
       {error && (
-        <div className="sentinel-card p-4 border-sentinel-warning/30">
-          <p className="text-xs font-mono text-sentinel-warning">
+        <div className="wiestell-card p-4 border-wiestell-warning/30">
+          <p className="text-xs font-mono text-wiestell-warning">
             Backend not reachable. Showing cached data. Start services with: docker-compose up
           </p>
         </div>

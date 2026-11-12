@@ -83,9 +83,9 @@ function ResetPasswordForm() {
   }
 
   return (
-    <div className="min-h-screen bg-sentinel-bg-primary">
+    <div className="min-h-screen bg-wiestell-bg-primary">
       {/* Header */}
-      <header className="border-b border-sentinel-border bg-sentinel-bg-secondary/50 backdrop-blur-sm">
+      <header className="border-b border-wiestell-border bg-wiestell-bg-secondary/50 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center">
             <Image
@@ -100,19 +100,19 @@ function ResetPasswordForm() {
           <div className="flex gap-3">
             <Link
               href="/about"
-              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+              className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
             >
               About
             </Link>
             <Link
               href="/contact"
-              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+              className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
             >
               Contact Us
             </Link>
             <Link
               href="/login"
-              className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+              className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
             >
               Login
             </Link>
@@ -122,13 +122,13 @@ function ResetPasswordForm() {
 
       {/* Main Content */}
       <div className="flex items-center justify-center min-h-[calc(100vh-73px)] py-12">
-        <div className="sentinel-card w-full max-w-sm p-8 animate-fade-in">
+        <div className="wiestell-card w-full max-w-sm p-8 animate-fade-in">
           {/* Header */}
           <div className="text-center mb-6">
-            <h2 className="text-sm font-display font-semibold text-sentinel-text-primary mb-2">
+            <h2 className="text-sm font-display font-semibold text-wiestell-text-primary mb-2">
               Reset Password
             </h2>
-            <p className="text-xs font-mono text-sentinel-text-muted">
+            <p className="text-xs font-mono text-wiestell-text-muted">
               Enter the OTP sent to your email and your new password
             </p>
           </div>
@@ -146,7 +146,7 @@ function ResetPasswordForm() {
               <p className="text-sm font-mono text-green-600 font-semibold text-center mb-2">
                 Password Reset Successfully!
               </p>
-              <p className="text-xs font-mono text-sentinel-text-muted text-center">
+              <p className="text-xs font-mono text-wiestell-text-muted text-center">
                 Redirecting to login page...
               </p>
             </div>
@@ -155,7 +155,7 @@ function ResetPasswordForm() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Email */}
             <div>
-              <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">
+              <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">
                 Email Address
               </label>
               <input
@@ -163,13 +163,13 @@ function ResetPasswordForm() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="your.email@example.com"
-                className="w-full px-3 py-2.5 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40 transition-colors"
+                className="w-full px-3 py-2.5 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40 transition-colors"
               />
             </div>
 
             {/* OTP */}
             <div>
-              <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-3 text-center">
+              <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-3 text-center">
                 OTP Code
               </label>
               <OTPInput
@@ -182,22 +182,22 @@ function ResetPasswordForm() {
 
             {/* New Password */}
             <div>
-              <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">
+              <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">
                 New Password
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sentinel-text-muted" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-wiestell-text-muted" />
                 <input
                   type={showNewPassword ? 'text' : 'password'}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="Enter new password (min 6 characters)"
-                  className="w-full pl-10 pr-10 py-2.5 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40 transition-colors"
+                  className="w-full pl-10 pr-10 py-2.5 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40 transition-colors"
                 />
                 <button
                   type="button"
                   onClick={() => setShowNewPassword(!showNewPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-sentinel-text-muted hover:text-sentinel-text-primary transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-wiestell-text-muted hover:text-wiestell-text-primary transition-colors"
                 >
                   {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -206,22 +206,22 @@ function ResetPasswordForm() {
 
             {/* Confirm Password */}
             <div>
-              <label className="text-[10px] font-mono text-sentinel-text-muted uppercase block mb-1">
+              <label className="text-[10px] font-mono text-wiestell-text-muted uppercase block mb-1">
                 Confirm Password
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sentinel-text-muted" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-wiestell-text-muted" />
                 <input
                   type={showConfirmPassword ? 'text' : 'password'}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Re-enter new password"
-                  className="w-full pl-10 pr-10 py-2.5 rounded bg-sentinel-bg-primary border border-sentinel-border text-sm font-mono text-sentinel-text-primary outline-none focus:border-sentinel-accent/40 transition-colors"
+                  className="w-full pl-10 pr-10 py-2.5 rounded bg-wiestell-bg-primary border border-wiestell-border text-sm font-mono text-wiestell-text-primary outline-none focus:border-wiestell-accent/40 transition-colors"
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-sentinel-text-muted hover:text-sentinel-text-primary transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-wiestell-text-muted hover:text-wiestell-text-primary transition-colors"
                 >
                   {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -240,10 +240,10 @@ function ResetPasswordForm() {
         )}
 
         {/* Back to Login */}
-        <div className="mt-6 pt-4 border-t border-sentinel-border">
+        <div className="mt-6 pt-4 border-t border-wiestell-border">
           <button
             onClick={() => router.push('/login')}
-            className="w-full flex items-center justify-center gap-2 text-xs font-mono text-sentinel-text-muted hover:text-sentinel-accent transition-colors"
+            className="w-full flex items-center justify-center gap-2 text-xs font-mono text-wiestell-text-muted hover:text-wiestell-accent transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             Back to Login
@@ -258,8 +258,8 @@ function ResetPasswordForm() {
 export default function ResetPasswordPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-sentinel-bg-primary">
-        <header className="border-b border-sentinel-border bg-sentinel-bg-secondary/50 backdrop-blur-sm">
+      <div className="min-h-screen bg-wiestell-bg-primary">
+        <header className="border-b border-wiestell-border bg-wiestell-bg-secondary/50 backdrop-blur-sm">
           <div className="container mx-auto px-6 py-4 flex items-center justify-between">
             <Link href="/" className="flex items-center">
               <Image
@@ -274,19 +274,19 @@ export default function ResetPasswordPage() {
             <div className="flex gap-3">
               <Link
                 href="/about"
-                className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
               >
                 About
               </Link>
               <Link
                 href="/contact"
-                className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
               >
                 Contact Us
               </Link>
               <Link
                 href="/login"
-                className="px-4 py-2 text-sm font-mono text-sentinel-text-secondary hover:text-sentinel-accent transition-colors"
+                className="px-4 py-2 text-sm font-mono text-wiestell-text-secondary hover:text-wiestell-accent transition-colors"
               >
                 Login
               </Link>
@@ -294,9 +294,9 @@ export default function ResetPasswordPage() {
           </div>
         </header>
         <div className="flex items-center justify-center min-h-[calc(100vh-73px)]">
-          <div className="sentinel-card w-full max-w-sm p-8">
+          <div className="wiestell-card w-full max-w-sm p-8">
             <div className="flex items-center justify-center">
-              <div className="w-6 h-6 border-2 border-sentinel-accent border-t-transparent rounded-full animate-spin" />
+              <div className="w-6 h-6 border-2 border-wiestell-accent border-t-transparent rounded-full animate-spin" />
             </div>
           </div>
         </div>

@@ -53,13 +53,13 @@ export default function StatsCards({ stats, loading }: StatsCardsProps) {
           <div
             key={card.label}
             className={cn(
-              'sentinel-card p-5 animate-fade-in',
+              'wiestell-card p-5 animate-fade-in',
               loading && 'animate-pulse'
             )}
             style={{ animationDelay: `${i * 50}ms` }}
           >
             <div className="flex items-center justify-between mb-3">
-              <span className="text-[10px] font-mono font-semibold uppercase tracking-widest text-sentinel-text-muted">
+              <span className="text-[10px] font-mono font-semibold uppercase tracking-widest text-wiestell-text-muted">
                 {card.label}
               </span>
               {card.delta > 0 && (
@@ -80,7 +80,7 @@ export default function StatsCards({ stats, loading }: StatsCardsProps) {
                 <p className="text-2xl font-mono font-bold" style={{ color: card.color }}>
                   {formatNumber(typeof card.value === 'number' ? Math.round(card.value) : card.value)}
                 </p>
-                <p className="text-[10px] font-mono text-sentinel-text-muted mt-1">{card.deltaLabel}</p>
+                <p className="text-[10px] font-mono text-wiestell-text-muted mt-1">{card.deltaLabel}</p>
               </div>
               <Icon className="w-8 h-8 opacity-20" style={{ color: card.color }} />
             </div>

@@ -70,17 +70,17 @@ export default function Header() {
   };
 
   return (
-    <header className="relative z-50 flex items-center justify-between h-14 px-6 border-b border-sentinel-border bg-sentinel-bg-secondary/80 backdrop-blur-sm">
+    <header className="relative z-50 flex items-center justify-between h-14 px-6 border-b border-wiestell-border bg-wiestell-bg-secondary/80 backdrop-blur-sm">
       {/* Global Search */}
       <form onSubmit={handleSearch} className="flex items-center gap-2 flex-1 max-w-xl">
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-sentinel-bg-primary border border-sentinel-border w-full focus-within:border-sentinel-accent/40 transition-colors">
-          <Search className="w-4 h-4 text-sentinel-text-muted flex-shrink-0" />
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-wiestell-bg-primary border border-wiestell-border w-full focus-within:border-wiestell-accent/40 transition-colors">
+          <Search className="w-4 h-4 text-wiestell-text-muted flex-shrink-0" />
           <input
             type="text"
             value={searchValue}
             onChange={(e) => setSearchValue(e.target.value)}
             placeholder="Search IOCs (IP, domain, hash, URL)..."
-            className="bg-transparent text-sm font-mono text-sentinel-text-primary placeholder:text-sentinel-text-muted w-full outline-none"
+            className="bg-transparent text-sm font-mono text-wiestell-text-primary placeholder:text-wiestell-text-muted w-full outline-none"
           />
         </div>
       </form>
@@ -106,8 +106,8 @@ export default function Header() {
             className={cn(
               'text-xs font-mono font-medium transition-colors px-3 py-1.5 rounded',
               pathname === '/about'
-                ? 'text-sentinel-accent bg-sentinel-accent/10'
-                : 'text-sentinel-text-secondary hover:text-sentinel-text-primary hover:bg-sentinel-bg-hover'
+                ? 'text-wiestell-accent bg-wiestell-accent/10'
+                : 'text-wiestell-text-secondary hover:text-wiestell-text-primary hover:bg-wiestell-bg-hover'
             )}
           >
             About
@@ -120,7 +120,7 @@ export default function Header() {
         {/* Refresh Button */}
         <button
           onClick={handleRefresh}
-          className="p-2 rounded text-sentinel-text-muted hover:text-sentinel-text-primary hover:bg-sentinel-bg-hover transition-colors"
+          className="p-2 rounded text-wiestell-text-muted hover:text-wiestell-text-primary hover:bg-wiestell-bg-hover transition-colors"
           title="Refresh page data"
         >
           <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin')} />
@@ -130,37 +130,37 @@ export default function Header() {
         <div className="relative" ref={notifRef}>
           <button
             onClick={() => { setShowNotifications(!showNotifications); setShowUserMenu(false); }}
-            className="p-2 rounded text-sentinel-text-muted hover:text-sentinel-text-primary hover:bg-sentinel-bg-hover transition-colors relative"
+            className="p-2 rounded text-wiestell-text-muted hover:text-wiestell-text-primary hover:bg-wiestell-bg-hover transition-colors relative"
           >
             <Bell className="w-4 h-4" />
             {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 w-2 h-2 bg-sentinel-danger rounded-full" />
+              <span className="absolute top-1 right-1 w-2 h-2 bg-wiestell-danger rounded-full" />
             )}
           </button>
 
           {showNotifications && (
-            <div className="absolute right-0 top-full mt-2 w-80 sentinel-card border border-sentinel-border shadow-xl z-50 max-h-96 flex flex-col animate-fade-in">
-              <div className="px-4 py-3 border-b border-sentinel-border">
-                <h3 className="text-xs font-mono font-semibold text-sentinel-text-primary uppercase tracking-wider">
+            <div className="absolute right-0 top-full mt-2 w-80 wiestell-card border border-wiestell-border shadow-xl z-50 max-h-96 flex flex-col animate-fade-in">
+              <div className="px-4 py-3 border-b border-wiestell-border">
+                <h3 className="text-xs font-mono font-semibold text-wiestell-text-primary uppercase tracking-wider">
                   Threat Alerts
                 </h3>
               </div>
               <div className="overflow-y-auto flex-1">
                 {notifications.length === 0 ? (
                   <div className="px-4 py-6 text-center">
-                    <p className="text-xs font-mono text-sentinel-text-muted">No recent alerts</p>
+                    <p className="text-xs font-mono text-wiestell-text-muted">No recent alerts</p>
                   </div>
                 ) : (
                   notifications.map((n) => (
                     <button
                       key={n.id + n.timestamp}
                       onClick={() => { router.push(`/ioc/${n.id}`); setShowNotifications(false); }}
-                      className="w-full px-4 py-3 border-b border-sentinel-border/50 hover:bg-sentinel-bg-hover transition-colors text-left"
+                      className="w-full px-4 py-3 border-b border-wiestell-border/50 hover:bg-wiestell-bg-hover transition-colors text-left"
                     >
                       <div className="flex items-start gap-2">
                         {levelIcon(n.level)}
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs font-mono text-sentinel-text-primary truncate">{n.message}</p>
+                          <p className="text-xs font-mono text-wiestell-text-primary truncate">{n.message}</p>
                           <div className="flex items-center gap-2 mt-1">
                             <span className={cn(
                               'text-[10px] font-mono px-1.5 py-0.5 rounded',
@@ -170,7 +170,7 @@ export default function Header() {
                             )}>
                               SCORE {n.threat_score}
                             </span>
-                            <span className="text-[10px] font-mono text-sentinel-text-muted">
+                            <span className="text-[10px] font-mono text-wiestell-text-muted">
                               {formatDate(n.timestamp)}
                             </span>
                           </div>
@@ -191,8 +191,8 @@ export default function Header() {
             className={cn(
               'flex items-center gap-2 p-2 rounded transition-colors',
               user
-                ? 'text-sentinel-accent hover:bg-sentinel-accent/10'
-                : 'text-sentinel-text-muted hover:text-sentinel-text-primary hover:bg-sentinel-bg-hover'
+                ? 'text-wiestell-accent hover:bg-wiestell-accent/10'
+                : 'text-wiestell-text-muted hover:text-wiestell-text-primary hover:bg-wiestell-bg-hover'
             )}
           >
             <User className="w-4 h-4" />
@@ -202,19 +202,19 @@ export default function Header() {
           </button>
 
           {showUserMenu && (
-            <div className="absolute right-0 top-full mt-2 w-52 sentinel-card border border-sentinel-border shadow-xl z-50 animate-fade-in">
+            <div className="absolute right-0 top-full mt-2 w-52 wiestell-card border border-wiestell-border shadow-xl z-50 animate-fade-in">
               {user ? (
                 <>
-                  <div className="px-4 py-3 border-b border-sentinel-border/50">
-                    <p className="text-xs font-mono font-semibold text-sentinel-text-primary">{user.full_name || user.username}</p>
-                    <p className="text-[10px] font-mono text-sentinel-text-muted">{user.email}</p>
-                    {/* <span className="text-[10px] font-mono text-sentinel-accent uppercase">{user.role}</span> */}
+                  <div className="px-4 py-3 border-b border-wiestell-border/50">
+                    <p className="text-xs font-mono font-semibold text-wiestell-text-primary">{user.full_name || user.username}</p>
+                    <p className="text-[10px] font-mono text-wiestell-text-muted">{user.email}</p>
+                    {/* <span className="text-[10px] font-mono text-wiestell-accent uppercase">{user.role}</span> */}
                   </div>
                   {user.role === 'admin' && (
                     <>
                     <button
                       onClick={() => { router.push('/profile'); setShowUserMenu(false); }}
-                      className="w-full px-4 py-2.5 text-left text-xs font-mono text-sentinel-text-secondary hover:text-sentinel-text-primary hover:bg-sentinel-bg-hover transition-colors"
+                      className="w-full px-4 py-2.5 text-left text-xs font-mono text-wiestell-text-secondary hover:text-wiestell-text-primary hover:bg-wiestell-bg-hover transition-colors"
                     >
                       User Management
                     </button>
@@ -222,8 +222,8 @@ export default function Header() {
                   <button
                     onClick={() => { router.push('/settings'); setShowUserMenu(false); }}
                     className={cn(
-                      'w-full px-4 py-2.5 text-left text-xs font-mono text-sentinel-text-secondary hover:text-sentinel-text-primary hover:bg-sentinel-bg-hover transition-colors',
-                      'border-t border-sentinel-border/50'
+                      'w-full px-4 py-2.5 text-left text-xs font-mono text-wiestell-text-secondary hover:text-wiestell-text-primary hover:bg-wiestell-bg-hover transition-colors',
+                      'border-t border-wiestell-border/50'
                     )}
                   >
                     Settings
@@ -233,15 +233,15 @@ export default function Header() {
                   <button
                     onClick={() => { router.push('/my-profile'); setShowUserMenu(false); }}
                     className={cn(
-                      'w-full px-4 py-2.5 text-left text-xs font-mono text-sentinel-text-secondary hover:text-sentinel-text-primary hover:bg-sentinel-bg-hover transition-colors',
-                      user.role === 'admin' ? '' : 'border-t border-sentinel-border/50'
+                      'w-full px-4 py-2.5 text-left text-xs font-mono text-wiestell-text-secondary hover:text-wiestell-text-primary hover:bg-wiestell-bg-hover transition-colors',
+                      user.role === 'admin' ? '' : 'border-t border-wiestell-border/50'
                     )}
                   >
                     My Profile
                   </button>
                   <button
                     onClick={handleLogout}
-                    className="w-full px-4 py-2.5 text-left text-xs font-mono text-gray-700 hover:bg-gray-200 transition-colors border-t border-sentinel-border/50 flex items-center gap-2"
+                    className="w-full px-4 py-2.5 text-left text-xs font-mono text-gray-700 hover:bg-gray-200 transition-colors border-t border-wiestell-border/50 flex items-center gap-2"
                   >
                     <LogOut className="w-3 h-3" />
                     Sign Out
@@ -251,21 +251,21 @@ export default function Header() {
                 <>
                   <button
                     onClick={() => { router.push('/about'); setShowUserMenu(false); }}
-                    className="w-full px-4 py-2.5 text-left text-xs font-mono text-sentinel-text-secondary hover:text-sentinel-text-primary hover:bg-sentinel-bg-hover transition-colors flex items-center gap-2"
+                    className="w-full px-4 py-2.5 text-left text-xs font-mono text-wiestell-text-secondary hover:text-wiestell-text-primary hover:bg-wiestell-bg-hover transition-colors flex items-center gap-2"
                   >
                     <Info className="w-3 h-3" />
                     About
                   </button>
                   <button
                     onClick={() => { router.push('/login'); setShowUserMenu(false); }}
-                    className="w-full px-4 py-2.5 text-left text-xs font-mono text-sentinel-accent hover:bg-sentinel-accent/10 transition-colors flex items-center gap-2 border-t border-sentinel-border/50"
+                    className="w-full px-4 py-2.5 text-left text-xs font-mono text-wiestell-accent hover:bg-wiestell-accent/10 transition-colors flex items-center gap-2 border-t border-wiestell-border/50"
                   >
                     <LogIn className="w-3 h-3" />
                     Sign In
                   </button>
                   <button
                     onClick={() => { router.push('/signup'); setShowUserMenu(false); }}
-                    className="w-full px-4 py-2.5 text-left text-xs font-mono text-sentinel-text-secondary hover:text-sentinel-text-primary hover:bg-sentinel-bg-hover transition-colors border-t border-sentinel-border/50"
+                    className="w-full px-4 py-2.5 text-left text-xs font-mono text-wiestell-text-secondary hover:text-wiestell-text-primary hover:bg-wiestell-bg-hover transition-colors border-t border-wiestell-border/50"
                   >
                     Sign Up
                   </button>

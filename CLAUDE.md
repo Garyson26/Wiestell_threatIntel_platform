@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Wiestell (internally "SENTINEL") is a Threat Intelligence Platform: a FastAPI backend that ingests IOCs from 10+ open-source threat feeds, enriches them (WHOIS/DNS/GeoIP/reputation/Shodan/MalwareBazaar), scores them 0–100, correlates them and maps them to MITRE ATT&CK — plus a Next.js SOC dashboard.
+Wiestell is a Threat Intelligence Platform: a FastAPI backend that ingests IOCs from 10+ open-source threat feeds, enriches them (WHOIS/DNS/GeoIP/reputation/Shodan/MalwareBazaar), scores them 0–100, correlates them and maps them to MITRE ATT&CK — plus a Next.js SOC dashboard.
 
 The project summary and security review this file used to point to were removed in `1acf081` and are no longer in the repository. Read [Authorization model](#authorization-model) below before touching auth.
 
@@ -127,7 +127,7 @@ verified via `docker inspect` (`Memory=536870912`, `NanoCpus=100000000`).
 
 `tests/conftest.py` sets the required env vars **before** importing `app` (config raises on a missing `DATABASE_URL` or a placeholder `SECRET_KEY`), and provides a `FakeSession` stub plus an `as_role("admin"|"analyst"|"viewer")` fixture that mints a token and overrides `get_db`. No test touches a real database — authorization resolves before any handler body runs, so 401/403 paths need no DB at all.
 
-What the suite pins down, i.e. what will break loudly if regressed: every route is guarded unless explicitly allowlisted; role boundaries; token forgery/`alg:none`/expiry/type; OTP hashing and purpose-binding; password policy; production `SECRET_KEY` refusal; wildcard-CORS stripping; secret redaction; the `api_key_env` allowlist (including the scheduler-level check); feed parsing and registry resolution; per-type enrichment sources; CSV formula escaping; AI prompt-role validation.
+What the suite pins down, i.e. what will break loudly if regressed: every route is guarded unless explicitly allowlisted; role boundaries; token forgery/`alg:none`/expiry/type; OTP hashing and purpose-binding; password policy; production `SECRET_KEY` refusal; wildcard-CORS stripping; secret redaction; the `api_key_env` allowlist (including the scheduler-level check); feed parsing and registry resolution; per-type enrichment sources; CSV formula escaping; AI prompt-role validation; the product name, both on every served surface and repo-wide (the old internal name may appear only where `tests/test_product_name.py::ALLOWED` gives a reason).
 
 ## Required environment
 

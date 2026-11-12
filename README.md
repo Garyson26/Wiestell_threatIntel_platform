@@ -56,7 +56,7 @@ Edit `.env` and set at least these values:
 
 ```ini
 # Points the backend container at the bundled database service
-DATABASE_URL=mysql+pymysql://sentinel:sentinel@db:3306/sentinel_test
+DATABASE_URL=mysql+pymysql://wiestell:wiestell@db:3306/wiestell_test
 # Generate with: python -c "import secrets; print(secrets.token_urlsafe(48))"
 SECRET_KEY=<at least 32 random characters>
 CORS_ORIGINS=http://localhost:3000
@@ -76,7 +76,7 @@ Seed the feed registry and the ATT&CK catalogue from the host. The bundled datab
 ```bash
 # bash / zsh
 pip install -r backend/requirements.txt
-export DATABASE_URL="mysql+pymysql://sentinel:sentinel@127.0.0.1:3307/sentinel_test"
+export DATABASE_URL="mysql+pymysql://wiestell:wiestell@127.0.0.1:3307/wiestell_test"
 export SECRET_KEY="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')"
 python scripts/seed_feeds.py
 python scripts/seed_mitre.py
@@ -85,7 +85,7 @@ python scripts/seed_mitre.py
 ```powershell
 # PowerShell
 pip install -r backend/requirements.txt
-$env:DATABASE_URL = "mysql+pymysql://sentinel:sentinel@127.0.0.1:3307/sentinel_test"
+$env:DATABASE_URL = "mysql+pymysql://wiestell:wiestell@127.0.0.1:3307/wiestell_test"
 $env:SECRET_KEY = python -c "import secrets; print(secrets.token_urlsafe(48))"
 python scripts/seed_feeds.py
 python scripts/seed_mitre.py
