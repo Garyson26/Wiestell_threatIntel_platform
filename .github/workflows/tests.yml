@@ -31,6 +31,16 @@ jobs:
       run:
         working-directory: backend
     steps:
+      # The slim image has no git. TestTheWorkflowDetectsAStaleDeploy builds throwaway
+      # repositories to exercise the deploy-drift check, so without it those tests error
+      # here and never run anywhere. Installed before checkout so checkout clones with git
+      # rather than downloading a tarball. A system tool, not a Python package: the
+      # "nothing but the pins" rule above is about pip, and this does not touch it.
+      # working-directory is overridden because backend/ does not exist before checkout.
+      - name: Install git
+        working-directory: /
+        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends git && git --version
+
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Install from the pins
