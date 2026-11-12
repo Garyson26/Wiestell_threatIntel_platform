@@ -99,7 +99,7 @@ services:
   # JSON semantics differ too: MariaDB implements JSON as LONGTEXT with a CHECK
   # constraint and its json_contains argument handling is not identical to MySQL's.
   db:
-    image: ${DB_IMAGE:-mariadb:11.8}
+    image: ${DB_IMAGE:-mariadb:13.0}
     command: >
       --wait-timeout=30
       --interactive-timeout=30
