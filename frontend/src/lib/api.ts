@@ -1,10 +1,12 @@
+import { readStorage, TOKEN_KEY } from './storageKeys';
+
 const API_BASE = '';
 
 async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
   
   // Get auth token from localStorage if available
-  const token = typeof window !== 'undefined' ? localStorage.getItem('sentinel_token') : null;
+  const token = readStorage(TOKEN_KEY);
   
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -24,7 +26,7 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
   if (!res.ok) {
     // A rejected token is dropped immediately so the UI cannot keep replaying it.
     if (res.status === 401 && typeof window !== 'undefined') {
-      localStorage.removeItem('sentinel_token');
+      localStorage.removeItem(TOKEN_KEY);
     }
 
     let message = `API error: ${res.status} ${res.statusText}`;
@@ -128,7 +130,7 @@ export const getDailyBrief = () => fetchAPI<import('./types').Report>('/api/v1/r
 
 export async function downloadReport(id: string): Promise<Blob> {
   const url = `${API_BASE}/api/v1/reports/${id}/download`;
-  const token = typeof window !== 'undefined' ? localStorage.getItem('sentinel_token') : null;
+  const token = readStorage(TOKEN_KEY);
   
   const headers: Record<string, string> = {};
   if (token) {

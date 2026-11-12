@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { getMe } from '@/lib/api';
 import { clearUserActivities } from '@/lib/userActivity';
+import { readStorage, TOKEN_KEY } from '@/lib/storageKeys';
 import type { UserProfile } from '@/lib/types';
 
 interface AuthContextType {
@@ -27,13 +28,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const saved = localStorage.getItem('sentinel_token');
+    const saved = readStorage(TOKEN_KEY);
     if (saved) {
       setToken(saved);
       getMe()
         .then((u) => setUser(u))
         .catch(() => {
-          localStorage.removeItem('sentinel_token');
+          localStorage.removeItem(TOKEN_KEY);
           setToken(null);
         })
         .finally(() => setLoading(false));
@@ -43,7 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback((newToken: string, newUser: UserProfile) => {
-    localStorage.setItem('sentinel_token', newToken);
+    localStorage.setItem(TOKEN_KEY, newToken);
     setToken(newToken);
     setUser(newUser);
   }, []);
@@ -54,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (user?.id) {
       clearUserActivities(user.id);
     }
-    localStorage.removeItem('sentinel_token');
+    localStorage.removeItem(TOKEN_KEY);
     setToken(null);
     setUser(null);
   }, [user]);
