@@ -61,7 +61,7 @@ from sqlalchemy import event
 
 # Default matches docker-compose.yml's db service (loopback, port 3307, root user
 # so the tier can CREATE/DROP freely). Override with MYSQL_TEST_URL.
-DEFAULT_MYSQL_TEST_URL = "mysql+pymysql://root:sentinel@127.0.0.1:3307/sentinel_test"
+DEFAULT_MYSQL_TEST_URL = "mysql+pymysql://root:wiestell@127.0.0.1:3307/wiestell_test"
 
 SKIP_REASON = (
     "MySQL test container unreachable. Start it with:  docker compose up -d db  "
@@ -71,6 +71,34 @@ SKIP_REASON = (
 
 def mysql_test_url() -> str:
     return os.environ.get("MYSQL_TEST_URL", DEFAULT_MYSQL_TEST_URL)
+
+
+# The server ANSWERED and refused these credentials or this database. That is not
+# "unreachable", and skipping on it would report the whole tier as skipped, which reads
+# as a pass. The likeliest cause: the local credentials changed from sentinel to wiestell
+# on 2026-11-12, and MariaDB applies MARIADB_USER / MARIADB_PASSWORD / MARIADB_DATABASE
+# only when it first creates its data directory, so a volume created before then still
+# holds the old ones.
+REFUSED_BY_SERVER = {1044, 1045, 1049}  # db access denied, access denied, unknown db
+
+STALE_VOLUME_REASON = (
+    "The MySQL test container is running but refused the test credentials. If its volume "
+    "predates 2026-11-12 it still holds the old sentinel credentials, because MariaDB "
+    "only reads them when it first creates the database. Either recreate the volume "
+    "(this deletes the local database):\n"
+    "    docker compose rm -sf db\n"
+    "    docker volume rm <project>_mysql_data   # see: docker volume ls\n"
+    "    docker compose up -d db\n"
+    "or keep it and point the tier at the old credentials:\n"
+    "    MYSQL_TEST_URL=mysql+pymysql://root:sentinel@127.0.0.1:3307/sentinel_test"
+)
+
+
+def mysql_error_code(exc: BaseException):
+    """The server's numeric error code, from a driver or SQLAlchemy-wrapped error."""
+    orig = getattr(exc, "orig", exc)
+    args = getattr(orig, "args", ())
+    return args[0] if args and isinstance(args[0], int) else None
 
 
 # ── Statement counter (B.4) ──────────────────────────────────────────────────
@@ -200,14 +228,21 @@ def _test_metadata() -> sa.MetaData:
 
 @pytest.fixture(scope="session")
 def mysql_engine():
-    """Session-scoped sync engine against the container; skips if unreachable."""
+    """Session-scoped sync engine against the container.
+
+    Skips if the container is unreachable; fails if it answers and refuses the
+    credentials (see REFUSED_BY_SERVER).
+    """
     url = mysql_test_url()
     try:
         engine = sa.create_engine(url, pool_pre_ping=True, future=True)
         with engine.connect() as conn:
             conn.execute(sa.text("SELECT 1"))
     except Exception as exc:  # noqa: BLE001
-        pytest.skip(f"{SKIP_REASON} ({type(exc).__name__}: {str(exc)[:80]})")
+        detail = f"({type(exc).__name__}: {str(exc)[:80]})"
+        if mysql_error_code(exc) in REFUSED_BY_SERVER:
+            pytest.fail(f"{STALE_VOLUME_REASON}\n{detail}", pytrace=False)
+        pytest.skip(f"{SKIP_REASON} {detail}")
 
     metadata = _test_metadata()
     metadata.drop_all(bind=engine)
