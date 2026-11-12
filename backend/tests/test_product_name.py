@@ -293,6 +293,16 @@ ALLOWED = [
 ]
 
 
+def _git_lines(*args):
+    """NUL-separated git output, failing with git's own message rather than a bare 128."""
+    out = subprocess.run(["git", *args], cwd=ROOT, capture_output=True)
+    assert out.returncode == 0, (
+        f"git {' '.join(args)} exited {out.returncode}: "
+        f"{out.stderr.decode('utf-8', 'replace').strip()}"
+    )
+    return [p for p in out.stdout.decode("utf-8").split("\0") if p]
+
+
 def _repository_files():
     """Every file that is, or could be committed as, part of the repository.
 
@@ -301,11 +311,8 @@ def _repository_files():
     in the workflow container), the tree on disk is the tracked files, so walk it.
     """
     if (ROOT / ".git").exists() and shutil.which("git"):
-        out = subprocess.run(
-            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-            cwd=ROOT, capture_output=True, check=True,
-        ).stdout.decode("utf-8")
-        return sorted(p for p in out.split("\0") if p and (ROOT / p).is_file())
+        listed = _git_lines("ls-files", "-z", "--cached", "--others", "--exclude-standard")
+        return sorted(p for p in listed if (ROOT / p).is_file())
     return _walk()
 
 
@@ -361,10 +368,8 @@ class TestNoOldNameAnywhereInTheRepository:
                         reason="compares the fallback walk against git; needs a git checkout")
     def test_the_fallback_walk_lists_every_tracked_file(self):
         """Wherever git is missing the walk is all there is, so check it where git can vouch."""
-        tracked = subprocess.run(
-            ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True,
-        ).stdout.decode("utf-8").split("\0")
-        missing = {p for p in tracked if p and (ROOT / p).is_file()} - set(_walk())
+        tracked = _git_lines("ls-files", "-z")
+        missing = {p for p in tracked if (ROOT / p).is_file()} - set(_walk())
         assert not missing, f"the fallback walk would miss: {sorted(missing)[:10]}"
 
     def test_the_old_name_appears_only_where_allowed(self):

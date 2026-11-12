@@ -43,6 +43,12 @@ jobs:
 
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
+      # The job runs as root in the container, but the checkout belongs to the runner's
+      # user, so git refuses to read it ("detected dubious ownership", exit 128).
+      # tests/test_product_name.py lists the repository with `git ls-files`.
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Install from the pins
         run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
 
