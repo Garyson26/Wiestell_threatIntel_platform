@@ -1,4 +1,4 @@
-import { readStorage, TOKEN_KEY } from './storageKeys';
+import { readStorage, removeStorage, TOKEN_KEY } from './storageKeys';
 
 const API_BASE = '';
 
@@ -26,7 +26,7 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T> 
   if (!res.ok) {
     // A rejected token is dropped immediately so the UI cannot keep replaying it.
     if (res.status === 401 && typeof window !== 'undefined') {
-      localStorage.removeItem(TOKEN_KEY);
+      removeStorage(TOKEN_KEY);
     }
 
     let message = `API error: ${res.status} ${res.statusText}`;

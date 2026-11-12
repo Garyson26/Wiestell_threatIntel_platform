@@ -7,8 +7,9 @@
  * activity history, which has no expiry. `migrateLegacyStorage` copies each value across
  * on first read and deletes the old key. If both exist, the new key's value is kept.
  *
- * Remove `LEGACY_KEYS` and `migrateLegacyStorage` once it is reasonable to assume every
- * user has loaded the app since 2026-11-12. Nothing else depends on them.
+ * Remove `LEGACY_KEYS`, `migrateLegacyStorage` and `removeLegacy` (and reduce
+ * `removeStorage` to a plain removeItem) once it is reasonable to assume every user has
+ * loaded the app since 2026-11-12.
  */
 
 export const TOKEN_KEY = 'wiestell_token';
@@ -49,4 +50,25 @@ export function readStorage(key: string): string | null {
   if (typeof window === 'undefined') return null;
   migrateLegacyStorage();
   return localStorage.getItem(key);
+}
+
+/**
+ * Removes the old name of `key`. Anything that CLEARS a key must call this too. The
+ * migration removes old keys, but one can come back: a tab still running the previous
+ * build writes `sentinel_token`, or a copy failed because storage was full. If logout
+ * cleared only the new name, the next page load would migrate that leftover across and
+ * sign the user back in, or restore activity history logout is meant to discard.
+ */
+export function removeLegacy(key: string): void {
+  if (typeof window === 'undefined') return;
+  for (const [current, legacy] of LEGACY_KEYS) {
+    if (current === key) localStorage.removeItem(legacy);
+  }
+}
+
+/** Removes `key` under both its current and its old name. */
+export function removeStorage(key: string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(key);
+  removeLegacy(key);
 }

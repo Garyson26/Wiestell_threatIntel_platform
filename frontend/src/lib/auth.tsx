@@ -3,7 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { getMe } from '@/lib/api';
 import { clearUserActivities } from '@/lib/userActivity';
-import { readStorage, TOKEN_KEY } from '@/lib/storageKeys';
+import { readStorage, removeStorage, TOKEN_KEY } from '@/lib/storageKeys';
 import type { UserProfile } from '@/lib/types';
 
 interface AuthContextType {
@@ -34,7 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       getMe()
         .then((u) => setUser(u))
         .catch(() => {
-          localStorage.removeItem(TOKEN_KEY);
+          removeStorage(TOKEN_KEY);
           setToken(null);
         })
         .finally(() => setLoading(false));
@@ -55,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (user?.id) {
       clearUserActivities(user.id);
     }
-    localStorage.removeItem(TOKEN_KEY);
+    removeStorage(TOKEN_KEY);
     setToken(null);
     setUser(null);
   }, [user]);

@@ -1,5 +1,5 @@
 import type { IOC } from './types';
-import { ACTIVITIES_KEY, readStorage } from './storageKeys';
+import { ACTIVITIES_KEY, readStorage, removeLegacy } from './storageKeys';
 
 export interface UserActivity {
   id: string;
@@ -164,6 +164,9 @@ export function clearUserActivities(userId: string): void {
   
   try {
     const stored = readStorage(STORAGE_KEY);
+    // Before the early return: a leftover under the old name would otherwise be migrated
+    // back on the next load, restoring history this call exists to discard.
+    removeLegacy(STORAGE_KEY);
     if (!stored) return;
     
     const allActivities: UserActivity[] = JSON.parse(stored);
