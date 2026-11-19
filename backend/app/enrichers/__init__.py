@@ -19,9 +19,9 @@ Gated as of 2026-07-30: ``malwarebazaar``. abuse.ch now requires an Auth-Key on
 its JSON query APIs, so the previously "optional" key is mandatory — see the
 comment at its registration below.
 
-Gated as of 2026-07-31: ``geoip``. Its "credential" is the MaxMind ``.mmdb`` file,
-which is fetched by a build step that fails open, so it is frequently absent — and
-while absent the enricher wrote an ``error_city`` row against every IP IOC.
+``geoip`` is no longer gated. It reads the IP2Location.io API, which answers
+keyless (1,000 requests/day), so there is no file or credential whose absence
+would make every lookup fail.
 """
 
 from typing import Dict, List, Optional
@@ -34,31 +34,6 @@ from app.enrichers.base import BaseEnricher
 logger = structlog.get_logger()
 
 _registry: Optional[Dict[str, BaseEnricher]] = None
-
-
-def _geoip_database_available() -> bool:
-    """Whether the MaxMind .mmdb GeoIP requires is actually present and readable.
-
-    Read at registry-build time, not import time, so ``reset_registry()`` picks up a
-    changed ``GEOIP_DB_PATH``. A missing file is logged once here rather than once per
-    IP lookup.
-    """
-    import os
-
-    path = settings.GEOIP_DB_PATH
-    if path and os.path.isfile(path):
-        return True
-    logger.warning(
-        "geoip_database_missing",
-        path=path,
-        detail=(
-            "GeoIP enrichment is disabled: the MaxMind database file is absent. It is "
-            "downloaded at build time by download_geolite2.py, which requires "
-            "MAXMIND_ACCOUNT_ID and MAXMIND_LICENSE_KEY. Every IP IOC will be enriched "
-            "without country or ASN data until it is present."
-        ),
-    )
-    return False
 
 
 def _shodan_library_available() -> bool:
@@ -95,24 +70,11 @@ def build_registry() -> Dict[str, BaseEnricher]:
         registry[enricher.name] = enricher
 
     # ── Always available (no credentials required; degrade gracefully) ────────
-    # GeoIP is gated **in its original registration position** on the MaxMind database
-    # file existing, so the attempt order pinned by
-    # tests/test_enrichers.py::TestEngineDispatch is unchanged whenever it is present.
-    #
-    # The .mmdb file is this enricher's credential — it is the only thing that lets it
-    # answer — so the rule in the module docstring applies to it. Without the file,
-    # `geoip2.database.Reader` raises for every lookup and the enricher stored
-    # {"error_city": "GeoIP city database not available"} against *every* IP IOC, which
-    # is exactly what gating exists to prevent.
-    #
-    # It is absent more often than it looks. The file is not committed; it is fetched at
-    # build time by `render.yaml` and `render-build.sh` with
-    # `python download_geolite2.py || echo "...continuing anyway"`, and the script needs
-    # MAXMIND_ACCOUNT_ID and MAXMIND_LICENSE_KEY. So a deploy without those credentials
-    # fails open and silently loses geo enrichment for the entire IP population — see
-    # PROJECT_SUMMARY.md §8 item 14 for the build-step and /health follow-ups.
-    if _geoip_database_available():
-        add(GeoIPEnricher())
+    # GeoIP keeps its original registration position so the attempt order pinned by
+    # tests/test_enrichers.py::TestEngineDispatch is unchanged. It needs no credential:
+    # the IP2Location.io API answers keyless, and a failure degrades to an error
+    # payload for that IP rather than disabling the source.
+    add(GeoIPEnricher())
     add(WhoisEnricher())
     add(DNSEnricher())
     add(ReputationEnricher())     # skips providers whose keys are unset

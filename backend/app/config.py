@@ -141,8 +141,9 @@ class Settings(BaseSettings):
 
     TRUSTED_PROXY_HOPS: int = 0
 
-    # GeoIP
-    GEOIP_DB_PATH: str = "/app/data/GeoLite2-City.mmdb"
+    # GeoIP (IP2Location.io). No key means keyless mode: 1,000 requests/day.
+    # A free key (https://www.ip2location.io/sign-up) raises that to 50,000/month.
+    IP2LOCATION_IO_KEY: Optional[str] = None
 
     # Pagination
     DEFAULT_PAGE_SIZE: int = 50

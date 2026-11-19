@@ -35,7 +35,7 @@ class BaseEnricher(abc.ABC):
     scorer guessing: provider silence read as clean, reverse DNS charging for a
     fast-flux signal it never carries, an NXDOMAIN domain looking identical to a
     resolved one (its ``records`` dict is truthy but every list inside is empty), and
-    GeoIP's ``error_city`` slipping past a check for ``error``. All in the same
+    GeoIP's legacy ``error_city`` slipping past a check for ``error``. All in the same
     direction: an absence scored as reassurance.
 
     Declare a signal when the source gave an answer about it — including a *negative*

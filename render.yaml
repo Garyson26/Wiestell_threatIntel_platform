@@ -12,12 +12,8 @@ services:
     #
     # THIS MATTERS BECAUSE backend/Dockerfile EXISTS. Render's dashboard creation form
     # auto-detects and will offer Docker; if the service is created that way rather than
-    # from this blueprint, `buildCommand` NEVER RUNS. Consequences, both silent:
-    #
-    #   * download_geolite2.py never executes -> no GeoIP for the entire IP population
-    #   * GEOIP_DB_PATH below points at /opt/render/project/src/backend/data/..., which
-    #     does not exist in the image -- the Dockerfile's WORKDIR is /app and it creates
-    #     /app/data
+    # from this blueprint, `buildCommand` NEVER RUNS and the pinned requirements are not
+    # installed.
     #
     # Create this service FROM THE BLUEPRINT, or if you create it by hand choose the
     # Python runtime explicitly and paste the buildCommand.
@@ -35,23 +31,9 @@ services:
       python --version
       pip install --upgrade pip
       pip install -r requirements.txt
-      # GeoLite2 FAILS OPEN DELIBERATELY -- a missing geo database degrades enrichment
-      # but must not block a deploy. The warning is banner-framed because the previous
-      # single line was lost in pip output, and the consequence is not small: GeoIP
-      # becomes unavailable for the ENTIRE IP population.
-      #
-      # It is also detectable at runtime, verified 2026-08-17 rather than assumed --
-      # `build_registry()` gates geoip out when the file is absent and
-      # `/cron-status` reports `geoip_database_missing` (admin-gated, so look for it).
-      python download_geolite2.py || {
-        echo "=============================================================="
-        echo "!!  GeoLite2 DOWNLOAD FAILED -- DEPLOY CONTINUING WITHOUT IT  !!"
-        echo "!!                                                            !!"
-        echo "!!  GeoIP is now unavailable for the ENTIRE IP population.    !!"
-        echo "!!  Check MAXMIND_ACCOUNT_ID / MAXMIND_LICENSE_KEY.           !!"
-        echo "!!  Confirm with: GET /cron-status -> geoip_database_missing  !!"
-        echo "=============================================================="
-      }
+      # The build-time GeoLite2 download was REMOVED 2026-11-19. GeoIP now reads the
+      # IP2Location.io API (keyless, or an optional IP2LOCATION_IO_KEY), so there is no
+      # database file to fetch and no MaxMind credential to lose.
       # `alembic upgrade head` REMOVED 2026-08-17, not silenced. Migrations run from a
       # developer machine (DEPLOY_CHECKLIST s2) because Render free instances have no
       # shell, so this line was redundant -- and it carried `|| echo "continuing"`,
@@ -102,18 +84,9 @@ services:
         value: INFO
       - key: FEED_SYNC_INTERVAL
         value: 3600
-      - key: GEOIP_DB_PATH
-        value: /opt/render/project/src/backend/data/GeoLite2-City.mmdb
-      # MaxMind credentials for the build-time GeoLite2 download. Free, but an account
-      # is required. Without these the download step fails, the `|| echo` swallows it,
-      # the .mmdb is absent, and GeoIP is gated off — so the ENTIRE IP population is
-      # enriched with no country or ASN data, silently. Declared here (rather than only
-      # in the dashboard) so the dependency is visible at the point the build step reads
-      # it. See PROJECT_SUMMARY.md §8 item 14; owner decision still open on whether to
-      # provision these or accept IP enrichment without geo permanently.
-      - key: MAXMIND_ACCOUNT_ID
-        sync: false
-      - key: MAXMIND_LICENSE_KEY
+      # Optional. Keyless mode works at 1,000 requests/day; a free key raises it to
+      # 50,000/month. Set it in the dashboard -- never commit a literal value.
+      - key: IP2LOCATION_IO_KEY
         sync: false
       # Trusted reverse-proxy hop count for rate-limit bucketing. 0 = trust nothing and
       # use the socket peer, which is the safe default and what ships. Render terminates
@@ -214,21 +187,14 @@ services:
     # sleeping between windows. Render's defaults are correct here.
     autoDeploy: true  # Auto-deploy on git push
 
-    # A `disk:` block was REMOVED here on 2026-08-17, for two independent reasons:
+    # A `disk:` block was REMOVED here on 2026-08-17. Persistent disks are not available
+    # on free instances, which is what the Blueprint was rejected for, and nothing needs
+    # one: GeoIP now reads the IP2Location.io API rather than a build-time database file.
     #
-    #   1. Persistent disks are not available on free instances. This is what the
-    #      Blueprint was rejected for.
-    #   2. IT WOULD HAVE SHADOWED THE THING IT WAS MEANT TO PRESERVE. The disk mounted at
-    #      /opt/render/project/src/backend/data -- byte-identical to the directory
-    #      GEOIP_DB_PATH points into, which is where `download_geolite2.py` writes AT
-    #      BUILD TIME. The build writes the .mmdb into the image; the disk then mounts
-    #      over that directory at runtime and hides it. GeoIP would have been missing
-    #      despite a successful, correctly-credentialled download -- and the only signal
-    #      is `geoip_database_missing` on the admin-gated /cron-status.
-    #
-    # No disk is needed: the database is baked into the image at build time and is
-    # replaced on every deploy, which is the correct lifecycle for a file that ships
-    # with the code rather than accumulating at runtime.
+    # The block originally existed to preserve a MaxMind .mmdb written at build time. It
+    # would have done the opposite -- the disk mounted over the directory the build wrote
+    # into, hiding the file -- which is recorded here because the same mistake is easy to
+    # repeat if any future build step writes into the image.
 
   # ============================================================================
   # FRONTEND - removed 2026-08-17

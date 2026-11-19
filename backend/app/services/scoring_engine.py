@@ -742,8 +742,8 @@ def _sighting_frequency_score(sighting_count: int) -> float:
 #   3. forward DNS     builds `records` with all five rtypes pre-populated to [], so
 #                      an NXDOMAIN domain is a *truthy dict of empty lists* and looked
 #                      identical to "resolved, few A records".
-#   4. GeoIP           writes `error_city`, not `error`, when the MaxMind database is
-#                      missing — so the generic error check missed it entirely.
+#   4. GeoIP           used to write `error_city`, not `error`, when the MaxMind
+#                      database was missing — so the generic error check missed it.
 #
 # The common cause is this module inferring "did we assess this" from key presence.
 # Key presence cannot express it: a key can be absent because the source said nothing,
@@ -956,7 +956,8 @@ def _legacy_assessed(source: str, data: Mapping) -> List[str]:
     if not isinstance(data, Mapping):
         return []
     # Any error marker means the source failed. Prefix-matched because geoip writes
-    # `error_city` rather than `error` — see the module docstring. This inference-from-
+    # `error_city` rather than `error` in legacy geoip rows — see the module docstring.
+    # This inference-from-
     # naming is exactly what `assessed` replaces, and it survives only for legacy rows.
     if any(str(k) == "error" or str(k).startswith("error_") for k in data):
         return []

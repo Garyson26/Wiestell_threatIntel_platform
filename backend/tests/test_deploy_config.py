@@ -6,7 +6,8 @@ assumption in the application, where a mismatch fails silently in production:
   * the feed-sync cron interval against `_GOVERNING_SYNC_INTERVAL_SECONDS`, which drives
     rolling-window gap detection - if cron fires less often than the constant claims, the
     window check under-reports gaps and indicators are lost with no warning;
-  * the GeoLite2 build step against the credentials it needs, since the step fails open;
+  * the retired GeoLite2 build step, so it is not re-added by someone who remembers
+    only the older deploy shape;
   * the `--workers 1` start command, covered in depth by tests/test_process_model.py and
     re-asserted here only as part of the deploy surface;
   * the deploy-drift job (#139), which fails the workflow when the build Render serves
@@ -160,24 +161,35 @@ class TestFeedSyncCronMatchesTheGoverningInterval:
 
 
 class TestRenderConfigDeclaresWhatTheBuildNeeds:
-    def test_the_geolite_download_has_its_credentials_declared(self):
-        """The build step fails OPEN, so a missing credential is silent capability loss.
-
-        `python download_geolite2.py || echo "...continuing"` cannot fail the build, and
-        the script needs both MaxMind variables. Declaring them in render.yaml does not
-        set them - they are `sync: false` - but it puts the dependency where someone
-        reading the build command will see it.
-        """
+    def test_the_geolite_build_step_is_retired(self):
+        """GeoIP reads the IP2Location.io API; nothing is downloaded at build time."""
         text = RENDER_YAML.read_text(encoding="utf-8")
-        if "download_geolite2" not in text:
-            pytest.skip("the GeoLite2 build step has been removed")
-        for key in ("MAXMIND_ACCOUNT_ID", "MAXMIND_LICENSE_KEY"):
-            assert key in text, (
-                f"render.yaml runs download_geolite2.py but never mentions {key}. The "
-                "step swallows its own failure, so without the credentials GeoIP is "
-                "silently absent for the entire IP population - PROJECT_SUMMARY §8 "
-                "item 14."
-            )
+        assert "download_geolite2" not in text, (
+            "render.yaml still runs the MaxMind download. The script is gone and GeoIP "
+            "no longer reads a local database."
+        )
+        assert "MAXMIND_" not in text
+
+    def test_the_geo_api_key_is_declared_and_optional(self):
+        """Keyless works, so the key must never be required - and never literal."""
+        import yaml
+
+        data = yaml.safe_load(RENDER_YAML.read_text(encoding="utf-8"))
+        backend = next(
+            s for s in data["services"] if s["name"] == "wiestell-backend"
+        )
+        entry = next(
+            (v for v in backend.get("envVars", [])
+             if v.get("key") == "IP2LOCATION_IO_KEY"),
+            None,
+        )
+        assert entry is not None, (
+            "IP2LOCATION_IO_KEY is not declared in the blueprint, so the optional "
+            "higher-quota mode is invisible to whoever deploys it."
+        )
+        assert entry.get("sync") is False, (
+            "the key must be set in the dashboard (sync: false), never committed"
+        )
 
     def test_secrets_are_never_given_literal_values(self):
         """`sync: false` or `generateValue` only - a literal here is a committed secret.
@@ -189,7 +201,7 @@ class TestRenderConfigDeclaresWhatTheBuildNeeds:
         text = RENDER_YAML.read_text(encoding="utf-8")
         sensitive = (
             "DATABASE_URL", "DATABASE_ASYNC_URL", "SECRET_KEY", "CRON_SECRET",
-            "RESEND_API_KEY", "MAXMIND_LICENSE_KEY", "REDIS_URL",
+            "RESEND_API_KEY", "IP2LOCATION_IO_KEY", "REDIS_URL",
         )
         lines = text.splitlines()
         offenders = []
@@ -761,13 +773,13 @@ class TestRenderYamlDeployShape:
 
     def test_the_backend_declares_the_python_runtime(self):
         """backend/Dockerfile EXISTS, so a Docker-built service would skip buildCommand
-        entirely — and with it the GeoLite2 download."""
+        and the pinned requirements."""
         data, _ = self._render_yaml()
         backend = next(s for s in data["services"] if s["name"] == "wiestell-backend")
         assert backend.get("runtime") == "python", (
             "the backend no longer declares runtime: python. If Render builds from "
-            "backend/Dockerfile instead, buildCommand never runs, download_geolite2.py "
-            "never executes, and GeoIP is silently unavailable for the whole IP population."
+            "backend/Dockerfile instead, buildCommand never runs and the pinned "
+            "requirements are not installed."
         )
 
     def test_the_migration_is_not_run_from_the_build_command(self):
@@ -966,38 +978,22 @@ class TestTheBlueprintIsValidForAFreeInstance:
     def test_no_service_declares_a_disk(self):
         """Persistent disks are not available on free instances — the actual rejection.
 
-        And it would have been wrong even on a paid plan: the disk mounted at
-        /opt/render/project/src/backend/data, byte-identical to the directory
-        GEOIP_DB_PATH points into, which is where download_geolite2.py writes AT BUILD
-        TIME. The disk would mount over the freshly-built .mmdb and hide it, so GeoIP
-        would be missing despite a correct download — visible only as
-        `geoip_database_missing` on the admin-gated /cron-status.
+        A disk is also unnecessary now: GeoIP reads the IP2Location.io API rather than a
+        database file written at build time.
         """
         offenders = [s["name"] for s in self._blueprint()["services"] if s.get("disk")]
         assert not offenders, (
-            f"these services declare a disk: {offenders}. Free instances cannot have "
-            "one, and at the GeoIP path it would shadow the build-time download."
+            f"these services declare a disk: {offenders}. Free instances cannot have one."
         )
 
-    def test_the_geoip_path_is_not_a_mount_point_for_anything(self):
-        """The shadowing hazard, stated as a property rather than a one-off fix."""
+    def test_no_local_geo_database_path_is_declared(self):
+        """A GEOIP_DB_PATH would imply the API enricher is still file-backed."""
         backend = self._backend()
-        geoip = next(
-            (v.get("value") for v in backend.get("envVars", [])
-             if v.get("key") == "GEOIP_DB_PATH"),
-            None,
+        keys = {v.get("key") for v in backend.get("envVars", [])}
+        assert "GEOIP_DB_PATH" not in keys, (
+            "GEOIP_DB_PATH is still declared, but nothing reads it since the MaxMind "
+            "database was retired in favour of the IP2Location.io API."
         )
-        assert geoip, "GEOIP_DB_PATH is not declared"
-        mounts = [
-            (s.get("disk") or {}).get("mountPath")
-            for s in self._blueprint()["services"]
-        ]
-        for mount in filter(None, mounts):
-            assert not geoip.startswith(mount.rstrip("/") + "/"), (
-                f"GEOIP_DB_PATH ({geoip}) sits under a disk mounted at {mount}. The "
-                "database is written at BUILD time into the image; a runtime mount over "
-                "that directory hides it."
-            )
 
     def test_no_keep_alive_health_check_tuning(self):
         """A 50s health check means the instance NEVER sleeps.

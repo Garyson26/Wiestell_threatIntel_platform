@@ -1100,10 +1100,12 @@ class TestEnrichmentRiskCountsOnlyVerdicts:
         assert _legacy_assessed("geoip", {"country_code": "RU", "asn": 1234}) == \
             ["high_risk_country"]
         assert _legacy_assessed("geoip", {"country_code": ""}) == []
-        # Its *inner* failure writes error_city, not error — GEOIP_DB_PATH defaults to
-        # a container path, so this is the common case outside Docker.
+        # Rows cached before the IP2Location.io migration carry error_city rather than
+        # the current `error` key; the legacy inference must still treat them as silence.
         assert _legacy_assessed("geoip", {
             "country_code": None, "error_city": "GeoIP city database not available"}) == []
+        assert _legacy_assessed("geoip", {
+            "country_code": None, "error": "IP2Location.io lookup failed"}) == []
 
         # whois_enricher — two independently assessable signals.
         assert _legacy_assessed("whois", {"registrar": "R"}) == ["privacy_protected"]
@@ -1128,7 +1130,7 @@ class TestEnrichmentRiskCountsOnlyVerdicts:
             "type": "reverse", "ptr": ["h.example."], "hostname": "h.example"}) == []
 
     def test_any_error_prefixed_key_means_nothing_was_assessed(self):
-        """`error` is the documented convention; `error_city` is what geoip writes.
+        """`error` is the documented convention; `error_city` is a legacy geoip marker.
 
         Prefix-matching means a future `error_asn` fails closed. This inference is the
         pattern `assessed` replaces and survives only for legacy payloads.
