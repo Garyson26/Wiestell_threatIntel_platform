@@ -287,30 +287,12 @@ def _deployment_degradations() -> list:
     unauthenticated reader that the login rate limit is N times weaker than it appears —
     exactly the fact worth knowing before starting a credential-stuffing run. Publishing
     one's own mitigation gap for post-deploy convenience is not a trade worth making.
-    (GeoIP absence is harmless recon by comparison, but there is no reason to split them.)
 
-    Both states are settable in Render's dashboard and invisible in the repository, so no
+    These states are settable in Render's dashboard and invisible in the repository, so no
     test can see them and the only other evidence is a boot log line that scrolls away —
     which is why they are surfaced at all.
     """
-    import os
-
     degradations = []
-
-    # The .mmdb is fetched by a build step that cannot fail the build
-    # (`|| echo "...continuing"`), so its absence is silent and costs country/ASN
-    # enrichment for the ENTIRE IP population. See PROJECT_SUMMARY.md §8 item 14.
-    try:
-        from app.enrichers import _geoip_database_available
-
-        if not _geoip_database_available():
-            degradations.append({
-                "id": "geoip_database_missing",
-                "impact": "IP indicators are enriched without country or ASN data",
-                "fix": "set MAXMIND_ACCOUNT_ID and MAXMIND_LICENSE_KEY, then redeploy",
-            })
-    except Exception as e:  # pragma: no cover - never let a probe break the probe
-        logger.warning("degradation_probe_geoip_error", error=redact_secrets(e))
 
     # The override exists for someone who has revisited all four single-process
     # assumptions. If it was set merely to get past a refused boot, the rate limiter,

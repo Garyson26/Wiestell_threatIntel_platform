@@ -44,13 +44,16 @@ class TestErrorMarkerKeysStayInSyncWithTheEnrichers:
 
     def test_the_extractor_finds_the_known_markers(self):
         """Non-emptiness before the comparison, or the test below is vacuous."""
+        from app.api.enrichment import _ERROR_MARKER_KEYS
+
         keys, files = self._enricher_error_keys()
         assert len(files) >= 8, f"only {len(files)} enricher modules scanned"
         assert "error" in keys, f"scanner found no plain 'error' key at all: {keys}"
-        assert "error_city" in keys, (
-            "the scanner missed geoip's error_city, which is written as a SUBSCRIPT "
-            "assignment rather than a dict-literal key. With it missing the coverage "
-            "test below compares against an incomplete set and passes vacuously."
+        # geoip wrote `error_city` before the IP2Location.io migration. Nothing emits it
+        # now, but cached legacy rows still carry it, so the SQL predicate must keep it.
+        assert "error_city" in _ERROR_MARKER_KEYS, (
+            "the legacy geoip marker was dropped from _ERROR_MARKER_KEYS, so cached "
+            "error_city rows would be treated as successful and never refreshed."
         )
 
     def test_every_emitted_marker_is_covered_by_the_sql_predicate(self):

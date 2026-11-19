@@ -11,6 +11,45 @@ from app.enrichers.yaraify_enricher import YARAifyEnricher
 from app.services.enrichment_engine import _get_applicable_sources, _get_ttl
 
 
+class _FakeResponse:
+    def __init__(self, status_code=200, payload=None, json_error=None):
+        self.status_code = status_code
+        self._payload = payload
+        self._json_error = json_error
+
+    def json(self):
+        if self._json_error is not None:
+            raise self._json_error
+        return self._payload
+
+
+def _mock_httpx(monkeypatch, response=None, exc=None):
+    """Replace ``httpx.AsyncClient`` and record what the enricher asked for."""
+    import httpx
+
+    recorded = {}
+
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            recorded["timeout"] = kwargs.get("timeout")
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url, params=None):
+            recorded["url"] = url
+            recorded["params"] = dict(params or {})
+            if exc is not None:
+                raise exc
+            return response
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    return recorded
+
+
 @pytest.fixture(autouse=True)
 def _clean_registry():
     reset_registry()
@@ -19,43 +58,19 @@ def _clean_registry():
 
 
 @pytest.fixture
-def geoip_db(monkeypatch, tmp_path):
-    """A present-and-readable .mmdb, so GeoIP registers.
-
-    The real file is not committed — it is fetched at build time — so
-    ``GEOIP_DB_PATH`` points at a path that does not exist during a test run. Since
-    2026-07-31 GeoIP is gated on that file, so anything asserting the per-type source
-    table has to state which side of the gate it is testing. The contents are never
-    read: the gate is an existence check and no test performs a lookup.
-    """
-    db = tmp_path / "GeoLite2-City.mmdb"
-    db.write_bytes(b"not a real mmdb")
-    monkeypatch.setattr(settings, "GEOIP_DB_PATH", str(db))
-    reset_registry()
-    return db
-
-
-@pytest.fixture
-def no_keys(monkeypatch, geoip_db):
+def no_keys(monkeypatch):
     for name in ("NVD_API_KEY", "CVEDETAILS_ACCESS_TOKEN", "YARAIFY_API_KEY",
-                 "MALWAREBAZAAR_API_KEY"):
+                 "MALWAREBAZAAR_API_KEY", "IP2LOCATION_IO_KEY"):
         monkeypatch.setattr(settings, name, None)
     reset_registry()
 
 
 @pytest.fixture
-def all_keys(monkeypatch, geoip_db):
+def all_keys(monkeypatch):
     monkeypatch.setattr(settings, "NVD_API_KEY", "nvd-key")
     monkeypatch.setattr(settings, "CVEDETAILS_ACCESS_TOKEN", "cvedetails-token")
     monkeypatch.setattr(settings, "YARAIFY_API_KEY", "yaraify-key")
     monkeypatch.setattr(settings, "MALWAREBAZAAR_API_KEY", "mb-key")
-    reset_registry()
-
-
-@pytest.fixture
-def no_geoip_db(monkeypatch):
-    """The MaxMind file absent — the state a deploy without MAXMIND_* lands in."""
-    monkeypatch.setattr(settings, "GEOIP_DB_PATH", "/nonexistent/GeoLite2-City.mmdb")
     reset_registry()
 
 
@@ -90,50 +105,27 @@ class TestRegistryGating:
     def test_keyless_nvd_is_always_registered(self, no_keys):
         assert "nvd" in applicable_sources("cve")
 
-    def test_geoip_is_gated_on_its_database_file(self, no_geoip_db):
-        """The .mmdb is GeoIP's credential, and it is frequently absent.
+    def test_geoip_is_registered_without_any_credential(self, no_keys):
+        """The IP2Location.io API answers keyless, so there is no gate.
 
-        Without the file every lookup raised inside the enricher and it stored
-        {"error_city": "GeoIP city database not available"} against every IP IOC —
-        the same anti-pattern that moved malwarebazaar into the gated set. The file is
-        not committed; it is fetched by a build step that fails open
-        (`download_geolite2.py || echo "...continuing"`) and needs MAXMIND_ACCOUNT_ID
-        and MAXMIND_LICENSE_KEY.
+        The retired MaxMind build step was gated on a file that a deploy without
+        MAXMIND_* silently failed to produce. Keyless API mode removes that state.
         """
-        assert "geoip" not in get_registry()
-        assert "geoip" not in applicable_sources("ip")
-
-    def test_geoip_registers_when_the_database_is_present(self, geoip_db):
         assert "geoip" in get_registry()
         assert "geoip" in applicable_sources("ip")
 
-    def test_gating_geoip_does_not_disturb_the_remaining_ip_order(
-        self, no_geoip_db, shodan_importable
-    ):
-        """Registration order is the attempt order, so the gate must only remove.
+    def test_the_retired_maxmind_check_is_gone(self):
+        from app import enrichers
 
-        Dropping geoip must leave the rest of the IP chain in the same sequence — the
-        contract TestEngineDispatch pins with the database present.
-        """
-        assert applicable_sources("ip") == ["whois", "dns", "reputation", "shodan"]
-
-    def test_an_absent_database_does_not_silently_pass(self, no_geoip_db, capsys):
-        """It has to be visible somewhere, or a keyless deploy loses geo unnoticed.
-
-        Logging is the interim surface; exposing it in /health is recorded as Phase 6
-        work in PROJECT_SUMMARY.md §8 item 14.
-
-        Asserted against captured stdout rather than ``caplog``: structlog renders
-        through its own processor chain to stdout and does not route these records
-        through stdlib logging, so ``caplog.records`` is empty even when the warning is
-        emitted. A caplog-based assertion here fails silently in the other direction —
-        it would pass vacuously if the warning were later removed.
-        """
-        get_registry()
-        out = capsys.readouterr()
-        assert "geoip_database_missing" in (out.out + out.err), (
-            "the missing GeoIP database produced no log record"
+        assert not hasattr(enrichers, "_geoip_database_available"), (
+            "the MaxMind file probe still exists; /cron-status can still report a "
+            "missing database the API enricher no longer needs"
         )
+
+    def test_the_ip_attempt_order_is_unchanged(self, no_keys, shodan_importable):
+        assert applicable_sources("ip") == [
+            "geoip", "whois", "dns", "reputation", "shodan"
+        ]
 
     def test_gated_enrichers_absent_without_credentials(self, no_keys):
         assert get_enricher("cvedetails") is None
@@ -572,12 +564,15 @@ class TestAssessedContract:
             "score differently: expected " + repr(expected) + " got " + repr(actual)
         )
 
-    async def test_live_enricher_payloads_declare_assessed(self):
+    async def test_live_enricher_payloads_declare_assessed(self, monkeypatch):
         """The shapes the enrichers actually produce, not hand-written fixtures."""
+        import httpx
+
         from app.enrichers.dns_enricher import DNSEnricher
         from app.enrichers.geoip_enricher import GeoIPEnricher
 
-        # GeoIP with no MaxMind database present — the common local case.
+        # GeoIP when the API is unreachable — the failure shape.
+        _mock_httpx(monkeypatch, exc=httpx.ConnectError("no network"))
         payload = await GeoIPEnricher().enrich("8.8.8.8", "ip")
         assert "assessed" in payload
         assert payload["assessed"] == [], (
@@ -587,3 +582,202 @@ class TestAssessedContract:
         # Reverse DNS declares nothing about fast flux.
         reverse = await DNSEnricher().enrich("127.0.0.1", "ip")
         assert reverse.get("assessed") == [], repr(reverse)
+
+
+class TestIP2LocationGeoIP:
+    """The IP2Location.io enricher: mapping, auth and failure handling."""
+
+    @staticmethod
+    def _payload():
+        return {
+            "ip": "175.144.151.253",
+            "country_code": "MY",
+            "country_name": "Malaysia",
+            "region_name": "Pulau Pinang",
+            "city_name": "Bayan Lepas",
+            "latitude": 5.2947,
+            "longitude": 100.2609,
+            "asn": "4788",
+            "as": "TM Net, Internet Service Provider",
+            "is_proxy": False,
+        }
+
+    async def test_success_maps_every_field(self, monkeypatch):
+        from app.enrichers.geoip_enricher import GeoIPEnricher
+
+        monkeypatch.setattr(settings, "IP2LOCATION_IO_KEY", None)
+        recorded = _mock_httpx(monkeypatch, _FakeResponse(200, self._payload()))
+
+        result = await GeoIPEnricher().enrich("175.144.151.253", "ip")
+
+        assert result == {
+            "country": "Malaysia",
+            "country_code": "MY",
+            "city": "Bayan Lepas",
+            "latitude": 5.2947,
+            "longitude": 100.2609,
+            "asn": "4788",
+            "asn_org": "TM Net, Internet Service Provider",
+            "is_proxy": False,
+            "assessed": ["high_risk_country"],
+        }
+        assert recorded["params"] == {"ip": "175.144.151.253", "format": "json"}
+        assert recorded["timeout"] == 5
+
+    async def test_a_missing_country_is_not_assessed(self, monkeypatch):
+        """An empty lookup is silence, not a low-risk country."""
+        from app.enrichers.geoip_enricher import GeoIPEnricher
+
+        monkeypatch.setattr(settings, "IP2LOCATION_IO_KEY", None)
+        _mock_httpx(monkeypatch, _FakeResponse(200, {
+            "ip": "192.0.2.1", "country_code": "-", "country_name": "-",
+            "city_name": "-", "asn": "-", "as": "-",
+        }))
+
+        result = await GeoIPEnricher().enrich("192.0.2.1", "ip")
+
+        assert result["country"] is None
+        assert result["country_code"] is None
+        assert result["assessed"] == []
+
+    async def test_keyless_request_sends_no_key(self, monkeypatch):
+        from app.enrichers.geoip_enricher import GeoIPEnricher
+
+        monkeypatch.setattr(settings, "IP2LOCATION_IO_KEY", None)
+        recorded = _mock_httpx(monkeypatch, _FakeResponse(200, self._payload()))
+
+        await GeoIPEnricher().enrich("175.144.151.253", "ip")
+
+        assert "key" not in recorded["params"]
+
+    async def test_keyed_request_sends_the_key_and_never_logs_it(
+        self, monkeypatch, capsys
+    ):
+        from app.enrichers.geoip_enricher import GeoIPEnricher
+
+        monkeypatch.setattr(settings, "IP2LOCATION_IO_KEY", "super-secret-key")
+        recorded = _mock_httpx(monkeypatch, _FakeResponse(200, self._payload()))
+
+        await GeoIPEnricher().enrich("175.144.151.253", "ip")
+        assert recorded["params"]["key"] == "super-secret-key"
+
+        # The failure path logs; it must not include the URL or the exception text.
+        _mock_httpx(monkeypatch, exc=RuntimeError("GET ?key=super-secret-key failed"))
+        await GeoIPEnricher().enrich("175.144.151.253", "ip")
+
+        captured = capsys.readouterr()
+        out = captured.out + captured.err
+        assert "super-secret-key" not in out, (
+            "the API key reached the logs through an error message"
+        )
+
+    def test_httpx_request_logs_redact_the_key(self, monkeypatch, caplog):
+        """httpx logs the full URL at INFO, and the key is a query parameter."""
+        import logging
+
+        import app.enrichers.geoip_enricher  # noqa: F401  installs the filter
+
+        monkeypatch.setattr(settings, "IP2LOCATION_IO_KEY", "super-secret-key")
+        httpx_logger = logging.getLogger("httpx")
+        with caplog.at_level(logging.INFO, logger="httpx"):
+            httpx_logger.info(
+                'HTTP Request: %s %s "%s %d %s"',
+                "GET", "https://api.ip2location.io/?key=super-secret-key",
+                "HTTP/1.1", 200, "OK",
+            )
+
+        assert "super-secret-key" not in caplog.text
+        assert "api.ip2location.io" in caplog.text
+
+    async def test_timeout_degrades_to_an_error_payload(self, monkeypatch):
+        import httpx
+
+        from app.enrichers.geoip_enricher import GeoIPEnricher
+
+        monkeypatch.setattr(settings, "IP2LOCATION_IO_KEY", None)
+        _mock_httpx(monkeypatch, exc=httpx.TimeoutException("timed out"))
+
+        result = await GeoIPEnricher().enrich("8.8.8.8", "ip")
+
+        assert "error" in result
+        assert result["assessed"] == []
+        assert result["country_code"] is None
+
+    async def test_http_error_degrades(self, monkeypatch):
+        from app.enrichers.geoip_enricher import GeoIPEnricher
+
+        monkeypatch.setattr(settings, "IP2LOCATION_IO_KEY", None)
+        _mock_httpx(monkeypatch, _FakeResponse(500, {}))
+
+        result = await GeoIPEnricher().enrich("8.8.8.8", "ip")
+
+        assert "error" in result
+        assert result["assessed"] == []
+
+    async def test_quota_exhaustion_degrades(self, monkeypatch):
+        """Keyless and keyed quotas both fail as HTTP 401 / error 10000."""
+        from app.enrichers.geoip_enricher import GeoIPEnricher
+
+        monkeypatch.setattr(settings, "IP2LOCATION_IO_KEY", None)
+        _mock_httpx(monkeypatch, _FakeResponse(401, {
+            "error": {"error_code": 10000, "error_message": "Invalid API key."},
+        }))
+
+        result = await GeoIPEnricher().enrich("8.8.8.8", "ip")
+
+        assert "quota" in result["error"].lower()
+        assert result["assessed"] == []
+
+    async def test_an_error_object_in_a_200_response_degrades(self, monkeypatch):
+        from app.enrichers.geoip_enricher import GeoIPEnricher
+
+        monkeypatch.setattr(settings, "IP2LOCATION_IO_KEY", None)
+        _mock_httpx(monkeypatch, _FakeResponse(200, {
+            "error": {"error_code": 10001, "error_message": "Invalid IP address."},
+        }))
+
+        result = await GeoIPEnricher().enrich("not-an-ip", "ip")
+
+        assert "error" in result
+        assert result["assessed"] == []
+
+    def test_cache_ttl_is_the_shared_geoip_ttl(self):
+        from app.enrichers.geoip_enricher import GeoIPEnricher
+
+        assert GeoIPEnricher().cache_ttl == settings.CACHE_TTL_GEOIP == 86400
+        assert _get_ttl("geoip") == 86400
+
+    async def test_a_cached_result_makes_no_api_call(self, monkeypatch):
+        """The 24h cache is enforced by the engine, ahead of the enricher."""
+        from datetime import datetime, timedelta
+        from types import SimpleNamespace
+
+        from app.enrichers.geoip_enricher import GeoIPEnricher
+        from app.services.enrichment_engine import enrich_ioc
+
+        calls = {"n": 0}
+
+        async def _boom(*args, **kwargs):
+            calls["n"] += 1
+            raise AssertionError("the API was called despite a fresh cache row")
+
+        monkeypatch.setattr(GeoIPEnricher, "enrich", _boom)
+
+        cached_data = {"country_code": "MY", "assessed": ["high_risk_country"]}
+        row = SimpleNamespace(
+            data=cached_data,
+            expires_at=datetime.utcnow() + timedelta(hours=1),
+        )
+
+        class _Session:
+            async def execute(self, _stmt):
+                class _Result:
+                    def scalar_one_or_none(self):
+                        return row
+                return _Result()
+
+        ioc = SimpleNamespace(id="ioc-1", value="175.144.151.253", type="ip")
+        result = await enrich_ioc(_Session(), ioc, sources=["geoip"])
+
+        assert result == [{"source": "geoip", "data": cached_data}]
+        assert calls["n"] == 0
