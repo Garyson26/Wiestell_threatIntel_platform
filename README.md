@@ -109,6 +109,7 @@ Every variable is documented in [`.env.example`](.env.example). These are the ma
 | `OTX_API_KEY`, `ABUSEIPDB_API_KEY` | Turn on the OTX and AbuseIPDB feeds and their reputation lookups | No |
 | `URLHAUS_API_KEY`, `THREATFOX_API_KEY`, `MALWAREBAZAAR_API_KEY` | abuse.ch Auth-Key (free account at auth.abuse.ch). One key covers all three; enter the same value in each | Yes, for the URLhaus, ThreatFox and MalwareBazaar feeds |
 | `NVD_API_KEY`, `SHODAN_API_KEY`, `CVEDETAILS_ACCESS_TOKEN` | Extra enrichment sources | No |
+| `IP2LOCATION_IO_KEY` | IP2Location.io geolocation lookup. Keyless mode allows 1,000 requests/day; a free key allows 50,000/month | No |
 
 ## Threat feeds
 
@@ -170,6 +171,10 @@ npm run lint
 Bug reports, feature ideas and pull requests are all welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before you start.
 
 **Security issues:** please do not open a public issue. Report them privately through GitHub's [**Report a vulnerability**](https://github.com/Garyson26/Wiestell_threatIntel_platform/security/advisories/new) form.
+
+## Data attribution
+
+IP geolocation data is provided by [IP2Location.io](https://www.ip2location.io).
 
 ## License
 

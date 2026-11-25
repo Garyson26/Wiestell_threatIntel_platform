@@ -250,67 +250,51 @@ class TestDegradedStatesAreSurfacedButNotPublished:
     """
 
     @staticmethod
-    def _degradations(monkeypatch, allow=None, geoip_present=False, tmp_path=None):
-        from app.config import settings
-        from app.enrichers import reset_registry
+    def _degradations(monkeypatch, allow=None):
         from app.main import _deployment_degradations
 
         monkeypatch.delenv("ALLOW_MULTIPLE_WORKERS", raising=False)
         if allow is not None:
             monkeypatch.setenv("ALLOW_MULTIPLE_WORKERS", allow)
-        if geoip_present:
-            db = tmp_path / "GeoLite2-City.mmdb"
-            db.write_bytes(b"stub")
-            monkeypatch.setattr(settings, "GEOIP_DB_PATH", str(db))
-        else:
-            monkeypatch.setattr(settings, "GEOIP_DB_PATH", "/nonexistent/x.mmdb")
-        reset_registry()
         return {d["id"] for d in _deployment_degradations()}
 
-    def test_a_correct_deployment_reports_nothing(self, monkeypatch, tmp_path):
-        assert self._degradations(
-            monkeypatch, geoip_present=True, tmp_path=tmp_path) == set()
+    def test_a_correct_deployment_reports_nothing(self, monkeypatch):
+        assert self._degradations(monkeypatch) == set()
 
-    def test_a_missing_geoip_database_is_reported(self, monkeypatch, tmp_path):
-        assert "geoip_database_missing" in self._degradations(
-            monkeypatch, geoip_present=False, tmp_path=tmp_path)
+    def test_the_retired_geoip_database_state_is_not_reported(self, monkeypatch):
+        """GeoIP reads the IP2Location.io API, so no database can go missing."""
+        assert "geoip_database_missing" not in self._degradations(monkeypatch)
 
-    def test_the_worker_override_is_reported(self, monkeypatch, tmp_path):
-        assert "multiple_workers_allowed" in self._degradations(
-            monkeypatch, allow="true", geoip_present=True, tmp_path=tmp_path)
+    def test_the_worker_override_is_reported(self, monkeypatch):
+        assert "multiple_workers_allowed" in self._degradations(monkeypatch, allow="true")
 
-    def test_both_can_be_reported_at_once(self, monkeypatch, tmp_path):
-        assert self._degradations(
-            monkeypatch, allow="1", geoip_present=False, tmp_path=tmp_path) == {
-            "geoip_database_missing", "multiple_workers_allowed"}
+    def test_the_override_is_not_folded_into_the_undeclared_state(self, monkeypatch):
+        """An explicit override is a different state from an undeclared one."""
+        assert self._degradations(monkeypatch, allow="1") == {
+            "multiple_workers_allowed"}
 
-    def test_each_entry_says_what_it_costs_and_how_to_fix_it(self, monkeypatch, tmp_path):
+    def test_each_entry_says_what_it_costs_and_how_to_fix_it(self, monkeypatch):
         """The payload is read post-deploy by a person, so an id alone is not actionable."""
         from app.main import _deployment_degradations
 
-        self._degradations(monkeypatch, allow="true", geoip_present=False,
-                          tmp_path=tmp_path)
+        self._degradations(monkeypatch, allow="true")
         entries = _deployment_degradations()
         assert entries, "fixture produced no degradations"
         for entry in entries:
             assert entry.get("impact"), f"{entry['id']} does not say what it costs"
             assert entry.get("fix"), f"{entry['id']} does not say how to fix it"
 
-    def test_the_public_health_payload_does_NOT_carry_them(self, monkeypatch, tmp_path):
+    def test_the_public_health_payload_does_NOT_carry_them(self, monkeypatch):
         """The disclosure guard. /health is unauthenticated by necessity.
 
-        Asserts on the worst case - both degradations active - so the test cannot pass
-        merely because there was nothing to leak.
+        Asserts on a degradation being active - so the test cannot pass merely because
+        there was nothing to leak.
         """
         import asyncio
 
-        from app.config import settings
-        from app.enrichers import reset_registry
         from app.main import health_check
 
         monkeypatch.setenv("ALLOW_MULTIPLE_WORKERS", "true")
-        monkeypatch.setattr(settings, "GEOIP_DB_PATH", "/nonexistent/x.mmdb")
-        reset_registry()
 
         payload = asyncio.run(health_check())
         serialised = repr(payload)
@@ -430,7 +414,7 @@ class TestWorkerCountResolvesLikeUvicornDoes:
         with pytest.raises(RuntimeError, match="uvicorn workers requested"):
             _assert_single_worker()
 
-    def test_the_degradation_report_sees_web_concurrency_too(self, monkeypatch, tmp_path):
+    def test_the_degradation_report_sees_web_concurrency_too(self, monkeypatch):
         """A multi-worker start with no override must be VISIBLE, not merely refused.
 
         The refusal can be bypassed (a supervisor that restarts past it, an import order
@@ -438,14 +422,7 @@ class TestWorkerCountResolvesLikeUvicornDoes:
         """
         import sys
 
-        from app.config import settings
-        from app.enrichers import reset_registry
         from app.main import _deployment_degradations
-
-        db = tmp_path / "GeoLite2-City.mmdb"
-        db.write_bytes(b"stub")
-        monkeypatch.setattr(settings, "GEOIP_DB_PATH", str(db))
-        reset_registry()
 
         monkeypatch.setattr(sys, "argv", ["uvicorn", "app.main:app"])
         monkeypatch.setenv("WEB_CONCURRENCY", "4")

@@ -72,7 +72,8 @@ def _utcnow() -> datetime:
 #: Error-marker keys an enrichment payload can carry.
 #:
 #: Mirrors `scoring_engine._reached_a_verdict`, which prefix-matches `error` and
-#: `error_*` — the prefix exists because geoip writes `error_city` rather than `error`.
+#: `error_*`. `error_city` is legacy: geoip wrote it before the IP2Location.io
+#: migration, and those cached rows are never refreshed away.
 #: Enumerated rather than prefix-matched here because SQL cannot cheaply ask "any key
 #: starting with", and `tests/test_enrichment_selection.py` fails if an enricher ever
 #: emits a marker not listed, so the two definitions cannot drift apart silently.
