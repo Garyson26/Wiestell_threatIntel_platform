@@ -38,7 +38,7 @@ httpx==0.28.1
 
 # Enrichment
 python-whois==0.9.6
-dnspython==2.9.1
+dnspython==2.9.2
 # geoip2 RETIRED 2026-11-19 with the build-time GeoLite2 download. GeoIP reads the
 # IP2Location.io API over httpx, so geoip2 and its aiohttp dependency are gone.
 # shodan==1.31.0  # Optional - not compatible with Vercel serverless (no binary wheels)
