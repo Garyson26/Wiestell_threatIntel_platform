@@ -61,6 +61,7 @@ def build_registry() -> Dict[str, BaseEnricher]:
     from app.enrichers.nvd_enricher import NVDEnricher
     from app.enrichers.reputation_enricher import ReputationEnricher
     from app.enrichers.shodan_enricher import ShodanEnricher
+    from app.enrichers.vpndetection_enricher import VPNDetectionEnricher
     from app.enrichers.whois_enricher import WhoisEnricher
     from app.enrichers.yaraify_enricher import YARAifyEnricher
 
@@ -130,6 +131,11 @@ def build_registry() -> Dict[str, BaseEnricher]:
     yaraify_key = settings.YARAIFY_API_KEY or settings.MALWAREBAZAAR_API_KEY
     if yaraify_key:
         add(YARAifyEnricher(api_key=yaraify_key))
+
+    # VPNDetection's flags are context, not a risk signal. Gated on its key, so no IOC
+    # is sent until the operator opts in.
+    if settings.VPNDETECTION_API_KEY:
+        add(VPNDetectionEnricher(api_key=settings.VPNDETECTION_API_KEY))
 
     logger.info("enricher_registry_built", enrichers=list(registry))
     return registry

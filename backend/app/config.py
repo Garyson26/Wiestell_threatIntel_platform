@@ -75,6 +75,9 @@ class Settings(BaseSettings):
     # CVE Details requires a paid subscription; the enricher is not registered
     # without it.
     CVEDETAILS_ACCESS_TOKEN: Optional[str] = None
+    # VPNDetection's VPN, Tor and relay flags for IP IOCs; the enricher is not
+    # registered without it.
+    VPNDETECTION_API_KEY: Optional[str] = None
 
     # AI
     GROQ_API_KEY: str = ""

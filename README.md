@@ -16,7 +16,7 @@
 ## Features
 
 - **Feed ingestion.** 11 open-source threat feeds, 6 of which need no API key.
-- **Enrichment.** WHOIS, DNS, GeoIP, reputation (AbuseIPDB / OTX), MalwareBazaar, YARAify, NVD and more.
+- **Enrichment.** WHOIS, DNS, GeoIP, reputation (AbuseIPDB / OTX), VPN and Tor flags (VPNDetection), MalwareBazaar, YARAify, NVD and more.
 - **Threat scoring.** A weighted 0–100 score per IOC, bucketed into Critical, High, Medium and Low.
 - **MITRE ATT&CK.** Technique mapping with a matrix and heatmap view.
 - **Correlation and hunting.** Related-IOC correlation and a threat-hunting workspace.
@@ -110,6 +110,7 @@ Every variable is documented in [`.env.example`](.env.example). These are the ma
 | `URLHAUS_API_KEY`, `THREATFOX_API_KEY`, `MALWAREBAZAAR_API_KEY` | abuse.ch Auth-Key (free account at auth.abuse.ch). One key covers all three; enter the same value in each | Yes, for the URLhaus, ThreatFox and MalwareBazaar feeds |
 | `NVD_API_KEY`, `SHODAN_API_KEY`, `CVEDETAILS_ACCESS_TOKEN` | Extra enrichment sources | No |
 | `IP2LOCATION_IO_KEY` | IP2Location.io geolocation lookup. Keyless mode allows 1,000 requests/day; a free key allows 50,000/month | No |
+| `VPNDETECTION_API_KEY` | VPNDetection's VPN, Tor and relay flags for IP IOCs, shown on the IOC page without changing the score. A free key has no daily or monthly cap | No |
 
 ## Threat feeds
 

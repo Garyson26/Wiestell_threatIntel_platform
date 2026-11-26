@@ -7,6 +7,7 @@ from app.enrichers import applicable_sources, get_enricher, get_registry, reset_
 from app.enrichers.base import BaseEnricher
 from app.enrichers.cvedetails_enricher import CVEDetailsEnricher
 from app.enrichers.nvd_enricher import NVDEnricher
+from app.enrichers.vpndetection_enricher import VPNDetectionEnricher
 from app.enrichers.yaraify_enricher import YARAifyEnricher
 from app.services.enrichment_engine import _get_applicable_sources, _get_ttl
 
@@ -32,6 +33,7 @@ def _mock_httpx(monkeypatch, response=None, exc=None):
     class _Client:
         def __init__(self, *args, **kwargs):
             recorded["timeout"] = kwargs.get("timeout")
+            recorded["headers"] = dict(kwargs.get("headers") or {})
 
         async def __aenter__(self):
             return self
@@ -60,7 +62,7 @@ def _clean_registry():
 @pytest.fixture
 def no_keys(monkeypatch):
     for name in ("NVD_API_KEY", "CVEDETAILS_ACCESS_TOKEN", "YARAIFY_API_KEY",
-                 "MALWAREBAZAAR_API_KEY", "IP2LOCATION_IO_KEY"):
+                 "MALWAREBAZAAR_API_KEY", "IP2LOCATION_IO_KEY", "VPNDETECTION_API_KEY"):
         monkeypatch.setattr(settings, name, None)
     reset_registry()
 
@@ -71,6 +73,7 @@ def all_keys(monkeypatch):
     monkeypatch.setattr(settings, "CVEDETAILS_ACCESS_TOKEN", "cvedetails-token")
     monkeypatch.setattr(settings, "YARAIFY_API_KEY", "yaraify-key")
     monkeypatch.setattr(settings, "MALWAREBAZAAR_API_KEY", "mb-key")
+    monkeypatch.setattr(settings, "VPNDETECTION_API_KEY", "vpnd-key")
     reset_registry()
 
 
@@ -128,6 +131,8 @@ class TestRegistryGating:
         ]
 
     def test_gated_enrichers_absent_without_credentials(self, no_keys):
+        assert get_enricher("vpndetection") is None
+        assert "vpndetection" not in applicable_sources("ip")
         assert get_enricher("cvedetails") is None
         assert get_enricher("yaraify") is None
         assert get_enricher("malwarebazaar") is None
@@ -161,6 +166,7 @@ class TestRegistryGating:
 
     def test_all_registered_when_configured(self, all_keys):
         assert {"nvd", "cvedetails"} <= set(applicable_sources("cve"))
+        assert applicable_sources("ip")[-1] == "vpndetection"
         assert "yaraify" in applicable_sources("hash")
 
     def test_yaraify_falls_back_to_the_abusech_key(self, monkeypatch):
@@ -258,6 +264,7 @@ class TestTTLs:
         assert _get_ttl("nvd") == NVDEnricher.cache_ttl
         assert _get_ttl("yaraify") == YARAifyEnricher.cache_ttl
         assert _get_ttl("cvedetails") == CVEDetailsEnricher.cache_ttl
+        assert _get_ttl("vpndetection") == VPNDetectionEnricher.cache_ttl
 
     def test_builtin_ttls_come_from_settings(self):
         assert _get_ttl("whois") == settings.CACHE_TTL_WHOIS
@@ -781,3 +788,95 @@ class TestIP2LocationGeoIP:
 
         assert result == [{"source": "geoip", "data": cached_data}]
         assert calls["n"] == 0
+
+
+class TestVPNDetection:
+    """VPN, Tor and relay context for IP IOCs, from saved live answers (2026-11-26)."""
+
+    # A free key's answer for a Mullvad exit on M247: the VPN, Tor and relay flags,
+    # with no proxy or hosting flag at all.
+    FREE = {
+        "ip": "146.70.116.130", "is_bogon": False, "is_vpn": True, "is_relay": False,
+        "is_tor": False, "is_anycast": False, "relay": {}, "tor": {},
+        "location": {"country": "AT"},
+        "asn": {"asn": 9009, "name": "M247 Europe SRL", "type": "hosting"},
+    }
+
+    # A paid key's answer adds the provider and the proxy and hosting flags.
+    PAID = {
+        **FREE, "is_hosting": True, "is_resproxy": False, "is_dcproxy": False,
+        "is_mobproxy": False, "is_pubproxy": False,
+        "vpn": {"provider": "mullvad", "provider_name": "Mullvad", "confidence": "high"},
+    }
+
+    async def test_a_free_answer_leaves_the_flags_it_lacks_unknown(self, monkeypatch):
+        recorded = _mock_httpx(monkeypatch, _FakeResponse(200, self.FREE))
+
+        result = await VPNDetectionEnricher(api_key="vpnd-key").enrich("146.70.116.130", "ip")
+
+        assert result == {
+            "is_vpn": True, "is_tor": False, "is_relay": False,
+            "is_resproxy": None, "is_dcproxy": None, "is_mobproxy": None,
+            "is_pubproxy": None, "is_hosting": None,
+            "is_anycast": False, "is_bogon": False,
+            "vpn_provider": None, "assessed": [],
+        }
+        assert recorded["url"] == "https://api.vpndetection.io/146.70.116.130"
+        assert recorded["headers"] == {"Authorization": "Bearer vpnd-key"}
+        assert recorded["timeout"] == 5
+
+    async def test_a_paid_answer_names_the_provider(self, monkeypatch):
+        _mock_httpx(monkeypatch, _FakeResponse(200, self.PAID))
+
+        result = await VPNDetectionEnricher(api_key="vpnd-key").enrich("146.70.116.130", "ip")
+
+        assert result["vpn_provider"] == "Mullvad"
+        assert result["is_hosting"] is True
+        assert result["is_resproxy"] is False
+        assert result["assessed"] == []
+
+    async def test_a_tor_node(self, monkeypatch):
+        _mock_httpx(monkeypatch, _FakeResponse(200, {
+            "ip": "185.220.101.1", "is_bogon": False, "is_vpn": False, "is_relay": False,
+            "is_tor": True, "is_anycast": False, "relay": {}, "tor": {},
+        }))
+
+        result = await VPNDetectionEnricher(api_key="vpnd-key").enrich("185.220.101.1", "ip")
+
+        assert result["is_tor"] is True
+        assert result["is_vpn"] is False
+
+    async def test_a_rejected_key_is_an_error_payload(self, monkeypatch):
+        _mock_httpx(monkeypatch, _FakeResponse(401, {"error": "invalid key"}))
+
+        result = await VPNDetectionEnricher(api_key="bad").enrich("146.70.116.130", "ip")
+
+        assert result == {"error": "VPNDetection rejected the API key", "assessed": []}
+
+    async def test_an_unparseable_address_is_not_applicable(self, monkeypatch):
+        _mock_httpx(monkeypatch, _FakeResponse(400, {"error": "not an address"}))
+
+        assert await VPNDetectionEnricher(api_key="vpnd-key").enrich("1.2.3", "ip") is None
+
+    async def test_a_failure_never_raises_or_logs_the_key(self, monkeypatch, capsys):
+        import httpx
+
+        _mock_httpx(monkeypatch, exc=httpx.TimeoutException("Bearer vpnd-secret timed out"))
+
+        result = await VPNDetectionEnricher(api_key="vpnd-secret").enrich("146.70.116.130", "ip")
+
+        assert result == {"error": "VPNDetection lookup failed", "assessed": []}
+        captured = capsys.readouterr()
+        assert "vpnd-secret" not in captured.out + captured.err
+
+    async def test_a_body_that_is_not_json_is_an_error_payload(self, monkeypatch):
+        _mock_httpx(monkeypatch, _FakeResponse(200, json_error=ValueError("not json")))
+
+        result = await VPNDetectionEnricher(api_key="vpnd-key").enrich("146.70.116.130", "ip")
+
+        assert result["error"] == "VPNDetection returned an invalid response"
+
+    def test_only_ips_are_supported(self):
+        enricher = VPNDetectionEnricher(api_key="vpnd-key")
+        assert enricher.supports("ip")
+        assert not any(enricher.supports(t) for t in ("domain", "url", "hash", "email", "cve"))
